@@ -1,0 +1,52 @@
+policy_version: 1
+framework_alignment:
+  iso27001:
+    - access_control
+    - logging_and_monitoring
+    - supplier_and_cloud_service_controls
+  soc2:
+    - security
+    - availability
+    - confidentiality
+  gdpr:
+    - data_minimization
+    - purpose_limitation
+    - privacy_by_design
+
+controls:
+  secrets:
+    storage: gcp_secret_manager
+    plaintext_in_repo: prohibited
+    rotation_review_days: 90
+  iam:
+    principle: least_privilege
+    service_accounts:
+      - deployment_automation
+      - cloud_run_runtime
+      - cloud_function_runtime
+  audit:
+    structured_logging: required
+    deployment_logs: required
+    mrv_records: required
+  data_protection:
+    private_capture_zones: prohibited
+    sensitive_metadata_redaction: required
+    retention_review_days: 30
+  deployment:
+    destructive_actions: manual_confirmation_required
+    terraform_plan_review: required
+    apply_mode: explicit_flag_required
+
+incident_requirements:
+  severity_levels:
+    - sev1
+    - sev2
+    - sev3
+  notification_channels:
+    - cloud_monitoring
+    - operations_on_call
+  evidence_collection:
+    - cloud_logging_entries
+    - deployment_logs
+    - terraform_plan_output
+    - mrv_audit_records

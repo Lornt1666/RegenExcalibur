@@ -1,0 +1,71 @@
+substitutions:
+  _REGION: us-central1
+  _ENVIRONMENT: dev
+  _RESOURCE_PREFIX: regenexcalibur
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  substitution_option: ALLOW_LOOSE
+
+steps:
+  - name: hashicorp/terraform:1.9
+    id: terraform-init
+    dir: 02_Infrastructure_as_Code/Terraform
+    args:
+      - init
+      - -input=false
+
+  - name: hashicorp/terraform:1.9
+    id: terraform-apply
+    dir: 02_Infrastructure_as_Code/Terraform
+    args:
+      - apply
+      - -input=false
+      - -auto-approve
+      - -var=project_id=$PROJECT_ID
+      - -var=region=${_REGION}
+      - -var=environment=${_ENVIRONMENT}
+      - -var=resource_prefix=${_RESOURCE_PREFIX}
+
+  - name: gcr.io/cloud-builders/gcloud
+    id: deploy-cloud-function
+    args:
+      - functions
+      - deploy
+      - ${_RESOURCE_PREFIX}-event-ingest
+      - --gen2
+      - --runtime=python312
+      - --region=${_REGION}
+      - --source=04_Backend_Services/cloud_functions
+      - --entry-point=ingest_event
+      - --trigger-topic=${_RESOURCE_PREFIX}-agent-tasks
+      - --set-env-vars=ENVIRONMENT=${_ENVIRONMENT},MRV_TOPIC=${_RESOURCE_PREFIX}-mrv-events
+
+  - name: gcr.io/cloud-builders/docker
+    id: build-cloud-run-image
+    args:
+      - build
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_RESOURCE_PREFIX}-containers/${_RESOURCE_PREFIX}-api:$SHORT_SHA
+      - 04_Backend_Services/cloud_run_services
+
+  - name: gcr.io/cloud-builders/docker
+    id: push-cloud-run-image
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_RESOURCE_PREFIX}-containers/${_RESOURCE_PREFIX}-api:$SHORT_SHA
+
+  - name: gcr.io/cloud-builders/gcloud
+    id: deploy-cloud-run
+    args:
+      - run
+      - deploy
+      - ${_RESOURCE_PREFIX}-api
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_RESOURCE_PREFIX}-containers/${_RESOURCE_PREFIX}-api:$SHORT_SHA
+      - --region=${_REGION}
+      - --platform=managed
+      - --allow-unauthenticated
+      - --set-env-vars=ENVIRONMENT=${_ENVIRONMENT}
+
+images:
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_RESOURCE_PREFIX}-containers/${_RESOURCE_PREFIX}-api:$SHORT_SHA

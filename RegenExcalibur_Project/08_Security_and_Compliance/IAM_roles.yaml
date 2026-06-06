@@ -1,0 +1,33 @@
+custom_roles:
+  regenexcaliburOrchestrator:
+    title: RegenExcalibur Orchestrator
+    description: Minimal permissions for orchestration workers after infrastructure is provisioned.
+    stage: GA
+    includedPermissions:
+      - logging.logEntries.create
+      - monitoring.timeSeries.create
+      - pubsub.topics.publish
+      - pubsub.subscriptions.consume
+      - storage.objects.create
+      - storage.objects.get
+      - storage.objects.list
+
+  regenexcaliburAuditor:
+    title: RegenExcalibur Auditor
+    description: Read-only audit permissions for reviewing MRV records and deployment logs.
+    stage: GA
+    includedPermissions:
+      - logging.logEntries.list
+      - monitoring.dashboards.get
+      - monitoring.dashboards.list
+      - pubsub.snapshots.list
+      - pubsub.subscriptions.get
+      - pubsub.topics.get
+      - storage.objects.get
+      - storage.objects.list
+
+binding_guidance:
+  - Bind runtime identities only to the resources they need.
+  - Prefer service-account-level roles/iam.serviceAccountUser bindings over project-wide grants.
+  - Store runtime secrets in Secret Manager, never in Terraform variables or source files.
+  - Rotate credentials and review IAM bindings before production rollout.

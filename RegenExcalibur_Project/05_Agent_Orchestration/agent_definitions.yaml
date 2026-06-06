@@ -1,0 +1,91 @@
+version: 1
+workflow_name: regenexcalibur_mrv_cycle
+description: Multi-agent workflow for sensing, forecasting, panel action, capture coordination, review, and governance.
+
+agents:
+  - name: SensorAgent
+    objective: Normalize incoming field, device, and external sensor signals.
+    inputs:
+      - sensor_event
+      - location_context
+    outputs:
+      - normalized_signal
+    controls:
+      - reject_missing_timestamp
+      - require_source_id
+
+  - name: ForecastAgent
+    objective: Build forecast summaries and confidence metrics from normalized signals.
+    inputs:
+      - normalized_signal
+      - historical_context
+    outputs:
+      - forecast_summary
+      - confidence_score
+    controls:
+      - confidence_threshold
+      - provenance_required
+
+  - name: FacadePanelAgent
+    objective: Translate forecast results into facade panel work recommendations.
+    inputs:
+      - forecast_summary
+      - site_constraints
+    outputs:
+      - panel_action_plan
+    controls:
+      - human_review_for_high_impact_changes
+
+  - name: CaptureDeviceAgent
+    objective: Coordinate capture devices and produce capture manifests.
+    inputs:
+      - panel_action_plan
+      - capture_policy
+    outputs:
+      - capture_manifest
+    controls:
+      - avoid_private_zones
+      - redact_sensitive_capture_metadata
+
+  - name: HumanReviewAgent
+    objective: Require explicit review for sensitive, costly, or compliance-relevant actions.
+    inputs:
+      - capture_manifest
+      - panel_action_plan
+    outputs:
+      - review_decision
+    controls:
+      - approval_required_for_apply
+
+  - name: GovernanceAgent
+    objective: Emit MRV audit records and compliance summaries.
+    inputs:
+      - review_decision
+      - all_prior_outputs
+    outputs:
+      - mrv_audit_record
+      - compliance_summary
+    controls:
+      - immutable_audit_log
+      - policy_mapping_required
+
+workflow:
+  steps:
+    - agent: SensorAgent
+      action: normalize_signal
+    - agent: ForecastAgent
+      action: prepare_forecast
+    - agent: FacadePanelAgent
+      action: plan_facade_work
+    - agent: CaptureDeviceAgent
+      action: produce_capture_manifest
+    - agent: HumanReviewAgent
+      action: request_or_record_review
+    - agent: GovernanceAgent
+      action: publish_mrv_record
+
+guardrails:
+  destructive_actions: disabled_by_default
+  credential_storage: secret_manager_only
+  audit_logging: required
+  human_review: required_for_high_impact

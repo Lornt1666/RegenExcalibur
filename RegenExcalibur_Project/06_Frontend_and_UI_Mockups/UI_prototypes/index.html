@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>RegenExcalibur Operations Console</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <h1>RegenExcalibur</h1>
+          <p>Operations console prototype</p>
+        </div>
+        <button type="button">Run Review</button>
+      </header>
+
+      <section class="status-grid" aria-label="System status">
+        <article>
+          <span>Agents</span>
+          <strong>6 active</strong>
+          <p>MRV workflow ready</p>
+        </article>
+        <article>
+          <span>Forecast</span>
+          <strong>82%</strong>
+          <p>Current confidence</p>
+        </article>
+        <article>
+          <span>Capture</span>
+          <strong>12 frames</strong>
+          <p>Privacy policy applied</p>
+        </article>
+        <article>
+          <span>Compliance</span>
+          <strong>Pending</strong>
+          <p>Human review gate</p>
+        </article>
+      </section>
+
+      <section class="workspace">
+        <div class="panel">
+          <h2>Agent Workflow</h2>
+          <ol>
+            <li><span>SensorAgent</span><b>Validated</b></li>
+            <li><span>ForecastAgent</span><b>Ready</b></li>
+            <li><span>FacadePanelAgent</span><b>Queued</b></li>
+            <li><span>CaptureDeviceAgent</span><b>Queued</b></li>
+            <li><span>HumanReviewAgent</span><b>Required</b></li>
+            <li><span>GovernanceAgent</span><b>Waiting</b></li>
+          </ol>
+        </div>
+
+        <div class="panel">
+          <h2>MRV Audit Stream</h2>
+          <div class="event">
+            <time>09:42</time>
+            <p>Sensor event normalized and policy checks completed.</p>
+          </div>
+          <div class="event">
+            <time>09:45</time>
+            <p>Forecast summary prepared with source provenance.</p>
+          </div>
+          <div class="event">
+            <time>09:49</time>
+            <p>Human review required before applying field action.</p>
+          </div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

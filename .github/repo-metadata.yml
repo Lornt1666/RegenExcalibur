@@ -1,0 +1,17 @@
+name: RegenExcalibur
+description: Cloud-native RegenExcalibur automation package for secure GCP provisioning, Terraform IaC, CI/CD, AI/video pipeline scaffolding, multi-agent orchestration, compliance, observability, and runbook-driven operations.
+topics:
+  - gcp
+  - terraform
+  - cloud-run
+  - cloud-functions
+  - pubsub
+  - vertex-ai
+  - cloud-build
+  - automation
+  - mrv
+  - compliance
+  - observability
+  - ai-agents
+homepage: ""
+visibility_note: Set repository visibility from GitHub settings according to your deployment and compliance needs.

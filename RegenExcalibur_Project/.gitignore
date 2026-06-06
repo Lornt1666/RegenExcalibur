@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+.venv/
+deployment_logs/
+ai_video_manifest.json
+regenexcalibur_render.mp4
+
+# Terraform local state and plans
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+tfplan
+
+# Generated frontend output
+06_Frontend_and_UI_Mockups/dist/

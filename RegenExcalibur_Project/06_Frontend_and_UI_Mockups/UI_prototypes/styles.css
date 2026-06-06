@@ -1,0 +1,166 @@
+:root {
+  color-scheme: light;
+  --bg: #f5f7fb;
+  --panel: #ffffff;
+  --ink: #1d2433;
+  --muted: #667085;
+  --line: #d9e0ea;
+  --green: #1f7a4d;
+  --blue: #2457a6;
+  --gold: #9a6a12;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.shell {
+  width: min(1180px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 28px 0;
+}
+
+.topbar {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: 32px;
+  line-height: 1.1;
+}
+
+h2 {
+  font-size: 18px;
+  margin-bottom: 16px;
+}
+
+.topbar p,
+article p,
+.event p {
+  color: var(--muted);
+}
+
+button {
+  background: var(--blue);
+  border: 0;
+  border-radius: 6px;
+  color: #fff;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 700;
+  min-height: 40px;
+  padding: 0 16px;
+}
+
+.status-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 18px;
+}
+
+article,
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+article {
+  padding: 16px;
+}
+
+article span {
+  color: var(--muted);
+  display: block;
+  font-size: 13px;
+}
+
+article strong {
+  display: block;
+  font-size: 24px;
+  margin: 8px 0 4px;
+}
+
+.workspace {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: 1.2fr 0.8fr;
+}
+
+.panel {
+  padding: 18px;
+}
+
+ol {
+  display: grid;
+  gap: 10px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+li {
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  display: flex;
+  justify-content: space-between;
+  min-height: 44px;
+  padding: 0 12px;
+}
+
+li b {
+  color: var(--green);
+  font-size: 13px;
+}
+
+.event {
+  border-left: 3px solid var(--gold);
+  margin-bottom: 14px;
+  padding-left: 12px;
+}
+
+time {
+  color: var(--muted);
+  display: block;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+@media (max-width: 760px) {
+  .topbar,
+  .workspace {
+    display: block;
+  }
+
+  .topbar button {
+    margin-top: 14px;
+    width: 100%;
+  }
+
+  .status-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .panel + .panel {
+    margin-top: 18px;
+  }
+}
