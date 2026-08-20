@@ -1,0 +1,17 @@
+{
+  "shortcut_name": "1JGM Edge Operator",
+  "bootstrap_url": "shortcuts://create-shortcut",
+  "run_url": "shortcuts://run-shortcut?name=1JGM%20Edge%20Operator&input=clipboard",
+  "edit_url": "shortcuts://open-shortcut?name=1JGM%20Edge%20Operator",
+  "protocol_version": 1,
+  "input_schema": {
+    "v": "integer",
+    "action": "string",
+    "title": "string",
+    "url": "url",
+    "copy": "string",
+    "browser": "edge",
+    "final_action": "manual_review"
+  },
+  "security_boundary": "The bridge may prepare clipboard content and open the target page. Sending, posting, applying, accepting terms, identity checks, purchases, payments, contracts, or other consequential submissions remain manual review actions."
+}
