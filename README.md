@@ -1,5 +1,18 @@
 # RegenExcalibur
 
+## Freelance / Contract Work — 1JGM
+
+**Justice Gray Maciocha — 1JGM, Blueprint-to-Bot Systems Operator** is accepting remote, asynchronous, deliverable-based freelance work in market and competitor research, spreadsheet/listing QA, AI evaluation, prompt and workflow design, technical documentation, automation specifications, project operations, construction technology, and construction-informed CAD/visualization support.
+
+- **Full capability and service profile:** [FREELANCE_PROFILE.md](FREELANCE_PROFILE.md)
+- **Work contact:** `justlornt95+redditwork@gmail.com`
+- **Location/time zone:** Alberta, Canada — Mountain Time
+- **Engagement model:** Evening/weekend asynchronous work, small paid trials, hourly or fixed-price milestones
+
+The service profile separates demonstrated capability from learnable adjacent work and does not claim professional licensure, universal expertise, production deployment, or independent certification without supporting evidence.
+
+---
+
 RegenExcalibur is a GCP-oriented autonomous deployment and orchestration scaffold packaged as both source files and a ready ZIP artifact. It coordinates infrastructure-as-code, Cloud Run, Cloud Functions, Pub/Sub, Vertex AI pipeline scaffolding, multi-agent MRV workflows, security controls, observability, and operational runbooks.
 
 ## Repository Description
@@ -14,6 +27,7 @@ gcp, terraform, cloud-run, cloud-functions, pubsub, vertex-ai, cloud-build, auto
 
 ## Contents
 
+- [FREELANCE_PROFILE.md](FREELANCE_PROFILE.md): public 1JGM freelance capability, service, evidence, rate, and engagement profile.
 - [RegenExcalibur_Project.zip](RegenExcalibur_Project.zip): packaged project archive.
 - [RegenExcalibur_Project](RegenExcalibur_Project): expanded project source and deployment scaffold.
 - [RegenExcalibur_Project/01_Documentation_and_Readme/README.md](RegenExcalibur_Project/01_Documentation_and_Readme/README.md): detailed operational instructions.
