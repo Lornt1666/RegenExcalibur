@@ -4,6 +4,7 @@
   "run_url": "shortcuts://run-shortcut?name=1JGM%20Edge%20Operator&input=clipboard",
   "edit_url": "shortcuts://open-shortcut?name=1JGM%20Edge%20Operator",
   "protocol_version": 1,
+  "mode": "one-shot bootstrap; no scheduled loop",
   "input_schema": {
     "v": "integer",
     "action": "string",
