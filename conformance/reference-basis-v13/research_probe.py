@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """ProofGrid v1.3 research probe for the declared ILCD quantitative-reference chain.
 
-This is a research/freeze tool only. It records exact structure and provenance for
-pinned public InData fixtures; it does not calculate environmental impacts or
-claim that arbitrary EPDs use the same reference basis.
+The parsing helpers are intentionally generic: they extract exact ILCD identity
+links without assuming the pinned wood-panel UUIDs. The research `main()` then
+applies fixture-specific assertions to freeze the known-answer chain for the
+pinned public InData examples. This separation lets production code reuse the
+same structural parser without turning a research fixture identity into a
+universal parser rule.
 """
 
 from __future__ import annotations
@@ -136,7 +139,7 @@ def inspect_process(process_path: Path, expected_epd_version: str) -> dict[str, 
     root = ET.parse(process_path).getroot()
     require(root.tag == f"{{{PROCESS_NS}}}processDataSet", "process root is not Process/processDataSet")
     require(root.attrib.get(f"{{{EPD_2019_NS}}}epd-version") == expected_epd_version, "unexpected ILCD+EPD version")
-    require(common_uuid(root) == PROCESS_UUID, "unexpected process UUID")
+    process_uuid = common_uuid(root)
 
     quantitative = root.find(f"{{{PROCESS_NS}}}processInformation/{{{PROCESS_NS}}}quantitativeReference")
     require(quantitative is not None, "process quantitativeReference missing")
@@ -157,15 +160,16 @@ def inspect_process(process_path: Path, expected_epd_version: str) -> dict[str, 
     exchange = exchanges[0]
     flow_ref = exchange.find(f"{{{PROCESS_NS}}}referenceToFlowDataSet")
     require(flow_ref is not None, "reference exchange lacks referenceToFlowDataSet")
-    require(flow_ref.attrib.get("refObjectId") == FLOW_UUID, "unexpected product flow UUID")
+    product_flow_uuid = flow_ref.attrib.get("refObjectId")
+    require(isinstance(product_flow_uuid, str) and bool(product_flow_uuid.strip()), "reference exchange product-flow UUID missing")
     amount_lexical = first_text(exchange, f"{{{PROCESS_NS}}}meanAmount", "process reference exchange meanAmount")
 
     return {
         "epd_version": expected_epd_version,
-        "process_uuid": PROCESS_UUID,
+        "process_uuid": process_uuid,
         "quantitative_reference_type": quantitative.attrib.get("type"),
         "reference_exchange_internal_id": internal_id,
-        "product_flow_uuid": flow_ref.attrib.get("refObjectId"),
+        "product_flow_uuid": product_flow_uuid.strip(),
         "product_flow_version": flow_ref.attrib.get("version"),
         "exchange_amount": {
             "lexical": amount_lexical,
@@ -177,7 +181,7 @@ def inspect_process(process_path: Path, expected_epd_version: str) -> dict[str, 
 def inspect_flow(flow_path: Path) -> dict[str, Any]:
     root = ET.parse(flow_path).getroot()
     require(root.tag == f"{{{FLOW_NS}}}flowDataSet", "flow root is not Flow/flowDataSet")
-    require(common_uuid(root) == FLOW_UUID, "unexpected product flow UUID")
+    flow_uuid = common_uuid(root)
 
     quantitative = root.find(f"{{{FLOW_NS}}}flowInformation/{{{FLOW_NS}}}quantitativeReference")
     require(quantitative is not None, "flow quantitativeReference missing")
@@ -191,15 +195,16 @@ def inspect_flow(flow_path: Path) -> dict[str, Any]:
     prop = matches[0]
     prop_ref = prop.find(f"{{{FLOW_NS}}}referenceToFlowPropertyDataSet")
     require(prop_ref is not None, "reference flow property lacks referenceToFlowPropertyDataSet")
-    require(prop_ref.attrib.get("refObjectId") == FLOW_PROPERTY_UUID, "unexpected flow-property UUID")
+    flow_property_uuid = prop_ref.attrib.get("refObjectId")
+    require(isinstance(flow_property_uuid, str) and bool(flow_property_uuid.strip()), "reference flow-property UUID missing")
     mean_lexical = first_text(prop, f"{{{FLOW_NS}}}meanValue", "reference flow-property meanValue")
 
     return {
-        "flow_uuid": FLOW_UUID,
+        "flow_uuid": flow_uuid,
         "flow_version": dataset_version(root, FLOW_NS),
         "names": multilingual_names(root, FLOW_NS),
         "reference_flow_property_internal_id": ref_id,
-        "flow_property_uuid": prop_ref.attrib.get("refObjectId"),
+        "flow_property_uuid": flow_property_uuid.strip(),
         "flow_property_version": prop_ref.attrib.get("version"),
         "flow_property_mean": {
             "lexical": mean_lexical,
@@ -211,18 +216,19 @@ def inspect_flow(flow_path: Path) -> dict[str, Any]:
 def inspect_flow_property(path: Path) -> dict[str, Any]:
     root = ET.parse(path).getroot()
     require(root.tag == f"{{{FLOW_PROPERTY_NS}}}flowPropertyDataSet", "flow-property root mismatch")
-    require(common_uuid(root) == FLOW_PROPERTY_UUID, "flow-property master UUID mismatch")
+    flow_property_uuid = common_uuid(root)
     ref = root.find(
         f"{{{FLOW_PROPERTY_NS}}}flowPropertiesInformation/{{{FLOW_PROPERTY_NS}}}quantitativeReference/"
         f"{{{FLOW_PROPERTY_NS}}}referenceToReferenceUnitGroup"
     )
     require(ref is not None, "flow-property reference unit group missing")
-    require(ref.attrib.get("refObjectId") == UNIT_GROUP_UUID, "unexpected reference unit-group UUID")
+    unit_group_uuid = ref.attrib.get("refObjectId")
+    require(isinstance(unit_group_uuid, str) and bool(unit_group_uuid.strip()), "flow-property reference unit-group UUID missing")
     return {
-        "flow_property_uuid": FLOW_PROPERTY_UUID,
+        "flow_property_uuid": flow_property_uuid,
         "flow_property_version": dataset_version(root, FLOW_PROPERTY_NS),
         "names": multilingual_names(root, FLOW_PROPERTY_NS),
-        "reference_unit_group_uuid": ref.attrib.get("refObjectId"),
+        "reference_unit_group_uuid": unit_group_uuid.strip(),
         "reference_unit_group_version": ref.attrib.get("version"),
     }
 
@@ -230,7 +236,7 @@ def inspect_flow_property(path: Path) -> dict[str, Any]:
 def inspect_unit_group(path: Path) -> dict[str, Any]:
     root = ET.parse(path).getroot()
     require(root.tag == f"{{{UNIT_GROUP_NS}}}unitGroupDataSet", "unit-group root mismatch")
-    require(common_uuid(root) == UNIT_GROUP_UUID, "unit-group master UUID mismatch")
+    unit_group_uuid = common_uuid(root)
     quantitative = root.find(f"{{{UNIT_GROUP_NS}}}unitGroupInformation/{{{UNIT_GROUP_NS}}}quantitativeReference")
     require(quantitative is not None, "unit-group quantitativeReference missing")
     ref_id = first_text(quantitative, f"{{{UNIT_GROUP_NS}}}referenceToReferenceUnit", "reference unit internal ID")
@@ -244,7 +250,7 @@ def inspect_unit_group(path: Path) -> dict[str, Any]:
     name = first_text(unit, f"{{{UNIT_GROUP_NS}}}name", "reference unit name")
     factor_lexical = first_text(unit, f"{{{UNIT_GROUP_NS}}}meanValue", "reference unit factor")
     return {
-        "unit_group_uuid": UNIT_GROUP_UUID,
+        "unit_group_uuid": unit_group_uuid,
         "unit_group_version": dataset_version(root, UNIT_GROUP_NS),
         "reference_unit_internal_id": ref_id,
         "reference_unit_name": name,
@@ -284,18 +290,26 @@ def main() -> int:
     flow_property = inspect_flow_property(master / FLOW_PROPERTY_PATH)
     unit_group = inspect_unit_group(master / UNIT_GROUP_PATH)
 
-    # Freeze the initial known-answer identity chain without claiming it is universal.
+    # Fixture-specific assertions belong here, not inside the reusable parser.
+    require(v12_process["process_uuid"] == v13_process["process_uuid"] == PROCESS_UUID, "pinned process UUID mismatch")
+    require(v12_flow["flow_uuid"] == v13_flow["flow_uuid"] == FLOW_UUID, "pinned product-flow UUID mismatch")
+    require(flow_property["flow_property_uuid"] == FLOW_PROPERTY_UUID, "pinned flow-property master UUID mismatch")
+    require(unit_group["unit_group_uuid"] == UNIT_GROUP_UUID, "pinned unit-group master UUID mismatch")
+
     for label, process in (("v1.2", v12_process), ("v1.3", v13_process)):
         require(process["reference_exchange_internal_id"] == "42", f"{label} unexpected reference exchange")
+        require(process["product_flow_uuid"] == FLOW_UUID, f"{label} process/product-flow UUID mismatch")
+        require(process["product_flow_version"] == "00.00.001", f"{label} unexpected product-flow version")
         require(process["exchange_amount"]["decimal"] == "1", f"{label} process exchange amount is not identity 1")
     for label, flow in (("v1.2", v12_flow), ("v1.3", v13_flow)):
         require(flow["reference_flow_property_internal_id"] == "0", f"{label} unexpected flow-property internal ID")
+        require(flow["flow_property_uuid"] == FLOW_PROPERTY_UUID, f"{label} flow/flow-property UUID mismatch")
+        require(flow["flow_property_version"] == "03.00.000", f"{label} unexpected flow-property version")
         require(flow["flow_property_mean"]["decimal"] == "1", f"{label} flow-property mean is not identity 1")
+    require(flow_property["reference_unit_group_uuid"] == UNIT_GROUP_UUID, "pinned flow-property/unit-group UUID mismatch")
     require(unit_group["reference_unit_internal_id"] == "0", "unexpected reference unit internal ID")
     require(unit_group["reference_unit_name"] == "kg", "unexpected reference unit name")
     require(unit_group["reference_unit_factor"]["decimal"] == "1", "reference unit factor is not identity 1")
-    require(v12_process["product_flow_uuid"] == v13_process["product_flow_uuid"] == FLOW_UUID, "process flow UUID mismatch across versions")
-    require(v12_flow["flow_property_uuid"] == v13_flow["flow_property_uuid"] == FLOW_PROPERTY_UUID, "flow-property UUID mismatch across versions")
 
     report: dict[str, Any] = {
         "verdict": "DECLARED_REFERENCE_BASIS_RESEARCH_VERIFIABLE",
