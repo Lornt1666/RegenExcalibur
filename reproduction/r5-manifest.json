@@ -1,7 +1,7 @@
 {
-  "schema_version": "1.2",
+  "schema_version": "1.3",
   "gate": "ProofGrid R5 clean-environment reproduction candidate",
-  "implementation_commit": "fe27d78171140832a7985e4d5157f5541c8a02aa",
+  "implementation_commit": "7a563256e2b1c035fef5779dd2c81be6ac8b84a9",
   "runtime": {
     "python_by_platform": {
       "Linux": "3.11.16",
@@ -23,12 +23,20 @@
   ],
   "fixture": "evidence/examples/alberta-house",
   "expected": {
+    "engine_version": "0.3.2",
+    "method_version": "0.3.0",
     "project_id": "rx-demo-ab-house-001",
     "total_kgco2e": 3860.0,
     "indicator": "GWP-total",
     "system_boundary_modules": ["A1", "A2", "A3"],
-    "evidence_content_sha256": "9ce99ff076f41390c254377bd06e9897c4b203a4b778fbfd09c350624545142c",
-    "receipt_sha256": "44955751eec438621e43e2478e672a55bd6bff3aaf3a6e27ac588ff07cee8b7d",
+    "evidence_content_sha256": "be07217cfeed805d737637d7b760ae987f403a6d3b121b202889790bbdf5c001",
+    "receipt_sha256": "9fb074795aae8f5020a04fdd00b0b8730ddaac2a5294a98b3d409910976e7280",
+    "generated_output_sha256": {
+      "evidence.json": "72e396ef5c16ad4ef95c16f73b9134a964cb0ab923f8e26a8d44a9c4a993e212",
+      "graph.jsonld": "909a41748afc9cc4b458ce2da5c03cb8310719f8cd3c35fc617bca9d3aa63ffe",
+      "receipt.json": "91645c1fb22d7f92adb7c7acfa332b34c139029a0ad26bbdf5929fa34d521eda",
+      "report.html": "85cf90ad6565772e5251bfd324475048e12934d425b90d09c621de4b35432fe3"
+    },
     "input_sha256": {
       "project.json": "f9b83225b208b734e1e96fd0f39e1cb9c56e15de55432cbd4bb7e7535a126a92",
       "materials.json": "ea19004cf12d677eb47cb2bf30b9ec86fe9ca04ef31f1e1ec92d8e6123f32036",
@@ -52,11 +60,18 @@
       "material_name": "Concrete"
     }
   },
-  "portability_history": {
-    "prior_implementation_commit": "b0f3e0b4afbc7e787d7063f4b1cfa693083dd0d4",
-    "finding": "Windows reproduction discovered OS-native schema path separators in the RXEP receipt, causing a receipt digest mismatch while the known-answer result and evidence-content digest matched.",
-    "resolution": "Verifier 0.3.1 canonicalizes repository-relative schema paths to POSIX form. The calculation method remains 0.3.0. The patched implementation passed ProofGrid Genesis run 32438095422 before this manifest was refrozen."
-  },
+  "portability_history": [
+    {
+      "implementation_commit": "b0f3e0b4afbc7e787d7063f4b1cfa693083dd0d4",
+      "finding": "Windows reproduction discovered OS-native schema path separators in the RXEP receipt, causing a receipt digest mismatch while the known-answer result and evidence-content digest matched.",
+      "resolution": "Verifier 0.3.1 canonicalized repository-relative schema paths to POSIX form. The calculation method remained 0.3.0."
+    },
+    {
+      "implementation_commit": "fe27d78171140832a7985e4d5157f5541c8a02aa",
+      "finding": "Linux and Windows reproduced the same logical evidence-content and RXEP receipt hashes, but pretty-printed primary artifact files differed byte-for-byte because host-native text writing produced LF on Linux and CRLF on Windows.",
+      "resolution": "Verifier 0.3.2 writes evidence.json, graph.jsonld, receipt.json, and report.html as explicit UTF-8/LF bytes. ProofGrid Genesis run 32438377372 validated the patched core and emitted the frozen byte hashes in this manifest."
+    }
+  ],
   "result_label": "CLEAN_ENVIRONMENT_REPRODUCED",
   "independence_scope": "Execution occurs on fresh third-party-hosted runner environments from repository-published files only. The reproduction harness is authored in the same repository and therefore is not represented as independent professional or scientific review.",
   "limitations": [
