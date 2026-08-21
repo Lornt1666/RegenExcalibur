@@ -1,21 +1,109 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://regenexcalibur.example/schemas/rxep/evidence-envelope.schema.json",
-  "title": "RX Evidence Envelope v0.1",
+  "title": "RX Evidence Envelope v0.2",
   "type": "object",
   "required": ["id", "subject", "claim", "measurement", "methodology", "sources", "software", "jurisdiction", "review", "limitations", "integrity"],
   "properties": {
     "id": {"type": "string", "minLength": 1},
-    "subject": {"type": "object", "required": ["id", "type"], "properties": {"id": {"type": "string"}, "type": {"type": "string"}, "name": {"type": "string"}}, "additionalProperties": true},
-    "claim": {"type": "object", "required": ["type", "statement"], "properties": {"type": {"type": "string"}, "statement": {"type": "string"}}, "additionalProperties": true},
-    "measurement": {"type": "object", "required": ["value", "unit"], "properties": {"value": {"type": "number"}, "unit": {"type": "string"}}, "additionalProperties": true},
-    "methodology": {"type": "object", "required": ["name", "version"], "properties": {"name": {"type": "string"}, "version": {"type": "string"}, "formula": {"type": "string"}}, "additionalProperties": true},
-    "sources": {"type": "array", "minItems": 1, "items": {"type": "object", "required": ["path", "sha256"], "properties": {"path": {"type": "string"}, "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}, "additionalProperties": true}},
-    "software": {"type": "object", "required": ["name", "version"], "properties": {"name": {"type": "string"}, "version": {"type": "string"}}, "additionalProperties": true},
+    "subject": {
+      "type": "object",
+      "required": ["id", "type"],
+      "properties": {
+        "id": {"type": "string"},
+        "type": {"type": "string"},
+        "name": {"type": "string"}
+      },
+      "additionalProperties": true
+    },
+    "claim": {
+      "type": "object",
+      "required": ["type", "statement"],
+      "properties": {
+        "type": {"type": "string"},
+        "statement": {"type": "string"}
+      },
+      "additionalProperties": true
+    },
+    "measurement": {
+      "type": "object",
+      "required": ["value", "unit"],
+      "properties": {
+        "value": {"type": "number"},
+        "unit": {"type": "string"},
+        "value_decimal": {"$ref": "#/$defs/decimal"},
+        "decimal_value_is_authority": {"type": "boolean"},
+        "numeric_value_is_authority": {"type": "boolean"}
+      },
+      "allOf": [
+        {
+          "if": {"required": ["value_decimal"]},
+          "then": {
+            "required": ["decimal_value_is_authority", "numeric_value_is_authority"],
+            "properties": {
+              "decimal_value_is_authority": {"const": true},
+              "numeric_value_is_authority": {"const": false}
+            }
+          }
+        }
+      ],
+      "additionalProperties": true
+    },
+    "methodology": {
+      "type": "object",
+      "required": ["name", "version"],
+      "properties": {
+        "name": {"type": "string"},
+        "version": {"type": "string"},
+        "formula": {"type": "string"}
+      },
+      "additionalProperties": true
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["path", "sha256"],
+        "properties": {
+          "path": {"type": "string"},
+          "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+        },
+        "additionalProperties": true
+      }
+    },
+    "software": {
+      "type": "object",
+      "required": ["name", "version"],
+      "properties": {
+        "name": {"type": "string"},
+        "version": {"type": "string"}
+      },
+      "additionalProperties": true
+    },
     "jurisdiction": {"type": "string"},
-    "review": {"type": "object", "required": ["state"], "properties": {"state": {"enum": ["CLAIMED", "CALCULATED", "REVIEWED", "INDEPENDENTLY_VERIFIED"]}, "reviewer": {"type": ["string", "null"]}}, "additionalProperties": true},
+    "review": {
+      "type": "object",
+      "required": ["state"],
+      "properties": {
+        "state": {"enum": ["CLAIMED", "CALCULATED", "REVIEWED", "INDEPENDENTLY_VERIFIED"]},
+        "reviewer": {"type": ["string", "null"]}
+      },
+      "additionalProperties": true
+    },
     "limitations": {"type": "array", "items": {"type": "string"}},
-    "integrity": {"type": "object", "required": ["content_sha256"], "properties": {"content_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "signature": {"type": ["string", "null"]}}, "additionalProperties": true}
+    "integrity": {
+      "type": "object",
+      "required": ["content_sha256"],
+      "properties": {
+        "content_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "signature": {"type": ["string", "null"]}
+      },
+      "additionalProperties": true
+    }
+  },
+  "$defs": {
+    "decimal": {"type": "string", "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$"}
   },
   "additionalProperties": true
 }

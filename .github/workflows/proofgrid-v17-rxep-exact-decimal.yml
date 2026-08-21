@@ -1,0 +1,147 @@
+name: ProofGrid v1.7 RXEP Exact Decimal Evidence
+
+on:
+  pull_request:
+    paths:
+      - "specs/rxep/evidence-envelope.schema.json"
+      - "reference/rxep_calculated_contribution.py"
+      - "tests/test_rxep_exact_decimal_contribution.py"
+      - "conformance/rxep-exact-decimal-v17/**"
+      - ".github/workflows/proofgrid-v17-rxep-exact-decimal.yml"
+      - "requirements-proofgrid.txt"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  rxep-exact-decimal:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      V16_ARTIFACT_ID: "9461315121"
+      V16_ZIP_SHA256: "ced27bed9f4debfe210d0abb7f44b0f573587884d2318358b5c670d4d3269917"
+      V161_ARTIFACT_ID: "9461501934"
+      V161_ZIP_SHA256: "51365383731579bb51c713317112b5ded054c206140ed313d0007627efc05fa7"
+
+    steps:
+      - uses: actions/checkout@v6.1.0
+      - uses: actions/setup-python@v6.0.0
+        with:
+          python-version: "3.11.16"
+          check-latest: false
+
+      - name: Install exact ProofGrid dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-proofgrid.txt
+          python -m pip check
+
+      - name: Run RXEP v1.7 fail-closed unit suite
+        run: |
+          set -euo pipefail
+          python -m unittest -v tests.test_rxep_exact_decimal_contribution
+
+      - name: Download exact accepted v1.6 and v1.6.1 artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/proofgrid-v17/{v16,v161}
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V16_ARTIFACT_ID}/zip" > /tmp/proofgrid-v17/v16.zip
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V161_ARTIFACT_ID}/zip" > /tmp/proofgrid-v17/v161.zip
+          echo "${V16_ZIP_SHA256}  /tmp/proofgrid-v17/v16.zip" | sha256sum -c -
+          echo "${V161_ZIP_SHA256}  /tmp/proofgrid-v17/v161.zip" | sha256sum -c -
+          unzip -q /tmp/proofgrid-v17/v16.zip -d /tmp/proofgrid-v17/v16
+          unzip -q /tmp/proofgrid-v17/v161.zip -d /tmp/proofgrid-v17/v161
+
+      - name: Bind exact contribution into RXEP twice
+        run: |
+          set -euo pipefail
+          for R in a b; do
+            python reference/rxep_calculated_contribution.py \
+              --v16-record /tmp/proofgrid-v17/v16/out-a/mapped-declared-result-calculation.json \
+              --v16-receipt /tmp/proofgrid-v17/v16/out-a/mapped-declared-result-calculation-receipt.json \
+              --v161-comparison /tmp/proofgrid-v17/v161/v161-independent-comparison-receipt.json \
+              --output-dir "/tmp/proofgrid-v17/out-${R}"
+          done
+          diff -u /tmp/proofgrid-v17/out-a/rxep-exact-decimal-calculated-contribution.json /tmp/proofgrid-v17/out-b/rxep-exact-decimal-calculated-contribution.json
+          diff -u /tmp/proofgrid-v17/out-a/rxep-exact-decimal-calculated-contribution-receipt.json /tmp/proofgrid-v17/out-b/rxep-exact-decimal-calculated-contribution-receipt.json
+
+      - name: Assert exact Decimal authority and evidence state
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          e=json.loads(Path('/tmp/proofgrid-v17/out-a/rxep-exact-decimal-calculated-contribution.json').read_text())
+          assert e['review']=={'state':'CALCULATED','reviewer':None}
+          assert e['measurement']['value_decimal']=='15559.479677163699'
+          assert e['measurement']['decimal_value_is_authority'] is True
+          assert e['measurement']['numeric_value_is_authority'] is False
+          assert e['measurement']['unit']=='kg CO2 eqv.'
+          assert e['measurement']['indicator_code']=='GWP-total'
+          assert e['measurement']['indicator_uuid']=='6a37f984-a4b3-458a-a20a-64418c145fa2'
+          assert e['measurement']['module']=='A1-A3'
+          assert e['measurement']['scenario'] is None
+          assert e['software_reproduction']['independent_runner_count']==2
+          assert e['software_reproduction']['byte_identical'] is True
+          assert e['aggregation_performed'] is False
+          assert e['scientific_validation_performed'] is False
+          assert e['professional_review_performed'] is False
+          assert e['certified'] is False
+          print('RXEP_EXACT_DECIMAL='+e['measurement']['value_decimal'])
+          print('RXEP_DISPLAY_NUMERIC='+str(e['measurement']['value']))
+          PY
+
+      - name: Reject parent tamper and review-state promotion
+        run: |
+          set -euo pipefail
+          cp /tmp/proofgrid-v17/v16/out-a/mapped-declared-result-calculation.json /tmp/proofgrid-v17/tampered-v16.json
+          printf ' ' >> /tmp/proofgrid-v17/tampered-v16.json
+          if python reference/rxep_calculated_contribution.py --v16-record /tmp/proofgrid-v17/tampered-v16.json --v16-receipt /tmp/proofgrid-v17/v16/out-a/mapped-declared-result-calculation-receipt.json --v161-comparison /tmp/proofgrid-v17/v161/v161-independent-comparison-receipt.json --output-dir /tmp/proofgrid-v17/negative-parent; then
+            echo 'tampered v1.6 parent unexpectedly accepted' >&2; exit 1
+          else
+            echo 'V16_PARENT_TAMPER_REJECTED=PASS'
+          fi
+          python - <<'PY'
+          import copy,json
+          from pathlib import Path
+          import reference.rxep_calculated_contribution as m
+          e=json.loads(Path('/tmp/proofgrid-v17/out-a/rxep-exact-decimal-calculated-contribution.json').read_text())
+          p=copy.deepcopy(e); p['review']['state']='INDEPENDENTLY_VERIFIED'
+          try: m.verify_profile(p)
+          except m.RXEPContributionError: print('REVIEW_PROMOTION_REJECTED=PASS')
+          else: raise SystemExit('review promotion unexpectedly accepted')
+          p=copy.deepcopy(e); p['measurement']['numeric_value_is_authority']=True
+          try: m.verify_profile(p)
+          except m.RXEPContributionError: print('NUMERIC_AUTHORITY_PROMOTION_REJECTED=PASS')
+          else: raise SystemExit('numeric authority promotion unexpectedly accepted')
+          PY
+
+      - name: Produce v1.7 integration receipt
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          root=Path('/tmp/proofgrid-v17')
+          e=json.loads((root/'out-a/rxep-exact-decimal-calculated-contribution.json').read_text())
+          r=json.loads((root/'out-a/rxep-exact-decimal-calculated-contribution-receipt.json').read_text())
+          out={'verdict':'RXEP_EXACT_DECIMAL_CALCULATION_EVIDENCE_VERIFIABLE','accepted_v161_head':'feba840febeb3181d42414dc951011729b880c2d','review_state':'CALCULATED','value_decimal':e['measurement']['value_decimal'],'unit':e['measurement']['unit'],'decimal_value_is_authority':True,'numeric_value_is_authority':False,'rxep_record_content_sha256':e['integrity']['content_sha256'],'rxep_record_file_sha256':hashlib.sha256((root/'out-a/rxep-exact-decimal-calculated-contribution.json').read_bytes()).hexdigest(),'rxep_receipt_sha256':r['receipt_sha256'],'rxep_receipt_file_sha256':hashlib.sha256((root/'out-a/rxep-exact-decimal-calculated-contribution-receipt.json').read_bytes()).hexdigest(),'repeat_within_run_byte_identical':True,'v16_parent_tamper_rejected':True,'review_promotion_rejected':True,'numeric_authority_promotion_rejected':True,'software_reproduction_verified':True,'environmental_claim_independently_verified':False,'aggregation_performed':False,'scientific_validation_performed':False,'professional_review_performed':False,'certified':False}
+          out['receipt_sha256']=hashlib.sha256(json.dumps(out,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()
+          (root/'v17-integration-receipt.json').write_text(json.dumps(out,indent=2,sort_keys=True)+'\n',encoding='utf-8',newline='\n')
+          print(json.dumps(out,indent=2,sort_keys=True))
+          PY
+
+      - name: Retain exact RXEP evidence only
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v17-rxep-exact-decimal
+          path: |
+            /tmp/proofgrid-v17/out-a/rxep-exact-decimal-calculated-contribution.json
+            /tmp/proofgrid-v17/out-a/rxep-exact-decimal-calculated-contribution-receipt.json
+            /tmp/proofgrid-v17/v17-integration-receipt.json
+          if-no-files-found: error
+          retention-days: 30
