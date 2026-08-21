@@ -1,0 +1,288 @@
+name: ProofGrid v0.8 ÖKOBAUDAT Profile Execution
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/proofgrid-v08-profile-execution.yml'
+      - '.github/workflows/proofgrid-v08-library-research.yml'
+      - '.github/workflows/proofgrid-v08-profile-research.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  execute-official-profile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v6.1.0
+
+      - name: Retrieve and verify exact official artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/proofgrid-v08-exec
+          LIB='com.okworx.ilcd.validation:ilcd-validation:2.12.2'
+          PROFILE='com.okworx.ilcd.validation.profiles:EPD-1.2-OEKOBAUDAT:3.8.0'
+          mvn -B -ntp dependency:get -Dartifact="$LIB" -Dtransitive=true
+          mvn -B -ntp dependency:get -Dartifact="$PROFILE" -Dtransitive=true
+
+          LIB_DIR="$HOME/.m2/repository/com/okworx/ilcd/validation/ilcd-validation/2.12.2"
+          PROFILE_DIR="$HOME/.m2/repository/com/okworx/ilcd/validation/profiles/EPD-1.2-OEKOBAUDAT/3.8.0"
+          LIB_JAR="$LIB_DIR/ilcd-validation-2.12.2.jar"
+          LIB_POM="$LIB_DIR/ilcd-validation-2.12.2.pom"
+          PROFILE_JAR="$PROFILE_DIR/EPD-1.2-OEKOBAUDAT-3.8.0.jar"
+          PROFILE_POM="$PROFILE_DIR/EPD-1.2-OEKOBAUDAT-3.8.0.pom"
+
+          echo '55427919601b5deceee99b34fbbbaf8f00cbcf0aca1fdb1eb493c31f473e077b  '"$LIB_JAR" | sha256sum -c -
+          echo '16430562fe6ebb6da3e4afea4a8c6cce98d822d61f59eb33e0b5dc98a4eb1fc1  '"$LIB_POM" | sha256sum -c -
+          echo '96ee05b9cf5172a344df3ea844aa8d94060eae4e4e8188f72e46441a3d61921e  '"$PROFILE_JAR" | sha256sum -c -
+          echo '0188dfb7ee16feb4c20c58003f419db7e5007382be7794d47cfd56d67a39047a  '"$PROFILE_POM" | sha256sum -c -
+
+          unzip -p "$PROFILE_JAR" includes/EPD-1.2-Generic.jar | sha256sum | grep -F '31402bb2746ddb9d2ab4ce40dd5d3e848ab701d1f4da00f2da004f15c7e1cc25'
+          unzip -p "$PROFILE_JAR" includes/EPD-1.2-EN15804.jar | sha256sum | grep -F 'a05ac55df8f567985da8c95e30ff6579761d336e0f23087aa73fefb4d9a2b147'
+
+          printf '%s\n' "$LIB_JAR" > /tmp/proofgrid-v08-exec/library-jar-path.txt
+          printf '%s\n' "$PROFILE_JAR" > /tmp/proofgrid-v08-exec/profile-jar-path.txt
+
+      - name: Freeze InData v1.2 sample control
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 120s git clone --depth 1 --branch release/v1.2 --single-branch \
+            https://github.com/InDataWG/ILCD-EPD-Data-Format.git /tmp/indata-v12
+          git -C /tmp/indata-v12 rev-parse HEAD | tee /tmp/proofgrid-v08-exec/indata-commit.txt
+          SAMPLE_TREE=$(git -C /tmp/indata-v12 rev-parse HEAD:sample_data)
+          test "$SAMPLE_TREE" = 'f4e651ba7ad1dd44422d3d06e9676d048154f833'
+          SAMPLE_EPD_BLOB=$(git -C /tmp/indata-v12 rev-parse HEAD:sample_data/processes/sample_EPD.xml)
+          test "$SAMPLE_EPD_BLOB" = '22501377b6e3ab462fb330bb1d1cf500dca7dacd'
+          printf '%s\n' "$SAMPLE_TREE" > /tmp/proofgrid-v08-exec/indata-sample-tree.txt
+          printf '%s\n' "$SAMPLE_EPD_BLOB" > /tmp/proofgrid-v08-exec/indata-sample-epd-blob.txt
+          find /tmp/indata-v12/sample_data -type f -print0 | sort -z | xargs -0 sha256sum \
+            > /tmp/proofgrid-v08-exec/indata-sample-files.sha256
+          sha256sum /tmp/proofgrid-v08-exec/indata-sample-files.sha256 \
+            > /tmp/proofgrid-v08-exec/indata-sample-manifest.sha256
+
+      - name: Build headless official-library harness
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/proofgrid-v08-harness/src/main/java/proofgrid
+          cat > /tmp/proofgrid-v08-harness/pom.xml <<'POM'
+          <project xmlns="http://maven.apache.org/POM/4.0.0">
+            <modelVersion>4.0.0</modelVersion>
+            <groupId>proofgrid</groupId>
+            <artifactId>oekobaudat-v12-headless-probe</artifactId>
+            <version>0.8.0</version>
+            <properties>
+              <maven.compiler.source>1.8</maven.compiler.source>
+              <maven.compiler.target>1.8</maven.compiler.target>
+              <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+            </properties>
+            <dependencies>
+              <dependency>
+                <groupId>com.okworx.ilcd.validation</groupId>
+                <artifactId>ilcd-validation</artifactId>
+                <version>2.12.2</version>
+              </dependency>
+              <dependency>
+                <groupId>com.okworx.ilcd.validation.profiles</groupId>
+                <artifactId>EPD-1.2-OEKOBAUDAT</artifactId>
+                <version>3.8.0</version>
+              </dependency>
+            </dependencies>
+          </project>
+          POM
+
+          cat > /tmp/proofgrid-v08-harness/src/main/java/proofgrid/OekobaudatV12Probe.java <<'JAVA'
+          package proofgrid;
+
+          import java.io.File;
+          import java.util.ArrayList;
+          import java.util.List;
+          import com.okworx.ilcd.validation.IDatasetsValidator;
+          import com.okworx.ilcd.validation.Validator;
+          import com.okworx.ilcd.validation.ValidatorChain;
+          import com.okworx.ilcd.validation.events.EventsList;
+          import com.okworx.ilcd.validation.events.IValidationEvent;
+          import com.okworx.ilcd.validation.profile.Profile;
+          import com.okworx.ilcd.validation.profile.ProfileManager;
+
+          public final class OekobaudatV12Probe {
+            private static String clean(String value) {
+              if (value == null) return "";
+              return value.replace('\n', ' ').replace('\r', ' ').replace('|', '/');
+            }
+
+            public static void main(String[] args) throws Exception {
+              if (args.length != 3) {
+                throw new IllegalArgumentException("usage: <input-dir> <profile-jar> <cache-dir>");
+              }
+              File input = new File(args[0]);
+              File profileJar = new File(args[1]);
+              File cacheDir = new File(args[2]);
+              if (!input.isDirectory()) throw new IllegalArgumentException("input is not a directory");
+              if (!profileJar.isFile()) throw new IllegalArgumentException("profile JAR missing");
+              if (!cacheDir.exists() && !cacheDir.mkdirs()) throw new IllegalStateException("cache mkdir failed");
+
+              new ProfileManager.ProfileManagerBuilder()
+                  .cacheDir(cacheDir)
+                  .registerDefaultProfiles(false, false)
+                  .build();
+              ProfileManager manager = ProfileManager.getInstance();
+              Profile profile = manager.registerProfile(profileJar.toURI().toURL());
+              if (!"EPD 1.2 ÖKOBAUDAT".equals(profile.getName())) {
+                throw new IllegalStateException("unexpected profile name: " + profile.getName());
+              }
+              if (!"3.8.0".equals(profile.getVersion())) {
+                throw new IllegalStateException("unexpected profile version: " + profile.getVersion());
+              }
+
+              ValidatorChain chain = new ValidatorChain("ÖKOBAUDAT 3.8.0 active aspects");
+              chain.setProfile(profile);
+              chain.initPresetValidators();
+              chain.setReportSuccesses(true);
+
+              List<String> validators = new ArrayList<String>();
+              for (IDatasetsValidator validator : chain.getValidators()) {
+                if (validator == null) throw new IllegalStateException("profile resolved a null validator");
+                validators.add(validator.getAspectName());
+              }
+
+              EventsList events = Validator.validate(input, chain);
+              System.out.println("PROFILE_NAME=" + clean(profile.getName()));
+              System.out.println("PROFILE_VERSION=" + clean(profile.getVersion()));
+              System.out.println("ACTIVE_ASPECTS=" + clean(profile.getActiveAspects()));
+              System.out.println("VALIDATORS=" + clean(String.join(",", validators)));
+              System.out.println("ERROR_COUNT=" + events.getErrorCount());
+              System.out.println("WARNING_COUNT=" + events.getWarningCount());
+              System.out.println("SUCCESS_COUNT=" + events.getSuccessCount());
+              System.out.println("POSITIVE=" + events.isPositive());
+              for (IValidationEvent event : events.getEvents()) {
+                System.out.println(
+                    "EVENT|" + clean(String.valueOf(event.getSeverity())) +
+                    "|" + clean(String.valueOf(event.getType())) +
+                    "|" + clean(event.getAspect()) +
+                    "|" + clean(event.getMessage()));
+              }
+            }
+          }
+          JAVA
+
+          mvn -B -ntp -f /tmp/proofgrid-v08-harness/pom.xml compile
+          mvn -B -ntp -f /tmp/proofgrid-v08-harness/pom.xml dependency:build-classpath \
+            -Dmdep.outputFile=/tmp/proofgrid-v08-harness/classpath.txt -Dmdep.pathSeparator=:
+          sha256sum /tmp/proofgrid-v08-harness/src/main/java/proofgrid/OekobaudatV12Probe.java \
+            > /tmp/proofgrid-v08-exec/harness.sha256
+
+      - name: Execute official profile on InData sample control
+        shell: bash
+        run: |
+          set -euo pipefail
+          CP=$(cat /tmp/proofgrid-v08-harness/classpath.txt)
+          PROFILE_JAR=$(cat /tmp/proofgrid-v08-exec/profile-jar-path.txt)
+          java -cp "/tmp/proofgrid-v08-harness/target/classes:$CP" proofgrid.OekobaudatV12Probe \
+            /tmp/indata-v12/sample_data "$PROFILE_JAR" /tmp/proofgrid-v08-exec/profile-cache-positive \
+            | tee /tmp/proofgrid-v08-exec/positive-control.log
+          grep -F 'PROFILE_NAME=EPD 1.2 ÖKOBAUDAT' /tmp/proofgrid-v08-exec/positive-control.log
+          grep -F 'PROFILE_VERSION=3.8.0' /tmp/proofgrid-v08-exec/positive-control.log
+          grep -F 'ACTIVE_ASPECTS=Links,XML Schema Validity,Profile Specific Rules,Categories' /tmp/proofgrid-v08-exec/positive-control.log
+          grep -F 'VALIDATORS=Links,XML Schema Validity,Profile specific rules,Categories' /tmp/proofgrid-v08-exec/positive-control.log
+
+      - name: Execute deterministic malformed negative control
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp -a /tmp/indata-v12/sample_data /tmp/indata-v12-invalid
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('/tmp/indata-v12-invalid/processes/sample_EPD.xml')
+          text = p.read_text(encoding='utf-8')
+          marker = 'epd-version="1.2"'
+          if marker not in text:
+              raise SystemExit('expected v1.2 marker not found in sample_EPD.xml')
+          p.write_text(text.replace(marker, 'epd-version="9.9"', 1), encoding='utf-8')
+          PY
+          CP=$(cat /tmp/proofgrid-v08-harness/classpath.txt)
+          PROFILE_JAR=$(cat /tmp/proofgrid-v08-exec/profile-jar-path.txt)
+          java -cp "/tmp/proofgrid-v08-harness/target/classes:$CP" proofgrid.OekobaudatV12Probe \
+            /tmp/indata-v12-invalid "$PROFILE_JAR" /tmp/proofgrid-v08-exec/profile-cache-negative \
+            | tee /tmp/proofgrid-v08-exec/negative-control.log
+          NEG_ERRORS=$(grep '^ERROR_COUNT=' /tmp/proofgrid-v08-exec/negative-control.log | cut -d= -f2)
+          test "$NEG_ERRORS" -gt 0
+
+      - name: Produce fail-closed execution receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib, json
+          out = Path('/tmp/proofgrid-v08-exec')
+
+          def parse(path):
+              data = {}
+              events = []
+              for line in Path(path).read_text(errors='replace').splitlines():
+                  if line.startswith('EVENT|'):
+                      events.append(line)
+                  elif '=' in line:
+                      k, v = line.split('=', 1)
+                      if k in {'PROFILE_NAME','PROFILE_VERSION','ACTIVE_ASPECTS','VALIDATORS','ERROR_COUNT','WARNING_COUNT','SUCCESS_COUNT','POSITIVE'}:
+                          data[k] = v
+              data['event_count'] = len(events)
+              data['events_sha256'] = hashlib.sha256(('\n'.join(events) + '\n').encode()).hexdigest()
+              return data
+
+          positive = parse(out/'positive-control.log')
+          negative = parse(out/'negative-control.log')
+          receipt = {
+              'scope': 'Headless execution of official ilcd-validation 2.12.2 with official ÖKOBAUDAT ILCD+EPD v1.2 profile 3.8.0 against InData public sample_data control; discovery receipt only until positive-control errors are reviewed.',
+              'compatibility_claim': False,
+              'certified': False,
+              'official_library': {
+                  'coordinate': 'com.okworx.ilcd.validation:ilcd-validation:2.12.2',
+                  'jar_sha256': '55427919601b5deceee99b34fbbbaf8f00cbcf0aca1fdb1eb493c31f473e077b',
+                  'pom_sha256': '16430562fe6ebb6da3e4afea4a8c6cce98d822d61f59eb33e0b5dc98a4eb1fc1',
+              },
+              'official_profile': {
+                  'coordinate': 'com.okworx.ilcd.validation.profiles:EPD-1.2-OEKOBAUDAT:3.8.0',
+                  'jar_sha256': '96ee05b9cf5172a344df3ea844aa8d94060eae4e4e8188f72e46441a3d61921e',
+                  'pom_sha256': '0188dfb7ee16feb4c20c58003f419db7e5007382be7794d47cfd56d67a39047a',
+              },
+              'fixture': {
+                  'repository': 'InDataWG/ILCD-EPD-Data-Format',
+                  'branch': 'release/v1.2',
+                  'observed_commit': (out/'indata-commit.txt').read_text().strip(),
+                  'sample_data_tree_git_sha1': (out/'indata-sample-tree.txt').read_text().strip(),
+                  'sample_epd_blob_git_sha1': (out/'indata-sample-epd-blob.txt').read_text().strip(),
+                  'sample_manifest_sha256': (out/'indata-sample-manifest.sha256').read_text().split()[0],
+              },
+              'harness_sha256': (out/'harness.sha256').read_text().split()[0],
+              'positive_control': positive,
+              'negative_control': negative,
+          }
+          if negative.get('ERROR_COUNT') is None or int(negative['ERROR_COUNT']) <= 0:
+              raise SystemExit('negative control was not rejected')
+          raw = json.dumps(receipt, sort_keys=True, separators=(',', ':')).encode()
+          receipt['receipt_sha256'] = hashlib.sha256(raw).hexdigest()
+          (out/'execution-receipt.json').write_text(json.dumps(receipt, indent=2, sort_keys=True) + '\n')
+          print(json.dumps(receipt, indent=2, sort_keys=True))
+          PY
+
+      - name: Retain receipt and summaries only
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v08-oekobaudat-headless-execution
+          path: |
+            /tmp/proofgrid-v08-exec/execution-receipt.json
+            /tmp/proofgrid-v08-exec/positive-control.log
+            /tmp/proofgrid-v08-exec/negative-control.log
+            /tmp/proofgrid-v08-exec/indata-commit.txt
+            /tmp/proofgrid-v08-exec/indata-sample-tree.txt
+            /tmp/proofgrid-v08-exec/indata-sample-epd-blob.txt
+            /tmp/proofgrid-v08-exec/indata-sample-manifest.sha256
+            /tmp/proofgrid-v08-exec/harness.sha256
+          if-no-files-found: error
+          retention-days: 30
