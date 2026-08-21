@@ -50,20 +50,41 @@ jobs:
         run: python reference/rx_cli.py lca-registry-validate evidence/examples/alberta-house --output /tmp/proofgrid-lca-registry.json
       - name: Verify fictional Alberta fixture
         run: python reference/rx_cli.py verify evidence/examples/alberta-house --output /tmp/proofgrid-output
-      - name: Build real IFC smoke fixture
+      - name: Build real IFC quantity/material conformance fixture
         run: |
           python - <<'PY'
           import ifcopenshell
           import ifcopenshell.guid
+
           model = ifcopenshell.file(schema="IFC4")
-          model.create_entity("IfcProject", GlobalId=ifcopenshell.guid.new(), Name="ProofGrid CI Project")
-          model.create_entity("IfcBuilding", GlobalId=ifcopenshell.guid.new(), Name="ProofGrid CI Building")
+          length_unit = model.create_entity("IfcSIUnit", UnitType="LENGTHUNIT", Name="METRE")
+          units = model.create_entity("IfcUnitAssignment", Units=[length_unit])
+          project = model.create_entity("IfcProject", GlobalId=ifcopenshell.guid.new(), Name="ProofGrid CI Project", UnitsInContext=units)
+          site = model.create_entity("IfcSite", GlobalId=ifcopenshell.guid.new(), Name="ProofGrid CI Site")
+          building = model.create_entity("IfcBuilding", GlobalId=ifcopenshell.guid.new(), Name="ProofGrid CI Building")
+          storey = model.create_entity("IfcBuildingStorey", GlobalId=ifcopenshell.guid.new(), Name="Level 1")
+          space = model.create_entity("IfcSpace", GlobalId=ifcopenshell.guid.new(), Name="Room 101")
+          model.create_entity("IfcRelAggregates", GlobalId=ifcopenshell.guid.new(), RelatingObject=project, RelatedObjects=[site])
+          model.create_entity("IfcRelAggregates", GlobalId=ifcopenshell.guid.new(), RelatingObject=site, RelatedObjects=[building])
+          model.create_entity("IfcRelAggregates", GlobalId=ifcopenshell.guid.new(), RelatingObject=building, RelatedObjects=[storey])
+          model.create_entity("IfcRelAggregates", GlobalId=ifcopenshell.guid.new(), RelatingObject=storey, RelatedObjects=[space])
+
+          wall = model.create_entity("IfcWall", GlobalId=ifcopenshell.guid.new(), Name="ProofGrid CI Wall")
+          model.create_entity("IfcRelContainedInSpatialStructure", GlobalId=ifcopenshell.guid.new(), RelatedElements=[wall], RelatingStructure=storey)
+          material = model.create_entity("IfcMaterial", Name="Concrete")
+          model.create_entity("IfcRelAssociatesMaterial", GlobalId=ifcopenshell.guid.new(), RelatedObjects=[wall], RelatingMaterial=material)
+          quantity = model.create_entity("IfcQuantityLength", Name="Length", LengthValue=3.5)
+          qset = model.create_entity("IfcElementQuantity", GlobalId=ifcopenshell.guid.new(), Name="Qto_WallBaseQuantities", Quantities=[quantity])
+          model.create_entity("IfcRelDefinesByProperties", GlobalId=ifcopenshell.guid.new(), RelatedObjects=[wall], RelatingPropertyDefinition=qset)
           model.write("/tmp/proofgrid-smoke.ifc")
           PY
-      - name: Inspect IFC through ProofGrid adapter
+      - name: Inspect IFC through ProofGrid structural adapter
         run: python reference/rx_cli.py ifc-inspect /tmp/proofgrid-smoke.ifc --output /tmp/proofgrid-ifc-summary.json
+      - name: Extract declared IFC quantities and materials
+        run: python reference/ifc_extract.py /tmp/proofgrid-smoke.ifc --output /tmp/proofgrid-ifc-extraction.json
       - name: Show receipts
         run: |
           cat /tmp/proofgrid-lca-registry.json
           cat /tmp/proofgrid-output/receipt.json
           cat /tmp/proofgrid-ifc-summary.json
+          cat /tmp/proofgrid-ifc-extraction.json
