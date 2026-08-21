@@ -1,12 +1,14 @@
 # ProofGrid R5 Clean-Environment Reproduction Package
 
-This package is designed to test whether the frozen ProofGrid v0.4 implementation can be reproduced from published repository files in a fresh execution environment with no unpublished local state and no manual correction during the run.
+This package tests whether the frozen ProofGrid v0.4 implementation can be reproduced from published repository files in fresh execution environments with no unpublished local state and no manual correction during the run.
 
 ## Frozen implementation
 
-`b0f3e0b4afbc7e787d7063f4b1cfa693083dd0d4`
+`fe27d78171140832a7985e4d5157f5541c8a02aa`
 
-The reproduction harness fails if the declared core implementation paths differ from that commit.
+This is the portability-patched v0.4 head using verifier software `0.3.1` with calculation method `0.3.0`. The reproduction harness fails if declared core implementation paths differ from this commit.
+
+The prior frozen head `b0f3e0b4afbc7e787d7063f4b1cfa693083dd0d4` was intentionally superseded after a Windows clean-environment run discovered OS-native path separators inside the RXEP receipt. The calculation result and evidence-content digest reproduced, but the receipt digest differed. The defect was corrected by canonicalizing repository-relative schema paths to POSIX form, versioning the verifier, and re-running the entire v0.4 hosted gate before this manifest was refrozen.
 
 ## Exact runtime policy
 
@@ -18,7 +20,7 @@ The hosted reproduction matrix declares an exact CPython patch per operating-sys
 
 The separate Windows patch is explicit rather than permissive: the hosted Windows setup catalog does not provision Python 3.11 security-only releases such as 3.11.16 as Windows binaries, while 3.11.9 is available. The manifest records this platform-specific runtime policy and the harness rejects any version other than the declared exact version for the current OS.
 
-The same frozen ProofGrid implementation, same dependency lock, same inputs, same known-answer hashes, and same semantic assertions are used on both platforms.
+The same frozen ProofGrid implementation, dependency lock, inputs, expected hashes, and semantic assertions are used on both platforms.
 
 ## Reproduce
 
@@ -60,8 +62,8 @@ The synthetic Alberta fixture must reproduce:
 - `3860.0 kgCO2e`
 - `VERIFIABLE`
 - `certified: false`
-- evidence-content SHA-256 `d914a8faf3a387fd5919784102fa396298c2977af23789e75b024771cda7ef0d`
-- RXEP receipt SHA-256 `2406b1a781cb10d2df0806200a1811d72de05d256fd06ba18b67511a2fbc4229`
+- evidence-content SHA-256 `9ce99ff076f41390c254377bd06e9897c4b203a4b778fbfd09c350624545142c`
+- RXEP receipt SHA-256 `44955751eec438621e43e2478e672a55bd6bff3aaf3a6e27ac588ff07cee8b7d`
 
 All inputs and environmental source-record digests are frozen in `r5-manifest.json`.
 
@@ -92,7 +94,7 @@ A reproduction by an unaffiliated human/researcher/organization using the worksh
 
 Any mismatch in frozen core paths, platform-specific exact runtime, dependency versions, input hashes, known-answer value, evidence digest, RXEP receipt digest, source-record digests, or required IFC semantics causes a non-zero exit code.
 
-No discrepancy is automatically repaired.
+No discrepancy is automatically repaired or waived.
 
 ## Non-production boundary
 
