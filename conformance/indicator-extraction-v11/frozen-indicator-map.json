@@ -1,0 +1,71 @@
+{
+  "schema_version": "1.0",
+  "research_freeze": {
+    "receipt_sha256": "2345047d8e3888ccda965754728e939eed61851b28945033355d1ddae682941f",
+    "structure_receipt_sha256": "b08c1285ba7ebc110da9502bef91e0c00ed2f379d84c9e36b7275aa3f8d08eec",
+    "unit_reference_receipt_sha256": "69a094e5e5d1ca95077069988b24d471b6e099cd15b9fdfc0d9d0caaaa955540"
+  },
+  "upstreams": {
+    "v12_commit": "b7233bd2dd5435a6b5973505ffa212cd03d23468",
+    "v13_commit": "7625c7dfc0d5b6bc2020eb0cf0b0503349c914aa",
+    "master_data_commit": "32117b6a70d6c486344247a429449755a2c7eab4",
+    "ef30_catalogue_path": "doc/identifiers/EN15804+A2_EF3.0_indicators.csv",
+    "ef30_catalogue_sha256": "87941c696b955428d502a28acafedbedfcb1414d0b5e55d38c9d18072d65893e",
+    "ef30_catalogue_git_blob": "9d72a552596c396615a0135c35a2cd7bd1e54614",
+    "ef31_catalogue_sha256": "dc6e7f94316aa3b9c0a6a76efc120f4f5944d4b64591e07bb045a5c7b12e4f5e",
+    "ef31_catalogue_git_blob": "e3d8ccdee42682f1ceb4a9b7d5cb4181f3da44f4"
+  },
+  "structure": {
+    "result_path": "processDataSet/LCIAResults/LCIAResult",
+    "indicator_reference_element": "referenceToLCIAMethodDataSet",
+    "other_namespace": "http://lca.jrc.it/ILCD/Common",
+    "amount_namespace": "http://www.iai.kit.edu/EPD/2013",
+    "amount_element": "amount",
+    "module_attribute": "module",
+    "scenario_attribute": "scenario",
+    "unit_group_reference_element": "referenceToUnitGroupDataSet",
+    "unscoped_mean_amount_extracted": false
+  },
+  "supported_modules": [
+    "A1",
+    "A2",
+    "A3",
+    "A1-A3",
+    "A4",
+    "A5",
+    "B1",
+    "B2",
+    "B3",
+    "B4",
+    "B5",
+    "B6",
+    "B7",
+    "C1",
+    "C2",
+    "C3",
+    "C4",
+    "D"
+  ],
+  "indicators": {
+    "6a37f984-a4b3-458a-a20a-64418c145fa2": {
+      "code": "GWP-total",
+      "catalogue": "EN15804+A2_EF3.0",
+      "catalogue_version": "04.00.016",
+      "name_en": "Global Warming Potential - total (GWP-total)",
+      "canonical_unit": "kg CO2 eqv.",
+      "unit_group_uuid": "1ebf3012-d0db-4de2-aefd-ef30cedb0be1",
+      "master_unit_group_path": "master_data/units/unitgroups/GWP-Einheit_1ebf3012-d0db-4de2-aefd-ef30cedb0be1.xml",
+      "master_unit_group_sha256": "baddfef20612de2202474b14b3b651f7fc06563d99f8c7409e18e732eea1190b",
+      "reference_unit_internal_id": "0",
+      "reference_unit_name": "kg CO2-Äqv.",
+      "reference_unit_mean_value_decimal": "1",
+      "implicit_unit_conversion_permitted": false
+    }
+  },
+  "limitations": [
+    "The v1.1 frozen map initially accepts only EF3.0 GWP-total. Other catalogue indicators require separately researched unit/reference identities before admission to this map.",
+    "LCIAResult meanAmount is not extracted as a lifecycle-module value.",
+    "Missing modules are not zero. No warning text or human-readable label is used as environmental-value evidence.",
+    "Declared-value extraction does not establish scientific validity, professional review, programme-operator/BBSR approval, provider authority, or certification."
+  ]
+}
