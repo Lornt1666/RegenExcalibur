@@ -1,0 +1,58 @@
+{
+  "schema_version": "1.0",
+  "gate": "ProofGrid R5 clean-environment reproduction candidate",
+  "implementation_commit": "b0f3e0b4afbc7e787d7063f4b1cfa693083dd0d4",
+  "runtime": {
+    "python": "3.11.16",
+    "dependencies": "requirements-proofgrid.txt"
+  },
+  "core_paths": [
+    ".gitattributes",
+    "CONSTITUTION.md",
+    "ARCHITECTURE.md",
+    "reference",
+    "adapters",
+    "schemas",
+    "specs/rxep",
+    "evidence/examples",
+    "requirements-proofgrid.txt"
+  ],
+  "fixture": "evidence/examples/alberta-house",
+  "expected": {
+    "project_id": "rx-demo-ab-house-001",
+    "total_kgco2e": 3860.0,
+    "indicator": "GWP-total",
+    "system_boundary_modules": ["A1", "A2", "A3"],
+    "evidence_content_sha256": "d914a8faf3a387fd5919784102fa396298c2977af23789e75b024771cda7ef0d",
+    "receipt_sha256": "2406b1a781cb10d2df0806200a1811d72de05d256fd06ba18b67511a2fbc4229",
+    "input_sha256": {
+      "project.json": "f9b83225b208b734e1e96fd0f39e1cb9c56e15de55432cbd4bb7e7535a126a92",
+      "materials.json": "ea19004cf12d677eb47cb2bf30b9ec86fe9ca04ef31f1e1ec92d8e6123f32036",
+      "lca-sources.json": "aef83d64289673d8ff0f7f13b101649e8f620db39b32d187dfc1503ac2755b8a",
+      "sources/fictional-demo-factors.txt": "ce14d023031cabc4e3e677a9d58696e8a938e696d0ef516b657a73515252b54e"
+    },
+    "source_record_sha256": {
+      "RX-FICT-CONCRETE-A1A3": "2ae1e40fe2cf551975ae2c5a748971b329fc3cb23c75fb70718af795e7d4d5a1",
+      "RX-FICT-STEEL-A1A3": "161e7f98ba2cf5a3bda1c102bf323649856d605b080871130d6b4a35f0236d8a",
+      "RX-FICT-WOOD-A1A3": "53ec9a145b8ba8d71fa8140a42510681773718d43af22ae1a4052f0b4d16cd47"
+    },
+    "ifc": {
+      "schema_prefix": "IFC4",
+      "projects": 1,
+      "buildings": 1,
+      "walls": 1,
+      "declared_quantity_name": "Length",
+      "declared_quantity_value": 3.5,
+      "declared_quantity_unit_type": "LENGTHUNIT",
+      "declared_quantity_unit_name": "METRE",
+      "material_name": "Concrete"
+    }
+  },
+  "result_label": "CLEAN_ENVIRONMENT_REPRODUCED",
+  "independence_scope": "Execution occurs on fresh third-party-hosted runner environments from repository-published files only. The reproduction harness is authored in the same repository and therefore is not represented as independent professional or scientific review.",
+  "limitations": [
+    "The Alberta fixture and environmental factors are synthetic software-test data.",
+    "Clean-environment reproduction is not professional LCA review, code compliance, engineering approval, regulatory approval, certification, or product-market validation.",
+    "A human third-party reproduction remains stronger evidence than repository-authored automation and is still encouraged."
+  ]
+}
