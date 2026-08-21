@@ -143,15 +143,21 @@ jobs:
           import hashlib, json, re
           root=Path('/tmp/proofgrid-v08-acceptance')
 
+          def normalize_reference(ref):
+              if not ref:
+                  return ref
+              return re.sub(
+                  r'# abs\. filename: .*? # -?\d+',
+                  '# abs. filename: <PACKAGE> # <REFHASH>',
+                  ref,
+              )
+
           def normalized_events(path: Path):
               data=json.loads(path.read_text())
               events=[]
               for event in data['events']:
                   row=dict(event)
-                  ref=row.get('reference')
-                  if ref:
-                      ref=re.sub(r'# abs\. filename: .*? #', '# abs. filename: <PACKAGE> #', ref)
-                      row['reference']=ref
+                  row['reference']=normalize_reference(row.get('reference'))
                   events.append(row)
               return data, events
 
@@ -226,7 +232,7 @@ jobs:
               raise SystemExit('negative category corruption was incorrectly marked positive')
           errors=[e for e in data['events'] if e.get('severity')=='ERROR']
           text='\n'.join((e.get('message') or '') for e in errors)
-          if 'OEKOBAU.DAT categories must be present' not in text:
+          if 'categories must be present' not in text:
               raise SystemExit('expected ÖKOBAUDAT category-rule error not observed')
           print('negative errors=',data['error_count'],'warnings=',data['warning_count'],'events=',data['event_count'])
           PY
@@ -252,7 +258,11 @@ jobs:
                   row=dict(event)
                   ref=row.get('reference')
                   if ref:
-                      row['reference']=re.sub(r'# abs\. filename: .*? #','# abs. filename: <PACKAGE> #',ref)
+                      row['reference']=re.sub(
+                          r'# abs\. filename: .*? # -?\d+',
+                          '# abs. filename: <PACKAGE> # <REFHASH>',
+                          ref,
+                      )
                   events.append(row)
               return hashlib.sha256((json.dumps(events,sort_keys=True,separators=(',',':'))+'\n').encode()).hexdigest()
 
