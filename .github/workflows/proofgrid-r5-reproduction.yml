@@ -1,0 +1,42 @@
+name: ProofGrid R5 Clean Environment Reproduction
+
+on:
+  pull_request:
+    paths:
+      - "reproduction/**"
+      - ".github/workflows/proofgrid-r5-reproduction.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  reproduce:
+    name: reproduce-${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-24.04
+          - windows-2025
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6.1.0
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.11.16"
+      - name: Install exact locked dependencies
+        run: |
+          python -m pip install --disable-pip-version-check -r requirements-proofgrid.txt
+          python -m pip check
+      - name: Reproduce frozen ProofGrid implementation
+        run: python reproduction/reproduce.py --output reproduction-receipt-${{ runner.os }}.json
+      - name: Retain reproduction receipt
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-r5-reproduction-${{ runner.os }}-${{ runner.arch }}
+          path: reproduction-receipt-${{ runner.os }}.json
+          if-no-files-found: error
+          retention-days: 30
