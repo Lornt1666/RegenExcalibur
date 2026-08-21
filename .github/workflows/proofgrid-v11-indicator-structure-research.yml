@@ -58,146 +58,38 @@ jobs:
             git -C .proofgrid-upstream/indata-v13 hash-object doc/identifiers/EN15804+A2_EF3.1_indicators.csv | tee "$OUT/ef31-catalog.git-blob"
           fi
 
-      - name: Discover exact declared-value structures in pinned samples
+      - name: Discover exchange/module/scenario/value structure
         shell: bash
         run: |
           set -euo pipefail
-          python - <<'PY'
-          from pathlib import Path
-          import csv, hashlib, json, xml.etree.ElementTree as ET
+          python conformance/indicator-extraction-v11/research_probe.py \
+            --v12-root .proofgrid-upstream/indata-v12 \
+            --v13-root .proofgrid-upstream/indata-v13 \
+            --output /tmp/proofgrid-v11-research/indicator-structure-research-receipt.json
 
-          OUT=Path('/tmp/proofgrid-v11-research')
-          V12=Path('.proofgrid-upstream/indata-v12')
-          V13=Path('.proofgrid-upstream/indata-v13')
-          GWP='6a37f984-a4b3-458a-a20a-64418c145fa2'
-
-          def sha(path):
-              return hashlib.sha256(path.read_bytes()).hexdigest()
-
-          catalog=V13/'doc/identifiers/EN15804+A2_EF3.0_indicators.csv'
-          rows=list(csv.DictReader(catalog.open(encoding='utf-8-sig')))
-          gwp=[r for r in rows if r.get('UUID')==GWP]
-          assert len(gwp)==1, gwp
-          gwp=gwp[0]
-          assert gwp['Name (en)']=='Global Warming Potential - total (GWP-total)'
-          assert gwp['Unit (en)']=='kg CO2 eqv.'
-          assert gwp['UnitGroup UUID']=='1ebf3012-d0db-4de2-aefd-ef30cedb0be1'
-
-          def local(tag):
-              return tag.rsplit('}',1)[-1] if '}' in tag else tag
-          def ns(tag):
-              return tag[1:].split('}',1)[0] if tag.startswith('{') else None
-          def path_for(node, parent):
-              parts=[]
-              cur=node
-              while cur is not None:
-                  parts.append(local(cur.tag))
-                  cur=parent.get(cur)
-              return '/'.join(reversed(parts))
-          def text(node):
-              return (node.text or '').strip() or None
-
-          def inspect(repo, expected_version):
-              findings=[]
-              process_root=repo/'sample_data/processes'
-              for xml in sorted(process_root.glob('*.xml')):
-                  try:
-                      root=ET.parse(xml).getroot()
-                  except ET.ParseError:
-                      continue
-                  parent={child:p for p in root.iter() for child in p}
-                  declared_version=None
-                  for key,value in root.attrib.items():
-                      if key.endswith('}epd-version'):
-                          declared_version=value
-                  if declared_version and declared_version != expected_version:
-                      continue
-                  for node in root.iter():
-                      attrs={local(k):v for k,v in node.attrib.items()}
-                      attr_values=set(node.attrib.values())
-                      contains_gwp=(GWP in attr_values) or (text(node)==GWP)
-                      is_module=(local(node.tag)=='module')
-                      if not (contains_gwp or is_module):
-                          continue
-                      exchange=node
-                      while exchange is not None and local(exchange.tag)!='exchange':
-                          exchange=parent.get(exchange)
-                      exchange_summary=None
-                      if exchange is not None:
-                          exchange_summary={
-                              'path':path_for(exchange,parent),
-                              'attributes':{local(k):v for k,v in exchange.attrib.items()},
-                              'children':[
-                                  {'name':local(c.tag),'namespace':ns(c.tag),'text':text(c),'attributes':{local(k):v for k,v in c.attrib.items()}}
-                                  for c in list(exchange)
-                              ],
-                          }
-                      findings.append({
-                          'file':str(xml.relative_to(repo)),
-                          'file_sha256':sha(xml),
-                          'declared_epd_version':declared_version,
-                          'kind':'GWP_TOTAL_REFERENCE' if contains_gwp else 'MODULE_ELEMENT',
-                          'path':path_for(node,parent),
-                          'namespace':ns(node.tag),
-                          'text':text(node),
-                          'attributes':attrs,
-                          'exchange':exchange_summary,
-                      })
-              return findings
-
-          result={
-              'scope':'Research-only structural discovery. No environmental indicator extraction acceptance claim.',
-              'upstreams':{
-                  'v12_commit':'b7233bd2dd5435a6b5973505ffa212cd03d23468',
-                  'v13_commit':'7625c7dfc0d5b6bc2020eb0cf0b0503349c914aa',
-              },
-              'catalogue':{
-                  'path':'doc/identifiers/EN15804+A2_EF3.0_indicators.csv',
-                  'sha256':sha(catalog),
-                  'gwp_total':{
-                      'uuid':gwp['UUID'],
-                      'version':gwp['Version'],
-                      'name_en':gwp['Name (en)'],
-                      'unit_en':gwp['Unit (en)'],
-                      'unit_group_uuid':gwp['UnitGroup UUID'],
-                  },
-              },
-              'v12_findings':inspect(V12,'1.2'),
-              'v13_findings':inspect(V13,'1.3'),
-              'extractor_accepted':False,
-              'certified':False,
-          }
-          result['counts']={
-              'v12_findings':len(result['v12_findings']),
-              'v13_findings':len(result['v13_findings']),
-              'v12_gwp_references':sum(x['kind']=='GWP_TOTAL_REFERENCE' for x in result['v12_findings']),
-              'v13_gwp_references':sum(x['kind']=='GWP_TOTAL_REFERENCE' for x in result['v13_findings']),
-              'v12_module_elements':sum(x['kind']=='MODULE_ELEMENT' for x in result['v12_findings']),
-              'v13_module_elements':sum(x['kind']=='MODULE_ELEMENT' for x in result['v13_findings']),
-          }
-          raw=json.dumps(result,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()
-          result['receipt_sha256']=hashlib.sha256(raw).hexdigest()
-          (OUT/'indicator-structure-research-receipt.json').write_text(json.dumps(result,indent=2,sort_keys=True,ensure_ascii=False)+'\n')
-          print(json.dumps({'catalogue':result['catalogue'],'counts':result['counts'],'receipt_sha256':result['receipt_sha256']},indent=2,sort_keys=True))
-          PY
-
-      - name: Require useful research observations without claiming extraction
+      - name: Require bounded research verdict without accepting extractor
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
           import json
           d=json.load(open('/tmp/proofgrid-v11-research/indicator-structure-research-receipt.json'))
+          assert d['verdict']=='DECLARED_INDICATOR_STRUCTURE_RESEARCH_VERIFIABLE'
           assert d['catalogue']['gwp_total']['uuid']=='6a37f984-a4b3-458a-a20a-64418c145fa2'
+          assert d['catalogue']['gwp_total']['version']=='04.00.016'
           assert d['catalogue']['gwp_total']['unit_en']=='kg CO2 eqv.'
-          assert d['counts']['v13_module_elements'] > 0, d['counts']
+          assert d['v12']['gwp_total_exchange_count'] >= 1
+          assert d['v13']['gwp_total_exchange_count'] >= 1
           assert d['extractor_accepted'] is False
+          assert d['scientific_validation_performed'] is False
+          assert d['professional_review_performed'] is False
           assert d['certified'] is False
           print('DECLARED_INDICATOR_STRUCTURE_RESEARCH=PASS')
           print('receipt_sha256=',d['receipt_sha256'])
           PY
 
       - name: Retain research receipt and catalogue identities
+        if: always()
         uses: actions/upload-artifact@v4.6.2
         with:
           name: proofgrid-v11-indicator-structure-research
