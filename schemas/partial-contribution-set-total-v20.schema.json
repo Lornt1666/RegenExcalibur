@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://regenexcalibur.example/schemas/partial-contribution-set-total-v20.schema.json",
+  "title": "ProofGrid v2.0 exact-Decimal partial contribution-set total",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "record_type", "verdict", "source_set", "compatibility",
+    "completeness_status", "members", "member_count", "aggregation",
+    "aggregation_performed", "sum_performed", "whole_building_lca_claimed",
+    "declared_scope_complete_claimed", "missing_contributions_are_zero",
+    "missing_modules_are_zero", "unit_conversion_performed",
+    "scenario_inference_performed", "duplicate_members_permitted",
+    "scientific_validation_performed", "professional_review_performed",
+    "certified", "limitations", "integrity"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "record_type": {"const": "ProofGridPartialContributionSetExactDecimalTotal"},
+    "verdict": {"const": "PARTIAL_CONTRIBUTION_SET_EXACT_DECIMAL_TOTAL_VERIFIABLE"},
+    "source_set": {
+      "type": "object", "additionalProperties": false,
+      "required": ["record_content_sha256", "record_file_sha256", "receipt_sha256", "receipt_file_sha256", "set_id", "scope_id"],
+      "properties": {
+        "record_content_sha256": {"$ref": "#/$defs/sha"},
+        "record_file_sha256": {"$ref": "#/$defs/sha"},
+        "receipt_sha256": {"$ref": "#/$defs/sha"},
+        "receipt_file_sha256": {"$ref": "#/$defs/sha"},
+        "set_id": {"type": "string", "minLength": 1},
+        "scope_id": {"type": "string", "minLength": 1}
+      }
+    },
+    "compatibility": {
+      "type": "object", "additionalProperties": false,
+      "required": ["indicator_code", "indicator_uuid", "unit", "module", "scenario"],
+      "properties": {
+        "indicator_code": {"const": "GWP-total"},
+        "indicator_uuid": {"const": "6a37f984-a4b3-458a-a20a-64418c145fa2"},
+        "unit": {"const": "kg CO2 eqv."},
+        "module": {"const": "A1-A3"},
+        "scenario": {"type": "null"}
+      }
+    },
+    "completeness_status": {"const": "PARTIAL"},
+    "members": {
+      "type": "array", "minItems": 2, "maxItems": 2,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["semantic_identity_sha256", "element_global_id", "rxep_record_content_sha256", "calculation_record_content_sha256", "value_decimal", "unit"],
+        "properties": {
+          "semantic_identity_sha256": {"$ref": "#/$defs/sha"},
+          "element_global_id": {"type": "string", "minLength": 1},
+          "rxep_record_content_sha256": {"$ref": "#/$defs/sha"},
+          "calculation_record_content_sha256": {"$ref": "#/$defs/sha"},
+          "value_decimal": {"$ref": "#/$defs/decimal"},
+          "unit": {"const": "kg CO2 eqv."}
+        }
+      }
+    },
+    "member_count": {"const": 2},
+    "aggregation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["method", "version", "scope", "member_order", "total_value_decimal", "unit"],
+      "properties": {
+        "method": {"const": "canonical_decimal_sum"},
+        "version": {"const": "2.0.0"},
+        "scope": {"const": "ADMITTED_SET_MEMBERS_ONLY"},
+        "member_order": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"$ref": "#/$defs/sha"}},
+        "total_value_decimal": {"const": "23339.2195157455485"},
+        "unit": {"const": "kg CO2 eqv."}
+      }
+    },
+    "aggregation_performed": {"const": true},
+    "sum_performed": {"const": true},
+    "whole_building_lca_claimed": {"const": false},
+    "declared_scope_complete_claimed": {"const": false},
+    "missing_contributions_are_zero": {"const": false},
+    "missing_modules_are_zero": {"const": false},
+    "unit_conversion_performed": {"const": false},
+    "scenario_inference_performed": {"const": false},
+    "duplicate_members_permitted": {"const": false},
+    "scientific_validation_performed": {"const": false},
+    "professional_review_performed": {"const": false},
+    "certified": {"const": false},
+    "limitations": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+    "integrity": {
+      "type": "object", "additionalProperties": false,
+      "required": ["content_sha256", "canonicalization", "signature"],
+      "properties": {
+        "content_sha256": {"$ref": "#/$defs/sha"},
+        "canonicalization": {"const": "UTF-8 JSON; sorted keys; compact separators; ensure_ascii=false"},
+        "signature": {"type": "null"}
+      }
+    }
+  },
+  "$defs": {
+    "sha": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "decimal": {"type": "string", "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$"}
+  }
+}
