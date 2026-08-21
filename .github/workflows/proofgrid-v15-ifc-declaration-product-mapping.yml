@@ -1,0 +1,179 @@
+name: ProofGrid v1.5 IFC Declaration Product Mapping
+
+on:
+  pull_request:
+    paths:
+      - "reference/ifc_declaration_product_map.py"
+      - "schemas/ifc-declaration-product-mapping.schema.json"
+      - "schemas/ifc-declaration-product-mapping-result.schema.json"
+      - "tests/test_ifc_declaration_product_map.py"
+      - "conformance/ifc-declaration-mapping-v15/**"
+      - ".github/workflows/proofgrid-v15-ifc-declaration-product-mapping.yml"
+      - "requirements-proofgrid.txt"
+      - "requirements-proofgrid-v07.txt"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  ifc-declaration-product-mapping:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      V141_ARTIFACT_ID: "9450726883"
+      V141_ZIP_SHA256: "ab104603beb2e8643360ac45935ba82a189028a3c9e7319788153fa261fdb262"
+
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v6.1.0
+      - name: Setup Python 3.11.16
+        uses: actions/setup-python@v6.0.0
+        with:
+          python-version: "3.11.16"
+          check-latest: false
+      - name: Install exact ProofGrid dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-proofgrid.txt
+          python -m pip install -r requirements-proofgrid-v07.txt
+          python -m pip check
+      - name: Run v1.5 fail-closed unit suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest -v tests.test_ifc_declaration_product_map
+      - name: Download exact accepted v1.4.1 closure artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/proofgrid-v15/closure
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V141_ARTIFACT_ID}/zip" > /tmp/proofgrid-v15/v141.zip
+          echo "${V141_ZIP_SHA256}  /tmp/proofgrid-v15/v141.zip" | sha256sum -c -
+          unzip -q /tmp/proofgrid-v15/v141.zip -d /tmp/proofgrid-v15/closure
+      - name: Build deterministic real IFC4 mass fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/proofgrid-v15/ifc
+          python - <<'PY'
+          import ifcopenshell
+          m=ifcopenshell.file(schema='IFC4')
+          mass=m.create_entity('IfcSIUnit',UnitType='MASSUNIT',Prefix='KILO',Name='GRAM')
+          units=m.create_entity('IfcUnitAssignment',Units=[mass])
+          m.create_entity('IfcProject',GlobalId='0hS$wWKLjAuhSPZ5IG0yTw',Name='ProofGrid v1.5',UnitsInContext=units)
+          wall=m.create_entity('IfcWall',GlobalId='1BXL7DJx51bvggyIPU2Xi5',Name='Mapped Wall')
+          material=m.create_entity('IfcMaterial',Name='RX-MATERIAL-UNRELATED-TO-WOOD-PANEL')
+          m.create_entity('IfcRelAssociatesMaterial',GlobalId='2BXL7DJx51bvggyIPU2Xi5',RelatedObjects=[wall],RelatingMaterial=material)
+          q=m.create_entity('IfcQuantityWeight',Name='Mass',WeightValue=1000.0)
+          qset=m.create_entity('IfcElementQuantity',GlobalId='3BXL7DJx51bvggyIPU2Xi5',Name='Qto_WallBaseQuantities',Quantities=[q])
+          m.create_entity('IfcRelDefinesByProperties',GlobalId='0BXL7DJx51bvggyIPU2Xi5',RelatedObjects=[wall],RelatingPropertyDefinition=qset)
+          m.write('/tmp/proofgrid-v15/ifc/fixture.ifc')
+          PY
+          python reference/ifc_extract.py /tmp/proofgrid-v15/ifc/fixture.ifc --output /tmp/proofgrid-v15/ifc/extraction.json
+      - name: Create explicit reviewed mapping artifact from exact IDs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from reference.ifc_declaration_product_map import verify_closure
+          ext=json.loads(Path('/tmp/proofgrid-v15/ifc/extraction.json').read_text())
+          cp=Path('/tmp/proofgrid-v15/closure/v13/a/declaration-product-identity-closure.json')
+          rp=Path('/tmp/proofgrid-v15/closure/v13/a/declaration-product-identity-closure-receipt.json')
+          c=json.loads(cp.read_text()); r=json.loads(rp.read_text()); declaration=verify_closure(c,cp.read_bytes(),r)
+          wall=next(x for x in ext['elements'] if x['ifc_type']=='IfcWall'); mat=wall['materials'][0]; q=next(x for x in wall['quantities'] if x['ifc_quantity_type']=='IfcQuantityWeight')
+          mapping={'schema_version':'1.0','artifact_version':'1.5.0','mapping':{
+            'id':'RX-V15-MAP-001','source_ifc':{'sha256':ext['source_sha256'],'schema':ext['schema']},
+            'element':{'step_id':wall['step_id'],'global_id':wall['global_id'],'ifc_type':wall['ifc_type']},
+            'material':{'association_step_id':mat['association_step_id'],'material_step_id':mat['material_step_id'],'declared_name':mat['name'],'source_type':mat['source_type']},
+            'quantity':{'set_step_id':q['set_step_id'],'quantity_step_id':q['quantity_step_id'],'name':q['name'],'ifc_quantity_type':q['ifc_quantity_type'],'value':q['value'],'unit':{'unit_type':q['unit']['unit_type'],'name':q['unit']['name'],'prefix':q['unit']['prefix'],'source':q['unit']['source']}},
+            'declaration':declaration,
+            'review':{'state':'REVIEWED_MAPPING_DECISION','reviewer':'ProofGrid synthetic reviewer','role':'synthetic test mapping reviewer','rationale':'Explicitly map exact IFC IDs to exact accepted declaration product identity; name similarity intentionally absent.','reference':'issue-42-synthetic-control'},
+            'limitations':['Synthetic mapping control only; workflow review is not professional licensure.']}}
+          Path('/tmp/proofgrid-v15/mapping.json').write_text(json.dumps(mapping,indent=2,sort_keys=True)+'\n')
+          PY
+      - name: Map explicit IFC material to accepted declaration twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          for R in a b; do
+            python reference/ifc_declaration_product_map.py --ifc-extraction /tmp/proofgrid-v15/ifc/extraction.json --mapping /tmp/proofgrid-v15/mapping.json --closure /tmp/proofgrid-v15/closure/v13/a/declaration-product-identity-closure.json --closure-receipt /tmp/proofgrid-v15/closure/v13/a/declaration-product-identity-closure-receipt.json --output-dir "/tmp/proofgrid-v15/out-${R}"
+          done
+          diff -u /tmp/proofgrid-v15/out-a/ifc-declaration-product-mapping.json /tmp/proofgrid-v15/out-b/ifc-declaration-product-mapping.json
+          diff -u /tmp/proofgrid-v15/out-a/ifc-declaration-product-mapping-receipt.json /tmp/proofgrid-v15/out-b/ifc-declaration-product-mapping-receipt.json
+      - name: Verify exact mapping identity and no calculation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.loads(Path('/tmp/proofgrid-v15/out-a/ifc-declaration-product-mapping.json').read_text())
+          assert r['verdict']=='IFC_DECLARATION_PRODUCT_MAPPING_VERIFIABLE'
+          assert r['ifc']['material']['declared_name']=='RX-MATERIAL-UNRELATED-TO-WOOD-PANEL'
+          assert r['ifc']['quantity']['value']==1000.0
+          assert r['ifc']['quantity']['unit_identity']=='kg'
+          assert r['declaration']['product_flow_uuid']=='a7432abd-0881-4977-a817-f8aaf627fb91'
+          assert r['declaration']['product_flow_version']=='00.00.001'
+          assert r['declaration']['reference_quantity_decimal']=='1'
+          assert r['declaration']['reference_unit']=='kg'
+          assert r['mapping_method']=='EXPLICIT_REVIEWED_ARTIFACT'
+          assert r['fuzzy_matching_performed'] is False
+          assert r['automatic_name_mapping_performed'] is False
+          assert r['environmental_calculation_performed'] is False
+          assert r['building_quantity_multiplication_performed'] is False
+          assert r['unit_conversion_performed'] is False
+          assert r['certified'] is False
+          PY
+      - name: Require forged product version to fail closed
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('/tmp/proofgrid-v15/mapping.json'); v=json.loads(p.read_text()); v['mapping']['declaration']['product_flow_version']='99.99.999'; Path('/tmp/proofgrid-v15/mapping-wrong-version.json').write_text(json.dumps(v,indent=2,sort_keys=True)+'\n')
+          PY
+          if python reference/ifc_declaration_product_map.py --ifc-extraction /tmp/proofgrid-v15/ifc/extraction.json --mapping /tmp/proofgrid-v15/mapping-wrong-version.json --closure /tmp/proofgrid-v15/closure/v13/a/declaration-product-identity-closure.json --closure-receipt /tmp/proofgrid-v15/closure/v13/a/declaration-product-identity-closure-receipt.json --output-dir /tmp/proofgrid-v15/negative-version; then exit 1; else echo "FORGED_PRODUCT_VERSION_REJECTED=PASS"; fi
+      - name: Require grams to fail closed without conversion
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import ifcopenshell
+          m=ifcopenshell.file(schema='IFC4'); mass=m.create_entity('IfcSIUnit',UnitType='MASSUNIT',Name='GRAM'); units=m.create_entity('IfcUnitAssignment',Units=[mass]); m.create_entity('IfcProject',GlobalId='0hS$wWKLjAuhSPZ5IG0yTw',Name='Gram control',UnitsInContext=units); wall=m.create_entity('IfcWall',GlobalId='1BXL7DJx51bvggyIPU2Xi5',Name='Mapped Wall'); mat=m.create_entity('IfcMaterial',Name='RX-MATERIAL-UNRELATED-TO-WOOD-PANEL'); m.create_entity('IfcRelAssociatesMaterial',GlobalId='2BXL7DJx51bvggyIPU2Xi5',RelatedObjects=[wall],RelatingMaterial=mat); q=m.create_entity('IfcQuantityWeight',Name='Mass',WeightValue=1000.0); qs=m.create_entity('IfcElementQuantity',GlobalId='3BXL7DJx51bvggyIPU2Xi5',Name='Qto_WallBaseQuantities',Quantities=[q]); m.create_entity('IfcRelDefinesByProperties',GlobalId='0BXL7DJx51bvggyIPU2Xi5',RelatedObjects=[wall],RelatingPropertyDefinition=qs); m.write('/tmp/proofgrid-v15/ifc/grams.ifc')
+          PY
+          python reference/ifc_extract.py /tmp/proofgrid-v15/ifc/grams.ifc --output /tmp/proofgrid-v15/ifc/grams.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          ext=json.loads(Path('/tmp/proofgrid-v15/ifc/grams.json').read_text()); m=json.loads(Path('/tmp/proofgrid-v15/mapping.json').read_text()); wall=next(x for x in ext['elements'] if x['ifc_type']=='IfcWall'); mat=wall['materials'][0]; q=next(x for x in wall['quantities'] if x['ifc_quantity_type']=='IfcQuantityWeight'); m['mapping']['source_ifc']={'sha256':ext['source_sha256'],'schema':ext['schema']}; m['mapping']['element']={'step_id':wall['step_id'],'global_id':wall['global_id'],'ifc_type':wall['ifc_type']}; m['mapping']['material']={'association_step_id':mat['association_step_id'],'material_step_id':mat['material_step_id'],'declared_name':mat['name'],'source_type':mat['source_type']}; m['mapping']['quantity']={'set_step_id':q['set_step_id'],'quantity_step_id':q['quantity_step_id'],'name':q['name'],'ifc_quantity_type':q['ifc_quantity_type'],'value':q['value'],'unit':{'unit_type':q['unit']['unit_type'],'name':q['unit']['name'],'prefix':q['unit']['prefix'],'source':q['unit']['source']}}; Path('/tmp/proofgrid-v15/mapping-grams.json').write_text(json.dumps(m,indent=2,sort_keys=True)+'\n')
+          PY
+          if python reference/ifc_declaration_product_map.py --ifc-extraction /tmp/proofgrid-v15/ifc/grams.json --mapping /tmp/proofgrid-v15/mapping-grams.json --closure /tmp/proofgrid-v15/closure/v13/a/declaration-product-identity-closure.json --closure-receipt /tmp/proofgrid-v15/closure/v13/a/declaration-product-identity-closure-receipt.json --output-dir /tmp/proofgrid-v15/negative-grams; then exit 1; else echo "NON_IDENTITY_UNIT_REJECTED=PASS"; fi
+      - name: Produce bounded v1.5 integration receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          r=json.loads(Path('/tmp/proofgrid-v15/out-a/ifc-declaration-product-mapping.json').read_text()); report={'verdict':'IFC_DECLARATION_PRODUCT_MAPPING_VERIFIABLE','accepted_parent_head':'0a6d497aae056b4f36c2c6b0ccb067c363df6561','accepted_parent_artifact':9450726883,'mapping_record_file_sha256':hashlib.sha256(Path('/tmp/proofgrid-v15/out-a/ifc-declaration-product-mapping.json').read_bytes()).hexdigest(),'mapping_receipt_file_sha256':hashlib.sha256(Path('/tmp/proofgrid-v15/out-a/ifc-declaration-product-mapping-receipt.json').read_bytes()).hexdigest(),'product_flow_uuid':r['declaration']['product_flow_uuid'],'product_flow_version':r['declaration']['product_flow_version'],'ifc_quantity_value':r['ifc']['quantity']['value'],'ifc_quantity_unit':r['ifc']['quantity']['unit_identity'],'repeat_within_run_byte_identical':True,'forged_product_version_rejected':True,'non_identity_unit_rejected':True,'environmental_calculation_performed':False,'building_quantity_multiplication_performed':False,'unit_conversion_performed':False,'certified':False}; report['receipt_sha256']=hashlib.sha256(json.dumps(report,sort_keys=True,separators=(',',':')).encode()).hexdigest(); Path('/tmp/proofgrid-v15/v15-integration-receipt.json').write_text(json.dumps(report,indent=2,sort_keys=True)+'\n')
+          PY
+      - name: Retain synthetic mapping evidence only
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v15-ifc-declaration-product-mapping
+          path: |
+            /tmp/proofgrid-v15/ifc/extraction.json
+            /tmp/proofgrid-v15/mapping.json
+            /tmp/proofgrid-v15/out-a/ifc-declaration-product-mapping.json
+            /tmp/proofgrid-v15/out-a/ifc-declaration-product-mapping-receipt.json
+            /tmp/proofgrid-v15/v15-integration-receipt.json
+          if-no-files-found: error
+          retention-days: 30
