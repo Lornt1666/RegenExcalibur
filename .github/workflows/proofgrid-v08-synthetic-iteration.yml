@@ -92,9 +92,9 @@ jobs:
           PROFILE=$(cat /tmp/proofgrid-v08-synthetic/profile-path.txt)
           java -Djava.net.useSystemProxies=false -cp "$CP" \
             proofgrid.v08.OekobaudatProfileProbe \
-            "$PROFILE" /tmp/proofgrid-v08-synthetic/package /tmp/proofgrid-v08-synthetic/profile-result.json synthetic-iteration-1
+            "$PROFILE" /tmp/proofgrid-v08-synthetic/package /tmp/proofgrid-v08-synthetic/profile-result.json synthetic-iteration-2
 
-      - name: Enforce improvement over frozen 7-error closure baseline
+      - name: Enforce improvement over frozen 5-error iteration-1 result
         shell: bash
         run: |
           set -euo pipefail
@@ -107,7 +107,7 @@ jobs:
           warnings=[e for e in result['events'] if e.get('severity')=='WARNING']
           groups=collections.Counter((e.get('aspect'),e.get('message')) for e in errors)
           summary={
-            'baseline_error_count':7,
+            'baseline_error_count':5,
             'error_count':len(errors),
             'warning_count':len(warnings),
             'positive':result['is_positive'],
@@ -118,8 +118,8 @@ jobs:
           summary['receipt_sha256']=hashlib.sha256(payload).hexdigest()
           (root/'iteration-receipt.json').write_text(json.dumps(summary,indent=2,sort_keys=True)+'\n')
           print(json.dumps(summary,indent=2,sort_keys=True))
-          if len(errors) >= 7:
-              raise SystemExit(f'iteration failed improvement gate: {len(errors)} errors is not below frozen baseline 7')
+          if len(errors) >= 5:
+              raise SystemExit(f'iteration failed improvement gate: {len(errors)} errors is not below frozen baseline 5')
           PY
 
       - name: Retain iteration receipts and official event result
