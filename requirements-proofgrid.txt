@@ -1,0 +1,15 @@
+# ProofGrid v0.2 resolved dependency lock captured from hosted CI run #13.
+# Exact versions are intentional; upgrade by evidence-gated PR and rerun hosted CI.
+jsonschema==4.26.0
+attrs==26.1.0
+jsonschema-specifications==2025.9.1
+referencing==0.37.0
+rpds-py==2026.6.3
+ifcopenshell==0.8.5
+shapely==2.1.2
+numpy==2.4.6
+isodate==0.7.2
+python-dateutil==2.9.0.post0
+lark==1.3.1
+typing-extensions==4.16.0
+six==1.17.0

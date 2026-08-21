@@ -1,0 +1,8 @@
+{
+  "id": "rx-demo-ab-house-001",
+  "name": "Fictional Alberta House 001",
+  "jurisdiction": "Alberta, Canada",
+  "building_type": "detached residential",
+  "floor_area_m2": 185.8,
+  "description": "Synthetic demonstration fixture. Not a real building and not suitable for permitting, engineering, LCA, procurement, or certification."
+}

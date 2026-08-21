@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://regenexcalibur.example/schemas/building.schema.json",
+  "title": "ProofGrid Sample Building v0.1",
+  "type": "object",
+  "required": ["id", "name", "jurisdiction", "building_type"],
+  "properties": {
+    "id": {"type": "string", "minLength": 1},
+    "name": {"type": "string", "minLength": 1},
+    "jurisdiction": {"type": "string", "minLength": 1},
+    "building_type": {"type": "string", "minLength": 1},
+    "floor_area_m2": {"type": "number", "exclusiveMinimum": 0},
+    "description": {"type": "string"}
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,66 @@
+name: ProofGrid Genesis
+
+on:
+  pull_request:
+    paths:
+      - "README.md"
+      - "CONSTITUTION.md"
+      - "ARCHITECTURE.md"
+      - "reference/**"
+      - "adapters/**"
+      - "specs/rxep/**"
+      - "schemas/**"
+      - "evidence/examples/**"
+      - "tests/**"
+      - "requirements-proofgrid.txt"
+      - ".github/workflows/proofgrid.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "README.md"
+      - "CONSTITUTION.md"
+      - "ARCHITECTURE.md"
+      - "reference/**"
+      - "adapters/**"
+      - "specs/rxep/**"
+      - "schemas/**"
+      - "evidence/examples/**"
+      - "tests/**"
+      - "requirements-proofgrid.txt"
+
+permissions:
+  contents: read
+
+jobs:
+  proofgrid:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.1.0
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.11.16"
+      - name: Install locked ProofGrid dependencies
+        run: |
+          python -m pip install --disable-pip-version-check -r requirements-proofgrid.txt
+          python -m pip check
+      - name: Unit tests
+        run: python -m unittest discover -s tests -v
+      - name: Verify fictional Alberta fixture
+        run: python reference/rx_cli.py verify evidence/examples/alberta-house --output /tmp/proofgrid-output
+      - name: Build real IFC smoke fixture
+        run: |
+          python - <<'PY'
+          import ifcopenshell
+          import ifcopenshell.guid
+          model = ifcopenshell.file(schema="IFC4")
+          model.create_entity("IfcProject", GlobalId=ifcopenshell.guid.new(), Name="ProofGrid CI Project")
+          model.create_entity("IfcBuilding", GlobalId=ifcopenshell.guid.new(), Name="ProofGrid CI Building")
+          model.write("/tmp/proofgrid-smoke.ifc")
+          PY
+      - name: Inspect IFC through ProofGrid adapter
+        run: python reference/rx_cli.py ifc-inspect /tmp/proofgrid-smoke.ifc --output /tmp/proofgrid-ifc-summary.json
+      - name: Show receipts
+        run: |
+          cat /tmp/proofgrid-output/receipt.json
+          cat /tmp/proofgrid-ifc-summary.json

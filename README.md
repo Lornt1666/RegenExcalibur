@@ -1,5 +1,44 @@
 # RegenExcalibur
 
+## ProofGrid / RX Evidence Fabric
+
+RegenExcalibur's current flagship reference implementation is **ProofGrid**: a cloud-neutral, machine-verifiable evidence kernel for built-environment data. It is designed to keep claims, calculations, review states, provenance, integrity, and certification boundaries explicit.
+
+### ProofGrid v0.2 quick start
+
+Install the pinned open-source dependencies:
+
+```bash
+python -m pip install -r requirements-proofgrid.txt
+```
+
+Verify the fictional Alberta fixture:
+
+```bash
+python reference/rx_cli.py verify evidence/examples/alberta-house
+```
+
+Inspect a real IFC STEP file through the read-only IfcOpenShell adapter:
+
+```bash
+python reference/rx_cli.py ifc-inspect path/to/model.ifc --output ifc-summary.json
+```
+
+ProofGrid v0.2 validates canonical project/material inputs and generated evidence with JSON Schema Draft 2020-12 before issuing a `VERIFIABLE` receipt. `VERIFIABLE` is **not** `CERTIFIED`. IFC ingestion is structural only and does not establish quantity takeoff, LCA, code compliance, engineering adequacy, or professional certification.
+
+Key files:
+
+- `CONSTITUTION.md`: evidence, safety, authority, privacy, interoperability, and truth-before-promotion invariants.
+- `ARCHITECTURE.md`: ProofGrid/RX Evidence Fabric genesis architecture.
+- `specs/rxep/`: RX Evidence Protocol specification and evidence-envelope schema.
+- `schemas/`: canonical project and material schemas.
+- `reference/rx_cli.py`: deterministic verifier and IFC inspection CLI.
+- `adapters/ifc/`: read-only IFC ingestion adapter.
+- `evidence/examples/`: fictional test fixtures.
+- `tests/`: fail-closed conformance and determinism tests.
+
+---
+
 ## Freelance / Contract Work — 1JGM
 
 **Justice Gray Maciocha — 1JGM, Blueprint-to-Bot Systems Operator** is accepting remote, asynchronous, deliverable-based freelance work in market and competitor research, spreadsheet/listing QA, AI evaluation, prompt and workflow design, technical documentation, automation specifications, project operations, construction technology, and construction-informed CAD/visualization support.
@@ -13,31 +52,24 @@ The service profile separates demonstrated capability from learnable adjacent wo
 
 ---
 
-RegenExcalibur is a GCP-oriented autonomous deployment and orchestration scaffold packaged as both source files and a ready ZIP artifact. It coordinates infrastructure-as-code, Cloud Run, Cloud Functions, Pub/Sub, Vertex AI pipeline scaffolding, multi-agent MRV workflows, security controls, observability, and operational runbooks.
+## Existing GCP orchestration scaffold
 
-## Repository Description
+The repository also retains the earlier GCP-oriented autonomous deployment and orchestration scaffold. It coordinates infrastructure-as-code, Cloud Run, Cloud Functions, Pub/Sub, Vertex AI pipeline scaffolding, multi-agent MRV workflows, security controls, observability, and operational runbooks.
 
-Cloud-native RegenExcalibur automation package for secure GCP provisioning, Terraform IaC, CI/CD, AI/video pipeline scaffolding, multi-agent orchestration, compliance, observability, and runbook-driven operations.
+This is now treated as an **optional deployment/orchestration layer**, not the identity of the ProofGrid core.
 
-Suggested GitHub topics:
+### Existing scaffold contents
 
-```text
-gcp, terraform, cloud-run, cloud-functions, pubsub, vertex-ai, cloud-build, automation, mrv, compliance, observability, ai-agents
-```
-
-## Contents
-
-- [FREELANCE_PROFILE.md](FREELANCE_PROFILE.md): public 1JGM freelance capability, service, evidence, rate, and engagement profile.
 - [RegenExcalibur_Project.zip](RegenExcalibur_Project.zip): packaged project archive.
 - [RegenExcalibur_Project](RegenExcalibur_Project): expanded project source and deployment scaffold.
 - [RegenExcalibur_Project/01_Documentation_and_Readme/README.md](RegenExcalibur_Project/01_Documentation_and_Readme/README.md): detailed operational instructions.
 - [RegenExcalibur_Project/master_autonomous_execution_script.py](RegenExcalibur_Project/master_autonomous_execution_script.py): dry-run-first deployment entry point.
 
-## Safety Notice
+### Safety notice
 
-The deployment automation defaults to dry-run mode. Live provisioning requires the explicit `--apply` flag and can create billable GCP resources. Review Terraform, IAM, Cloud Build, and runtime configuration before applying.
+The GCP deployment automation defaults to dry-run mode. Live provisioning requires the explicit `--apply` flag and can create billable GCP resources. Review Terraform, IAM, Cloud Build, and runtime configuration before applying.
 
-## Quick Start
+### GCP quick start
 
 ```bash
 python RegenExcalibur_Project/master_autonomous_execution_script.py \
@@ -45,7 +77,7 @@ python RegenExcalibur_Project/master_autonomous_execution_script.py \
   --region us-central1
 ```
 
-To deploy after reviewing the dry run:
+To deploy only after reviewing the dry run:
 
 ```bash
 python RegenExcalibur_Project/master_autonomous_execution_script.py \
@@ -54,22 +86,6 @@ python RegenExcalibur_Project/master_autonomous_execution_script.py \
   --apply
 ```
 
-## Architecture
-
-RegenExcalibur coordinates:
-
-- Terraform-managed GCP foundations.
-- Cloud Run API service.
-- Cloud Functions event ingestion.
-- Pub/Sub task and MRV event streams.
-- Cloud Storage artifact retention.
-- Artifact Registry container storage.
-- Vertex AI pipeline scaffolding.
-- Multi-agent workflow execution.
-- Security and compliance policy documents.
-- Monitoring dashboard and alert policy definitions.
-- Deployment, incident response, and scaling runbooks.
-
 ## Status
 
-This repository contains an initial generated scaffold. It is ready for local review, dry-run validation, and controlled GCP deployment after project-specific configuration.
+ProofGrid v0.2 is a **reference implementation under evidence-gated development**. The JSON evidence kernel and hosted genesis CI are implemented; runtime Draft 2020-12 schema validation and read-only real IFC ingestion are now included on the active draft PR branch. Production LCA/EPD ingestion, professional code/compliance conclusions, independent domain validation, and production deployment remain separate future gates.
