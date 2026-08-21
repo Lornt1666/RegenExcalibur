@@ -48,7 +48,17 @@ jobs:
 
       - name: Run final official profile gate
         shell: bash
-        run: bash conformance/oekobaudat-v12/run_final_gate.sh
+        run: |
+          set +e
+          bash conformance/oekobaudat-v12/run_final_gate.sh > /tmp/proofgrid-v08-final-gate.log 2>&1
+          rc=$?
+          set -e
+          if [ "$rc" -ne 0 ]; then
+            echo "FINAL GATE FAILED — bounded tail follows"
+            tail -n 160 /tmp/proofgrid-v08-final-gate.log
+            exit "$rc"
+          fi
+          cat /tmp/proofgrid-v08-final/proofgrid-v08-final-receipt.json
 
       - name: Retain receipts/results only — no synthetic package bytes
         uses: actions/upload-artifact@v4.6.2
