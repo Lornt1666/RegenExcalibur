@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://regenexcalibur.example/schemas/environmental-contribution-set-request.schema.json",
+  "title": "ProofGrid v1.8 environmental contribution set admission request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "request_version", "set_id", "scope_id", "completeness_status", "compatibility", "members"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "request_version": {"const": "1.8.0"},
+    "set_id": {"type": "string", "minLength": 1},
+    "scope_id": {"type": "string", "minLength": 1},
+    "completeness_status": {"const": "PARTIAL"},
+    "compatibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["indicator_code", "indicator_uuid", "unit", "module", "scenario"],
+      "properties": {
+        "indicator_code": {"type": "string", "minLength": 1},
+        "indicator_uuid": {"type": "string", "minLength": 1},
+        "unit": {"type": "string", "minLength": 1},
+        "module": {"type": "string", "minLength": 1},
+        "scenario": {"oneOf": [{"type": "null"}, {"type": "object"}]}
+      }
+    },
+    "members": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "member_id",
+          "rxep_record_path", "rxep_record_content_sha256", "rxep_record_file_sha256",
+          "rxep_receipt_path", "rxep_receipt_sha256", "rxep_receipt_file_sha256",
+          "calculation_record_path", "calculation_record_content_sha256", "calculation_record_file_sha256",
+          "calculation_receipt_path", "calculation_receipt_sha256", "calculation_receipt_file_sha256"
+        ],
+        "properties": {
+          "member_id": {"type": "string", "minLength": 1},
+          "rxep_record_path": {"type": "string", "minLength": 1},
+          "rxep_record_content_sha256": {"$ref": "#/$defs/sha"},
+          "rxep_record_file_sha256": {"$ref": "#/$defs/sha"},
+          "rxep_receipt_path": {"type": "string", "minLength": 1},
+          "rxep_receipt_sha256": {"$ref": "#/$defs/sha"},
+          "rxep_receipt_file_sha256": {"$ref": "#/$defs/sha"},
+          "calculation_record_path": {"type": "string", "minLength": 1},
+          "calculation_record_content_sha256": {"$ref": "#/$defs/sha"},
+          "calculation_record_file_sha256": {"$ref": "#/$defs/sha"},
+          "calculation_receipt_path": {"type": "string", "minLength": 1},
+          "calculation_receipt_sha256": {"$ref": "#/$defs/sha"},
+          "calculation_receipt_file_sha256": {"$ref": "#/$defs/sha"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sha": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+  }
+}

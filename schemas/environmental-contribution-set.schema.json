@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://regenexcalibur.example/schemas/environmental-contribution-set.schema.json",
+  "title": "ProofGrid v1.8 environmental contribution set",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "record_type", "verdict", "set_id", "scope_id", "completeness_status",
+    "compatibility", "members", "member_count", "request_file_sha256",
+    "aggregation_performed", "sum_performed", "missing_contributions_are_zero", "missing_modules_are_zero",
+    "unit_conversion_performed", "scenario_inference_performed", "duplicate_members_permitted",
+    "scientific_validation_performed", "professional_review_performed", "certified", "limitations", "integrity"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "record_type": {"const": "ProofGridEnvironmentalContributionSet"},
+    "verdict": {"const": "ENVIRONMENTAL_CONTRIBUTION_SET_ADMISSION_VERIFIABLE"},
+    "set_id": {"type": "string", "minLength": 1},
+    "scope_id": {"type": "string", "minLength": 1},
+    "completeness_status": {"const": "PARTIAL"},
+    "compatibility": {"type": "object"},
+    "members": {"type": "array", "minItems": 1, "items": {"type": "object"}},
+    "member_count": {"type": "integer", "minimum": 1},
+    "request_file_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "aggregation_performed": {"const": false},
+    "sum_performed": {"const": false},
+    "missing_contributions_are_zero": {"const": false},
+    "missing_modules_are_zero": {"const": false},
+    "unit_conversion_performed": {"const": false},
+    "scenario_inference_performed": {"const": false},
+    "duplicate_members_permitted": {"const": false},
+    "scientific_validation_performed": {"const": false},
+    "professional_review_performed": {"const": false},
+    "certified": {"const": false},
+    "limitations": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["content_sha256", "canonicalization", "signature"],
+      "properties": {
+        "content_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "canonicalization": {"const": "UTF-8 JSON; sorted keys; compact separators; ensure_ascii=false"},
+        "signature": {"type": "null"}
+      }
+    }
+  }
+}
