@@ -152,6 +152,8 @@ def reproduce_environmental(manifest: dict[str, Any], work: Path) -> dict[str, A
     expected = manifest["expected"]
 
     require(receipt["project_id"] == expected["project_id"], "project ID does not match reproduction manifest")
+    require(receipt["engine"]["version"] == expected["engine_version"], "verifier software version does not match reproduction manifest")
+    require(evidence["methodology"]["version"] == expected["method_version"], "calculation method version does not match reproduction manifest")
     require(float(evidence["measurement"]["value"]) == float(expected["total_kgco2e"]), "known-answer GWP changed")
     require(receipt["evidence_content_sha256"] == expected["evidence_content_sha256"], "evidence-content digest mismatch")
     require(receipt["receipt_sha256"] == expected["receipt_sha256"], "RXEP receipt digest mismatch")
@@ -171,10 +173,17 @@ def reproduce_environmental(manifest: dict[str, Any], work: Path) -> dict[str, A
         name: sha256_file(output / name)
         for name in ("evidence.json", "graph.jsonld", "receipt.json", "report.html")
     }
+    expected_output_hashes = expected["generated_output_sha256"]
+    require(
+        output_hashes == expected_output_hashes,
+        f"generated environmental artifact hash set changed: expected {expected_output_hashes}, got {output_hashes}",
+    )
     return {
         "known_answer_kgco2e": float(evidence["measurement"]["value"]),
         "verdict": receipt["verdict"],
         "certified": receipt["certified"],
+        "engine_version": receipt["engine"]["version"],
+        "method_version": evidence["methodology"]["version"],
         "evidence_content_sha256": receipt["evidence_content_sha256"],
         "receipt_sha256": receipt["receipt_sha256"],
         "source_record_digests": actual_records,
