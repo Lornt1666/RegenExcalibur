@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://regenexcalibur.example/schemas/ifc-lca-mapping.schema.json",
+  "title": "ProofGrid v0.5 explicit IFC to environmental source mapping",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "artifact_version", "mappings"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "artifact_version": {"type": "string", "minLength": 1},
+    "mappings": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/mapping"}
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "unit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unit_type", "name", "prefix", "source"],
+      "properties": {
+        "unit_type": {"type": "string", "minLength": 1},
+        "name": {"type": "string", "minLength": 1},
+        "prefix": {"type": ["string", "null"]},
+        "source": {"enum": ["project_unit_context", "explicit_quantity_unit"]}
+      }
+    },
+    "mapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "source_ifc", "element", "material", "quantity", "target", "review"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "source_ifc": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sha256", "schema"],
+          "properties": {
+            "sha256": {"$ref": "#/$defs/sha256"},
+            "schema": {"type": "string", "minLength": 1}
+          }
+        },
+        "element": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["global_id", "step_id", "ifc_type"],
+          "properties": {
+            "global_id": {"type": "string", "minLength": 1},
+            "step_id": {"type": "integer", "minimum": 1},
+            "ifc_type": {"type": "string", "minLength": 1}
+          }
+        },
+        "material": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["association_step_id", "material_step_id", "declared_name", "source_type"],
+          "properties": {
+            "association_step_id": {"type": "integer", "minimum": 1},
+            "material_step_id": {"type": "integer", "minimum": 1},
+            "declared_name": {"type": "string", "minLength": 1},
+            "source_type": {"type": "string", "minLength": 1}
+          }
+        },
+        "quantity": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["set_step_id", "quantity_step_id", "name", "ifc_quantity_type", "value", "unit"],
+          "properties": {
+            "set_step_id": {"type": "integer", "minimum": 1},
+            "quantity_step_id": {"type": "integer", "minimum": 1},
+            "name": {"type": "string", "minLength": 1},
+            "ifc_quantity_type": {"type": "string", "minLength": 1},
+            "value": {"type": "number", "minimum": 0},
+            "unit": {"$ref": "#/$defs/unit"}
+          }
+        },
+        "target": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["material_identity_id", "source_record_id"],
+          "properties": {
+            "material_identity_id": {"type": "string", "minLength": 1},
+            "source_record_id": {"type": "string", "minLength": 1}
+          }
+        },
+        "review": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "author", "rationale"],
+          "properties": {
+            "state": {"enum": ["DRAFT", "REVIEWED"]},
+            "author": {"type": "string", "minLength": 1},
+            "rationale": {"type": "string", "minLength": 1},
+            "reference": {"type": ["string", "null"]}
+          }
+        }
+      }
+    }
+  }
+}
