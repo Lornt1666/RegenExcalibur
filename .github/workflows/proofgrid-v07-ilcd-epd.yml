@@ -87,10 +87,18 @@ jobs:
           )
           source = Path('/tmp/proofgrid-v07/proofgrid-synthetic-ilcd-epd-v1.3.xml')
 
+          def local_resource(path: Path):
+              return xmlschema.XMLResource(
+                  str(path),
+                  base_url=str(path.parent),
+                  allow='sandbox',
+                  defuse='always',
+              )
+
           malformed = Path('/tmp/proofgrid-v07/malformed.xml')
           malformed.write_text('<processDataSet>', encoding='utf-8')
           try:
-              schema.validate(str(malformed), use_location_hints=False)
+              schema.validate(local_resource(malformed), use_location_hints=False)
           except Exception:
               pass
           else:
@@ -104,7 +112,7 @@ jobs:
           root.remove(process_info)
           missing_required = Path('/tmp/proofgrid-v07/missing-required.xml')
           tree.write(missing_required, encoding='utf-8', xml_declaration=True)
-          if schema.is_valid(str(missing_required), use_location_hints=False):
+          if schema.is_valid(local_resource(missing_required), use_location_hints=False):
               raise SystemExit('missing required processInformation unexpectedly validated')
 
           bad_ns = Path('/tmp/proofgrid-v07/bad-namespace.xml')
@@ -114,7 +122,7 @@ jobs:
               1,
           )
           bad_ns.write_text(text, encoding='utf-8')
-          if schema.is_valid(str(bad_ns), use_location_hints=False):
+          if schema.is_valid(local_resource(bad_ns), use_location_hints=False):
               raise SystemExit('invalid process namespace unexpectedly validated')
 
           print('authoritative negative XSD cases: PASS')
