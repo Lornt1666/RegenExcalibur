@@ -109,7 +109,7 @@ jobs:
           print('HARDENED_V111_NINE_ROW_PARENTS=PASS')
           PY
 
-      - name: Bind v1.2 parent into RXEP v0.2 twice
+      - name: Bind v1.2 parent into frozen RXEP v0.2 twice
         shell: bash
         run: |
           set -euo pipefail
@@ -120,10 +120,11 @@ jobs:
               --extraction-receipt "$ROOT/extraction-receipt.json" \
               --output-dir "$ROOT/bound-$N"
           done
-          diff -u "$ROOT/bound-a/rxep-v02-declared-indicator-bundle.json" "$ROOT/bound-b/rxep-v02-declared-indicator-bundle.json"
-          diff -u "$ROOT/bound-a/rxep-v02-binding-receipt.json" "$ROOT/bound-b/rxep-v02-binding-receipt.json"
+          for F in rxep-v02-declared-indicator-bundle.json rxep-v02-binding-receipt.json v121-hardening-receipt.json; do
+            diff -u "$ROOT/bound-a/$F" "$ROOT/bound-b/$F"
+          done
 
-      - name: Bind v1.3 parent into RXEP v0.2 twice
+      - name: Bind v1.3 parent into frozen RXEP v0.2 twice
         shell: bash
         run: |
           set -euo pipefail
@@ -134,10 +135,11 @@ jobs:
               --extraction-receipt "$ROOT/extraction-receipt.json" \
               --output-dir "$ROOT/bound-$N"
           done
-          diff -u "$ROOT/bound-a/rxep-v02-declared-indicator-bundle.json" "$ROOT/bound-b/rxep-v02-declared-indicator-bundle.json"
-          diff -u "$ROOT/bound-a/rxep-v02-binding-receipt.json" "$ROOT/bound-b/rxep-v02-binding-receipt.json"
+          for F in rxep-v02-declared-indicator-bundle.json rxep-v02-binding-receipt.json v121-hardening-receipt.json; do
+            diff -u "$ROOT/bound-a/$F" "$ROOT/bound-b/$F"
+          done
 
-      - name: Verify 9 CLAIMED exact-decimal envelopes and hardened methodology
+      - name: Verify 9 CLAIMED exact-decimal envelopes with frozen protocol plus hardened parent receipt
         shell: bash
         run: |
           set -euo pipefail
@@ -146,17 +148,27 @@ jobs:
           for label in ('v12','v13'):
               root=f'/tmp/proofgrid-v121/{label}/bound-a'
               bundle=json.load(open(root+'/rxep-v02-declared-indicator-bundle.json'))
-              receipt=json.load(open(root+'/rxep-v02-binding-receipt.json'))
+              protocol=json.load(open(root+'/rxep-v02-binding-receipt.json'))
+              hardening=json.load(open(root+'/v121-hardening-receipt.json'))
               assert bundle['verdict']=='RXEP_DECLARED_INDICATOR_EVIDENCE_BOUND_VERIFIABLE'
               assert bundle['protocol_version']=='0.2'
               assert bundle['envelope_count']==9
               assert bundle['review_state']=='CLAIMED'
               assert bundle['signed'] is False and bundle['certified'] is False
-              assert receipt['engine']['version']=='1.2.1'
+              assert protocol['engine']['version']=='1.2.0'
+              assert hardening['verdict']=='RXEP_DECLARED_INDICATOR_HARDENED_PARENT_BOUND_VERIFIABLE'
+              assert hardening['engine']['version']=='1.2.1'
+              assert hardening['parent_extraction']['engine_version']=='1.1.1'
+              assert hardening['rxep_v02']['binder_version']=='1.2.0'
+              assert hardening['rxep_v02']['core_extraction_methodology_version']=='1.1.0'
+              assert hardening['rxep_v02']['binding_receipt_sha256']==protocol['receipt_sha256']
+              assert hardening['evidence_dimensions']['rxep_v02_protocol_preserved'] is True
+              assert hardening['review_state']=='CLAIMED' and hardening['signed'] is False and hardening['certified'] is False
               for env in bundle['envelopes']:
                   assert env['review']=={'state':'CLAIMED','reviewer':None}
                   assert env['integrity']['signature'] is None
-                  assert env['methodology']['version']=='1.1.1'
+                  assert env['methodology']['version']=='1.1.0'
+                  assert env['software']['version']=='1.2.0'
                   assert env['methodology']['operation']=='EXTRACTION_ONLY'
                   assert env['methodology']['formula'] is None
                   assert env['methodology']['aggregation_performed'] is False
@@ -168,7 +180,7 @@ jobs:
                   assert env['evidence_dimensions']['scientific_validity']=='NOT_EVALUATED'
                   assert env['evidence_dimensions']['professional_review']=='NOT_EVALUATED'
                   assert env['evidence_dimensions']['certification']=='NOT_EVALUATED'
-          print('V121_HARDENED_RXEP_EXACT_DECIMAL=PASS')
+          print('V121_HARDENED_PARENT_FROZEN_RXEP_V02=PASS')
           PY
 
       - name: Prove historical v1.1.0 parent receipt is rejected
@@ -220,12 +232,18 @@ jobs:
           def load(p): return json.loads(Path(p).read_text())
           v12b=load(root/'v12/bound-a/rxep-v02-declared-indicator-bundle.json')
           v12r=load(root/'v12/bound-a/rxep-v02-binding-receipt.json')
+          v12h=load(root/'v12/bound-a/v121-hardening-receipt.json')
           v13b=load(root/'v13/bound-a/rxep-v02-declared-indicator-bundle.json')
           v13r=load(root/'v13/bound-a/rxep-v02-binding-receipt.json')
+          v13h=load(root/'v13/bound-a/v121-hardening-receipt.json')
           report={
-            'verdict':'RXEP_DECLARED_INDICATOR_EVIDENCE_BOUND_VERIFIABLE',
-            'engine_version':'1.2.1',
-            'protocol_version':'0.2',
+            'verdict':'RXEP_DECLARED_INDICATOR_HARDENED_PARENT_BOUND_VERIFIABLE',
+            'hardening_engine_version':'1.2.1',
+            'rxep_protocol_version':'0.2',
+            'rxep_binder_version':'1.2.0',
+            'core_extraction_methodology_version':'1.1.0',
+            'hardened_parent_extraction_version':'1.1.1',
+            'rxep_v02_protocol_preserved':True,
             'parent_v111_head':'61e6f86c3c633ab8191539292f36cbb1706689f1',
             'historical_binder_evidence_head':'9fbfa4f65863abcdc7be6becc4c5d0520f6d8d60',
             'historical_v110_parent_rejected':True,
@@ -241,15 +259,18 @@ jobs:
             'certified':False,
             'v12':{
               'bundle_content_sha256':v12b['integrity']['content_sha256'],
-              'binding_receipt_sha256':v12r['receipt_sha256'],
+              'protocol_binding_receipt_sha256':v12r['receipt_sha256'],
+              'hardening_receipt_sha256':v12h['receipt_sha256'],
               'envelope_count':v12b['envelope_count']},
             'v13':{
               'bundle_content_sha256':v13b['integrity']['content_sha256'],
-              'binding_receipt_sha256':v13r['receipt_sha256'],
+              'protocol_binding_receipt_sha256':v13r['receipt_sha256'],
+              'hardening_receipt_sha256':v13h['receipt_sha256'],
               'envelope_count':v13b['envelope_count']},
             'limitations':[
-              'RXEP v0.2 envelopes assert source-declared document content only and remain CLAIMED, unsigned, non-calculated, and non-certified.',
-              'No scientific validity, professional LCA review, building applicability, programme-operator/BBSR approval, rights expansion, regulatory approval, or certification is established.'
+              'RXEP v0.2 remains byte-compatible with its frozen schema: methodology 1.1.0 is the unchanged parser algorithm and binder 1.2.0 is the frozen protocol binder.',
+              'v1.2.1 separately proves that the frozen RXEP v0.2 evidence was bound from a hardened v1.1.1 extraction receipt.',
+              'All envelopes remain CLAIMED, unsigned, non-calculated, and non-certified; no scientific/professional/regulatory claim is established.'
             ]}
           raw=json.dumps(report,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()
           report['receipt_sha256']=hashlib.sha256(raw).hexdigest()
@@ -265,7 +286,9 @@ jobs:
             /tmp/proofgrid-v121/v121-integration-receipt.json
             /tmp/proofgrid-v121/v12/bound-a/rxep-v02-declared-indicator-bundle.json
             /tmp/proofgrid-v121/v12/bound-a/rxep-v02-binding-receipt.json
+            /tmp/proofgrid-v121/v12/bound-a/v121-hardening-receipt.json
             /tmp/proofgrid-v121/v13/bound-a/rxep-v02-declared-indicator-bundle.json
             /tmp/proofgrid-v121/v13/bound-a/rxep-v02-binding-receipt.json
+            /tmp/proofgrid-v121/v13/bound-a/v121-hardening-receipt.json
           if-no-files-found: error
           retention-days: 30
