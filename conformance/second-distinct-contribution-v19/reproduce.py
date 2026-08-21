@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """Reproduce the ProofGrid v1.9 second distinct contribution in one clean runner."""
 from __future__ import annotations
-import argparse, hashlib, json, re
+import argparse, hashlib, json, re, sys
 from pathlib import Path
+
+ROOT=Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path: sys.path.insert(0,str(ROOT))
 
 import ifcopenshell
 
