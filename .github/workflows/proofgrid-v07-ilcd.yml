@@ -1,0 +1,255 @@
+name: ProofGrid v0.7 ILCD+EPD Technical Validation
+
+on:
+  pull_request:
+    paths:
+      - "validation/ilcd-epd/**"
+      - ".github/workflows/proofgrid-v07-ilcd.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  phase-a-authoritative-validator:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6.1.0
+
+      - uses: actions/setup-java@v5.6.0
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: validation/ilcd-epd/pom.xml
+
+      - name: Show Java and Maven runtime
+        run: |
+          java -version
+          mvn -version
+
+      - name: Build pinned ILCD validation harness
+        working-directory: validation/ilcd-epd
+        run: |
+          mvn -B -ntp -DskipTests package
+          mvn -B -ntp dependency:copy-dependencies -DoutputDirectory=target/dependency
+          test -f target/dependency/ilcd-validation-3.0.0.jar
+          test -f target/dependency/EPD-1.2-OEKOBAUDAT-3.8.0.jar
+
+      - name: Authoritative profile must reject invalid fixture
+        working-directory: validation/ilcd-epd
+        run: |
+          set +e
+          java -cp "target/classes:target/dependency/*" \
+            com.regenexcalibur.proofgrid.IlcdProfileValidator \
+            --input fixtures/invalid-minimal/ILCD \
+            --output target/phase-a-invalid-receipt.json \
+            --profile-jar target/dependency/EPD-1.2-OEKOBAUDAT-3.8.0.jar \
+            --validator-jar target/dependency/ilcd-validation-3.0.0.jar
+          status=$?
+          set -e
+
+          if [ "$status" -ne 2 ]; then
+            echo "Expected dataset/profile validation failure exit 2; got $status"
+            cat target/phase-a-invalid-receipt.json || true
+            exit 1
+          fi
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          receipt = json.loads(Path('target/phase-a-invalid-receipt.json').read_text(encoding='utf-8'))
+          assert receipt['verdict'] == 'TECHNICAL_ILCD_EPD_PROFILE_ERRORS'
+          assert receipt['technical_conformance_claimed'] is False
+          assert receipt['certified'] is False
+          assert receipt['error_count'] > 0
+          assert receipt['event_count'] >= receipt['error_count']
+          assert len(receipt['events_sha256']) == 64
+          assert len(receipt['deterministic_receipt_sha256']) == 64
+          assert len(receipt['fixture']['tree_sha256']) == 64
+          assert receipt['dependencies']['validator']['gav'] == 'com.okworx.ilcd.validation:ilcd-validation:3.0.0'
+          assert receipt['dependencies']['profile']['gav'] == 'com.okworx.ilcd.validation.profiles:EPD-1.2-OEKOBAUDAT:3.8.0'
+          assert len(receipt['dependencies']['validator']['sha256']) == 64
+          assert len(receipt['dependencies']['profile']['sha256']) == 64
+          print('Phase A authoritative rejection assertions: PASS')
+          print('ERROR events:', receipt['error_count'])
+          print('WARNING events:', receipt['warning_count'])
+          print('Event digest:', receipt['events_sha256'])
+          PY
+
+      - name: Retain Phase A validation receipt
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v07-phase-a-invalid-receipt
+          path: validation/ilcd-epd/target/phase-a-invalid-receipt.json
+          if-no-files-found: error
+          retention-days: 30
+
+  phase-b-official-indata-discovery:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6.1.0
+
+      - name: Checkout official InData ILCD+EPD v1.2 samples at immutable commit
+        uses: actions/checkout@v6.1.0
+        with:
+          repository: InDataWG/ILCD-EPD-Data-Format
+          ref: b7233bd2dd5435a6b5973505ffa212cd03d23468
+          path: validation/ilcd-epd/upstream/indata-v12
+          fetch-depth: 1
+          sparse-checkout: |
+            LICENSE
+            sample_data
+
+      - uses: actions/setup-java@v5.6.0
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: validation/ilcd-epd/pom.xml
+
+      - name: Build pinned ILCD validation harness
+        working-directory: validation/ilcd-epd
+        run: |
+          mvn -B -ntp -DskipTests package
+          mvn -B -ntp dependency:copy-dependencies -DoutputDirectory=target/dependency
+          test -f target/dependency/ilcd-validation-3.0.0.jar
+          test -f target/dependency/EPD-1.2-OEKOBAUDAT-3.8.0.jar
+
+      - name: Record official upstream provenance
+        working-directory: validation/ilcd-epd
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import subprocess
+          from pathlib import Path
+
+          root = Path('upstream/indata-v12')
+          head = subprocess.check_output(['git', '-C', str(root), 'rev-parse', 'HEAD'], text=True).strip()
+          assert head == 'b7233bd2dd5435a6b5973505ffa212cd03d23468'
+          license_path = root / 'LICENSE'
+          license_text = license_path.read_text(encoding='utf-8')
+          assert 'Apache License' in license_text and 'Version 2.0' in license_text
+          provenance = {
+              'repository': 'https://github.com/InDataWG/ILCD-EPD-Data-Format',
+              'commit': head,
+              'upstream_branch_context': 'release/v1.2',
+              'license': 'Apache-2.0',
+              'license_sha256': hashlib.sha256(license_path.read_bytes()).hexdigest(),
+              'sample_data_source': 'sample_data/',
+              'purpose': 'Official InDataWG v1.2 format-development sample data used for technical validator discovery; not a commercial EPD provider dataset.'
+          }
+          Path('target/phase-b-upstream-provenance.json').write_text(json.dumps(provenance, indent=2, sort_keys=True) + '\n', encoding='utf-8')
+          print(json.dumps(provenance, indent=2, sort_keys=True))
+          PY
+
+      - name: Validate complete official v1.2 sample set under profile 3.8.0
+        working-directory: validation/ilcd-epd
+        run: |
+          set +e
+          java -cp "target/classes:target/dependency/*" \
+            com.regenexcalibur.proofgrid.IlcdProfileValidator \
+            --input upstream/indata-v12/sample_data \
+            --output target/phase-b-official-full-sample-receipt.json \
+            --profile-jar target/dependency/EPD-1.2-OEKOBAUDAT-3.8.0.jar \
+            --validator-jar target/dependency/ilcd-validation-3.0.0.jar
+          status=$?
+          set -e
+
+          if [ "$status" -eq 3 ]; then
+            echo "Validator runtime/integration failed during Phase B discovery"
+            cat target/phase-b-official-full-sample-receipt.json || true
+            exit 1
+          fi
+          if [ "$status" -ne 0 ] && [ "$status" -ne 2 ]; then
+            echo "Unexpected validator status: $status"
+            exit 1
+          fi
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          receipt = json.loads(Path('target/phase-b-official-full-sample-receipt.json').read_text(encoding='utf-8'))
+          assert receipt['certified'] is False
+          assert receipt['technical_conformance_claimed'] is False
+          assert receipt['dependencies']['profile']['gav'] == 'com.okworx.ilcd.validation.profiles:EPD-1.2-OEKOBAUDAT:3.8.0'
+          print('Official full sample discovery verdict:', receipt['verdict'])
+          print('ERROR events:', receipt['error_count'])
+          print('WARNING events:', receipt['warning_count'])
+          print('Event digest:', receipt['events_sha256'])
+          if receipt['error_count'] == 0:
+              print('PHASE B ZERO-ERROR CANDIDATE FOUND: official full sample set')
+          else:
+              print('Phase B remains open: official full sample set has profile errors')
+          PY
+
+      - name: Discover zero-error official v1.2 process candidates
+        working-directory: validation/ilcd-epd
+        run: |
+          python - <<'PY'
+          import json
+          import shutil
+          import subprocess
+          from pathlib import Path
+
+          source = Path('upstream/indata-v12/sample_data')
+          candidates = sorted(path.name for path in (source / 'processes').glob('*.xml'))
+          out_root = Path('target/phase-b-candidates')
+          out_root.mkdir(parents=True, exist_ok=True)
+          results = []
+
+          for index, name in enumerate(candidates, 1):
+              candidate_root = out_root / f'fixture-{index:02d}'
+              if candidate_root.exists():
+                  shutil.rmtree(candidate_root)
+              shutil.copytree(source, candidate_root)
+              for other in (candidate_root / 'processes').glob('*.xml'):
+                  if other.name != name:
+                      other.unlink()
+              receipt_path = out_root / f'receipt-{index:02d}-{name.replace("/", "_")}.json'
+              command = [
+                  'java', '-cp', 'target/classes:target/dependency/*',
+                  'com.regenexcalibur.proofgrid.IlcdProfileValidator',
+                  '--input', str(candidate_root),
+                  '--output', str(receipt_path),
+                  '--profile-jar', 'target/dependency/EPD-1.2-OEKOBAUDAT-3.8.0.jar',
+                  '--validator-jar', 'target/dependency/ilcd-validation-3.0.0.jar',
+              ]
+              completed = subprocess.run(command)
+              if completed.returncode == 3:
+                  raise SystemExit(f'validator runtime failure for {name}')
+              if completed.returncode not in (0, 2):
+                  raise SystemExit(f'unexpected validator status {completed.returncode} for {name}')
+              receipt = json.loads(receipt_path.read_text(encoding='utf-8'))
+              results.append({
+                  'process_file': name,
+                  'exit_code': completed.returncode,
+                  'verdict': receipt['verdict'],
+                  'error_count': receipt['error_count'],
+                  'warning_count': receipt['warning_count'],
+                  'event_count': receipt['event_count'],
+                  'events_sha256': receipt['events_sha256'],
+                  'fixture_tree_sha256': receipt['fixture']['tree_sha256'],
+                  'receipt': receipt_path.name,
+              })
+
+          Path('target/phase-b-candidate-summary.json').write_text(json.dumps(results, indent=2, sort_keys=True) + '\n', encoding='utf-8')
+          print(json.dumps(results, indent=2, sort_keys=True))
+          zero = [item for item in results if item['error_count'] == 0]
+          print('Zero-error official candidates:', [item['process_file'] for item in zero])
+          PY
+
+      - name: Retain Phase B discovery receipts
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v07-phase-b-official-indata-discovery
+          path: |
+            validation/ilcd-epd/target/phase-b-upstream-provenance.json
+            validation/ilcd-epd/target/phase-b-official-full-sample-receipt.json
+            validation/ilcd-epd/target/phase-b-candidate-summary.json
+            validation/ilcd-epd/target/phase-b-candidates/receipt-*.json
+          if-no-files-found: error
+          retention-days: 30

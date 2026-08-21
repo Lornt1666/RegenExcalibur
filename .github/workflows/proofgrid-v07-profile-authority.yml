@@ -1,0 +1,49 @@
+name: ProofGrid v0.7 Profile Authority Inspection
+
+on:
+  pull_request:
+    paths:
+      - "validation/ilcd-epd/**"
+      - ".github/workflows/proofgrid-v07-profile-authority.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect-profile-authority:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6.1.0
+
+      - uses: actions/setup-java@v5.6.0
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: validation/ilcd-epd/pom.xml
+
+      - name: Resolve exact validator/profile artifacts
+        working-directory: validation/ilcd-epd
+        run: |
+          mvn -B -ntp -DskipTests package
+          mvn -B -ntp dependency:copy-dependencies -DoutputDirectory=target/dependency
+          test -f target/dependency/ilcd-validation-3.0.0.jar
+          test -f target/dependency/EPD-1.2-OEKOBAUDAT-3.8.0.jar
+          sha256sum target/dependency/ilcd-validation-3.0.0.jar
+          sha256sum target/dependency/EPD-1.2-OEKOBAUDAT-3.8.0.jar
+
+      - name: Inspect exact ÖKOBAUDAT 3.8.0 profile rules and identifiers
+        working-directory: validation/ilcd-epd
+        run: |
+          python scripts/inspect_profile_authority.py \
+            --jar target/dependency/EPD-1.2-OEKOBAUDAT-3.8.0.jar \
+            --output target/profile-authority-inspection.json
+
+      - name: Retain profile authority inspection
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v07-profile-authority-inspection
+          path: validation/ilcd-epd/target/profile-authority-inspection.json
+          if-no-files-found: error
+          retention-days: 30
