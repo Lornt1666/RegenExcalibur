@@ -193,7 +193,7 @@ jobs:
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
-          import hashlib,json,subprocess
+          import hashlib,json
           root=Path('/tmp/proofgrid-v12-rxep')
           def load(path): return json.loads(path.read_text())
           v12=load(root/'v12/out-a/rxep-v02-binding-receipt.json')
@@ -206,7 +206,7 @@ jobs:
             'signed':False,
             'rxep_v01_git_blob':'730e81f97e06b41e67fafdabfb74a90d627f5555',
             'rxep_v01_unchanged':True,
-            'parent_v11_head':'356457fd510ae8d267ee708c85f5428699ca66a1',
+            'parent_v11_head':'2db20dc4853b18972259062f6e7f71e18d274c46',
             'v12':{
               'binding_receipt_sha256':v12['receipt_sha256'],
               'bundle_content_sha256':v12['bundle_content_sha256'],
