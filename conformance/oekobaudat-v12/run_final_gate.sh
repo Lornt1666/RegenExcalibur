@@ -163,7 +163,7 @@ d=json.load(open('/tmp/proofgrid-v08-final/negative-category-result.json'))
 assert d['is_positive'] is False
 assert d['error_count'] >= 1
 messages=[e['message'] for e in d['events'] if e['severity']=='ERROR']
-assert any('ÖKOBAUDAT categories must be present.' in m for m in messages), messages
+assert any('OEKOBAU.DAT categories must be present.' in m for m in messages), messages
 print('profile_negative_missing_category=PASS')
 PY
 
@@ -271,7 +271,7 @@ report={
       'positive':neg['is_positive'],
       'errors':neg['error_count'],
       'normalized_event_fingerprint_sha256':negative_fingerprint,
-      'required_error_observed':any(e['severity']=='ERROR' and 'ÖKOBAUDAT categories must be present.' in e['message'] for e in neg['events']),
+      'required_error_observed':any(e['severity']=='ERROR' and 'OEKOBAU.DAT categories must be present.' in e['message'] for e in neg['events']),
     },
     'v13_mutation':'REJECTED_BY_V12_VERSION_GUARD_BEFORE_PROFILE_EVALUATION',
   },
