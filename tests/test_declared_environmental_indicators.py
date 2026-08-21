@@ -36,25 +36,27 @@ def process_xml(
     modules: list[tuple[str, str | None, str]] | None = None,
     declare_scenario: bool = True,
     mean_amount: str = "999.25",
+    qualified_attributes: bool = True,
 ) -> bytes:
     if modules is None:
         modules = [
             ("A1-A3", None, "15.559479677163699"),
             ("A4", "Transport to Gdansk", "10.403452605105544"),
         ]
+    attr_prefix = "epd:" if qualified_attributes else ""
     scenario_xml = ""
     if declare_scenario:
         scenario_xml = f'''<common:other>
           <epd:scenarios>
-            <epd:scenario name="Transport to Gdansk" group="Transport" default="true" />
+            <epd:scenario {attr_prefix}name="Transport to Gdansk" {attr_prefix}group="Transport" {attr_prefix}default="true" />
           </epd:scenarios>
         </common:other>'''
     version_attr = f' version="{indicator_version}"' if indicator_version else ""
     amount_rows = []
     for module, scenario, value in modules:
-        scenario_attr = f' scenario="{scenario}"' if scenario else ""
+        scenario_attr = f' {attr_prefix}scenario="{scenario}"' if scenario else ""
         amount_rows.append(
-            f'<epd:amount module="{module}"{scenario_attr}>{value}</epd:amount>'
+            f'<epd:amount {attr_prefix}module="{module}"{scenario_attr}>{value}</epd:amount>'
         )
     amount_xml = "\n".join(amount_rows)
     return f'''<?xml version="1.0" encoding="UTF-8"?>
@@ -200,6 +202,14 @@ class DeclaredEnvironmentalIndicatorTests(unittest.TestCase):
             b = extractor.extract_record(source, canonical)
             self.assertEqual(extractor.canonical_json_bytes(a), extractor.canonical_json_bytes(b))
             self.assertEqual(a["integrity"]["content_sha256"], b["integrity"]["content_sha256"])
+
+    def test_unqualified_epd_identity_attributes_are_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            source, media = build_source(root, "1.3", qualified_attributes=False)
+            canonical = canonical_record(source, media, "1.3")
+            with self.assertRaisesRegex(extractor.ExtractionError, "namespaced"):
+                extractor.extract_record(source, canonical)
 
     def test_canonical_source_integrity_tamper_fails(self) -> None:
         with tempfile.TemporaryDirectory() as td:
