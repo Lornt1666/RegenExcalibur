@@ -1,0 +1,78 @@
+name: ProofGrid v0.8 Final ÖKOBAUDAT v1.2 Profile Gate
+
+on:
+  pull_request:
+    paths:
+      - "README.md"
+      - "ARCHITECTURE.md"
+      - "adapters/lca/README.md"
+      - "specs/rxep/README.md"
+      - "conformance/oekobaudat-v12/**"
+      - ".github/workflows/proofgrid-v08-final.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  oekobaudat-v12-profile-compatibility:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v6.1.0
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v5.0.0
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Checkout pinned InData ILCD+EPD v1.2 public samples
+        uses: actions/checkout@v6.1.0
+        with:
+          repository: InDataWG/ILCD-EPD-Data-Format
+          ref: b7233bd2dd5435a6b5973505ffa212cd03d23468
+          path: .proofgrid-upstream/indata-v12
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Checkout pinned InData master data
+        uses: actions/checkout@v6.1.0
+        with:
+          repository: InDataWG/ILCD-EPD-Master-Data
+          ref: 32117b6a70d6c486344247a429449755a2c7eab4
+          path: .proofgrid-upstream/indata-master
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Run final official profile gate
+        shell: bash
+        run: |
+          set +e
+          bash conformance/oekobaudat-v12/run_final_gate.sh > /tmp/proofgrid-v08-final-gate.log 2>&1
+          rc=$?
+          set -e
+          if [ "$rc" -ne 0 ]; then
+            echo "FINAL GATE FAILED — bounded tail follows"
+            tail -n 160 /tmp/proofgrid-v08-final-gate.log
+            exit "$rc"
+          fi
+          cat /tmp/proofgrid-v08-final/proofgrid-v08-final-receipt.json
+
+      - name: Retain receipts/results only — no synthetic package bytes
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v08-final-oekobaudat-v12-profile
+          path: |
+            /tmp/proofgrid-v08-final/proofgrid-v08-final-receipt.json
+            /tmp/proofgrid-v08-final/fixture-build-receipt.json
+            /tmp/proofgrid-v08-final/version-guard-receipt.json
+            /tmp/proofgrid-v08-final/positive-profile-result.json
+            /tmp/proofgrid-v08-final/normalized-warning-events.json
+            /tmp/proofgrid-v08-final/negative-category-result.json
+            /tmp/proofgrid-v08-final/negative-category-version-guard.json
+            /tmp/proofgrid-v08-final/java-version.txt
+            /tmp/proofgrid-v08-final/maven-version.txt
+          if-no-files-found: error
+          retention-days: 30

@@ -1,0 +1,107 @@
+name: ProofGrid v0.8 Profile Source Provenance
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/proofgrid-v08-profile-source-research.yml'
+      - '.github/workflows/proofgrid-v08-profile-execution.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  research-profile-source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v6.1.0
+
+      - name: Freeze official Maven publication and SCM declaration
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=/tmp/proofgrid-v08-profile-source
+          mkdir -p "$OUT"
+          COORD='com.okworx.ilcd.validation.profiles:EPD-1.2-OEKOBAUDAT:3.8.0'
+          mvn -B -ntp dependency:get -Dartifact="$COORD" -Dtransitive=true
+          DIR="$HOME/.m2/repository/com/okworx/ilcd/validation/profiles/EPD-1.2-OEKOBAUDAT/3.8.0"
+          JAR="$DIR/EPD-1.2-OEKOBAUDAT-3.8.0.jar"
+          POM="$DIR/EPD-1.2-OEKOBAUDAT-3.8.0.pom"
+          echo '96ee05b9cf5172a344df3ea844aa8d94060eae4e4e8188f72e46441a3d61921e  '"$JAR" | sha256sum -c -
+          echo '0188dfb7ee16feb4c20c58003f419db7e5007382be7794d47cfd56d67a39047a  '"$POM" | sha256sum -c -
+          cp "$POM" "$OUT/profile.pom"
+          unzip -p "$JAR" META-INF/MANIFEST.MF > "$OUT/profile-manifest.txt"
+          grep -F '<url>https://bitbucket.org/okusche/ilcdvalidation-profiles.git</url>' "$POM"
+          grep -F '<tag>EPD-1.2-OEKOBAUDAT-3.8.0</tag>' "$POM"
+
+      - name: Probe advertised source repository without authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=/tmp/proofgrid-v08-profile-source
+          URL='https://bitbucket.org/okusche/ilcdvalidation-profiles.git'
+          TAG='EPD-1.2-OEKOBAUDAT-3.8.0'
+          set +e
+          timeout 90s git ls-remote --tags "$URL" "$TAG" "$TAG^{}" > "$OUT/tag-ls-remote.txt" 2> "$OUT/source-probe-stderr.txt"
+          RC=$?
+          set -e
+          printf '%s\n' "$RC" > "$OUT/source-probe-exit-code.txt"
+          if [ "$RC" -eq 0 ] && [ -s "$OUT/tag-ls-remote.txt" ]; then
+            echo 'true' > "$OUT/source-accessible.txt"
+            timeout 120s git clone --depth 1 --branch "$TAG" --single-branch "$URL" /tmp/ilcdvalidation-profiles
+            git -C /tmp/ilcdvalidation-profiles rev-parse HEAD > "$OUT/source-commit.txt"
+            git -C /tmp/ilcdvalidation-profiles log -1 --format='%H%n%aI%n%s' > "$OUT/source-log.txt"
+          else
+            echo 'false' > "$OUT/source-accessible.txt"
+            : > "$OUT/source-commit.txt"
+            : > "$OUT/source-log.txt"
+          fi
+
+      - name: Produce fail-closed provenance receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib, json, re
+          out = Path('/tmp/proofgrid-v08-profile-source')
+          pom = (out/'profile.pom').read_text(errors='replace')
+          def grab(tag):
+              m = re.search(rf'<{tag}>(.*?)</{tag}>', pom, re.S)
+              return m.group(1).strip() if m else None
+          accessible = (out/'source-accessible.txt').read_text().strip() == 'true'
+          report = {
+              'scope': 'Profile publication/source provenance only; no profile compatibility or certification claim.',
+              'official_profile_coordinate': 'com.okworx.ilcd.validation.profiles:EPD-1.2-OEKOBAUDAT:3.8.0',
+              'profile_jar_sha256': '96ee05b9cf5172a344df3ea844aa8d94060eae4e4e8188f72e46441a3d61921e',
+              'profile_pom_sha256': '0188dfb7ee16feb4c20c58003f419db7e5007382be7794d47cfd56d67a39047a',
+              'advertised_scm_url': 'https://bitbucket.org/okusche/ilcdvalidation-profiles.git',
+              'advertised_scm_tag': 'EPD-1.2-OEKOBAUDAT-3.8.0',
+              'source_repository_accessible_anonymously': accessible,
+              'source_probe_exit_code': int((out/'source-probe-exit-code.txt').read_text().strip()),
+              'source_commit': (out/'source-commit.txt').read_text().strip() or None,
+              'source_access_policy': 'If the advertised SCM cannot be read anonymously, record the limitation; do not invent a commit, bypass authentication, or treat source unavailability as binary/profile invalidity.',
+              'compatibility_claim': False,
+              'certified': False,
+          }
+          raw = json.dumps(report, sort_keys=True, separators=(',', ':')).encode()
+          report['receipt_sha256'] = hashlib.sha256(raw).hexdigest()
+          (out/'profile-source-provenance-receipt.json').write_text(json.dumps(report, indent=2, sort_keys=True) + '\n')
+          print(json.dumps(report, indent=2, sort_keys=True))
+          PY
+
+      - name: Retain provenance metadata only
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v08-profile-source-provenance
+          path: |
+            /tmp/proofgrid-v08-profile-source/profile-source-provenance-receipt.json
+            /tmp/proofgrid-v08-profile-source/profile-manifest.txt
+            /tmp/proofgrid-v08-profile-source/tag-ls-remote.txt
+            /tmp/proofgrid-v08-profile-source/source-probe-exit-code.txt
+            /tmp/proofgrid-v08-profile-source/source-accessible.txt
+            /tmp/proofgrid-v08-profile-source/source-commit.txt
+          if-no-files-found: error
+          retention-days: 30

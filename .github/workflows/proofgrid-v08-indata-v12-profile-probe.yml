@@ -1,0 +1,231 @@
+name: ProofGrid v0.8 InData v1.2 Profile Probe
+
+on:
+  pull_request:
+    paths:
+      - "conformance/oekobaudat-v12/OekobaudatProfileProbe.java"
+      - ".github/workflows/proofgrid-v08-indata-v12-profile-probe.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe-official-profile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v6.1.0
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v5.0.0
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Checkout pinned public InData ILCD+EPD v1.2 examples
+        uses: actions/checkout@v6.1.0
+        with:
+          repository: InDataWG/ILCD-EPD-Data-Format
+          ref: b7233bd2dd5435a6b5973505ffa212cd03d23468
+          path: .proofgrid-upstream/indata-v12
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify pinned InData v1.2 checkout and license
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C .proofgrid-upstream/indata-v12 rev-parse HEAD)" = "b7233bd2dd5435a6b5973505ffa212cd03d23468"
+          grep -q 'Apache License' .proofgrid-upstream/indata-v12/LICENSE
+          grep -q 'Version 2.0' .proofgrid-upstream/indata-v12/LICENSE
+          mkdir -p /tmp/proofgrid-v08-probe
+          git -C .proofgrid-upstream/indata-v12 hash-object sample_data/processes/57a4ae65-d305-421e-b21f-a3f0c35b8abe.xml \
+            | tee /tmp/proofgrid-v08-probe/indata-main-process-blob.txt
+          git -C .proofgrid-upstream/indata-v12 hash-object sample_data/processes/sample_EPD.xml \
+            | tee /tmp/proofgrid-v08-probe/indata-sample-epd-blob.txt
+          find .proofgrid-upstream/indata-v12/sample_data -type f -print0 \
+            | sort -z | xargs -0 sha256sum > /tmp/proofgrid-v08-probe/indata-sample-data-sha256.txt
+
+      - name: Resolve exact official validator and profile classpath
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/proofgrid-v08-probe/pom.xml <<'POM'
+          <project xmlns="http://maven.apache.org/POM/4.0.0">
+            <modelVersion>4.0.0</modelVersion>
+            <groupId>proofgrid.v08</groupId>
+            <artifactId>oekobaudat-profile-probe</artifactId>
+            <version>1.0.0</version>
+            <dependencies>
+              <dependency>
+                <groupId>com.okworx.ilcd.validation</groupId>
+                <artifactId>ilcd-validation</artifactId>
+                <version>2.12.2</version>
+              </dependency>
+              <dependency>
+                <groupId>com.okworx.ilcd.validation.profiles</groupId>
+                <artifactId>EPD-1.2-OEKOBAUDAT</artifactId>
+                <version>3.8.0</version>
+              </dependency>
+            </dependencies>
+          </project>
+          POM
+          mvn -B -ntp -f /tmp/proofgrid-v08-probe/pom.xml dependency:go-offline
+          mvn -B -ntp -f /tmp/proofgrid-v08-probe/pom.xml dependency:build-classpath \
+            -Dmdep.outputFile=/tmp/proofgrid-v08-probe/classpath.txt -Dmdep.pathSeparator=:
+          LIB="$HOME/.m2/repository/com/okworx/ilcd/validation/ilcd-validation/2.12.2/ilcd-validation-2.12.2.jar"
+          PROFILE="$HOME/.m2/repository/com/okworx/ilcd/validation/profiles/EPD-1.2-OEKOBAUDAT/3.8.0/EPD-1.2-OEKOBAUDAT-3.8.0.jar"
+          test "$(sha256sum "$LIB" | awk '{print $1}')" = "55427919601b5deceee99b34fbbbaf8f00cbcf0aca1fdb1eb493c31f473e077b"
+          test "$(sha256sum "$PROFILE" | awk '{print $1}')" = "96ee05b9cf5172a344df3ea844aa8d94060eae4e4e8188f72e46441a3d61921e"
+          unzip -p "$PROFILE" includes/EPD-1.2-Generic.jar | sha256sum | tee /tmp/proofgrid-v08-probe/generic-profile.sha256
+          unzip -p "$PROFILE" includes/EPD-1.2-EN15804.jar | sha256sum | tee /tmp/proofgrid-v08-probe/en15804-profile.sha256
+          test "$(cut -d' ' -f1 /tmp/proofgrid-v08-probe/generic-profile.sha256)" = "31402bb2746ddb9d2ab4ce40dd5d3e848ab701d1f4da00f2da004f15c7e1cc25"
+          test "$(cut -d' ' -f1 /tmp/proofgrid-v08-probe/en15804-profile.sha256)" = "a05ac55df8f567985da8c95e30ff6579761d336e0f23087aa73fefb4d9a2b147"
+          printf '%s\n' "$PROFILE" > /tmp/proofgrid-v08-probe/profile-path.txt
+          tr ':' '\n' < /tmp/proofgrid-v08-probe/classpath.txt | sed "s#${HOME}#~#" > /tmp/proofgrid-v08-probe/classpath-entries.txt
+
+      - name: Compile headless official API probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          CP=$(cat /tmp/proofgrid-v08-probe/classpath.txt)
+          mkdir -p /tmp/proofgrid-v08-probe/classes
+          javac -encoding UTF-8 -cp "$CP" -d /tmp/proofgrid-v08-probe/classes \
+            conformance/oekobaudat-v12/OekobaudatProfileProbe.java
+
+      - name: Construct complete and one-process ILCD packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          SRC="$GITHUB_WORKSPACE/.proofgrid-upstream/indata-v12/sample_data"
+          PKG=/tmp/proofgrid-v08-probe/packages
+          mkdir -p "$PKG/all/ILCD"
+          cp -a "$SRC"/. "$PKG/all/ILCD/"
+
+          for process in "$SRC"/processes/*.xml; do
+            name=$(basename "$process" .xml)
+            dest="$PKG/process-$name/ILCD"
+            mkdir -p "$dest/processes"
+            for item in "$SRC"/*; do
+              base=$(basename "$item")
+              [ "$base" = processes ] && continue
+              cp -a "$item" "$dest/"
+            done
+            cp "$process" "$dest/processes/"
+          done
+          find "$PKG" -maxdepth 3 -type d | sort > /tmp/proofgrid-v08-probe/package-layouts.txt
+
+      - name: Run exact ÖKOBAUDAT 3.8.0 profile against public v1.2 examples
+        shell: bash
+        run: |
+          set -euo pipefail
+          CP=$(cat /tmp/proofgrid-v08-probe/classpath.txt):/tmp/proofgrid-v08-probe/classes
+          PROFILE=$(cat /tmp/proofgrid-v08-probe/profile-path.txt)
+          OUT=/tmp/proofgrid-v08-probe/results
+          mkdir -p "$OUT"
+
+          run_probe() {
+            path="$1"
+            label="$2"
+            safe=$(printf '%s' "$label" | tr -c 'A-Za-z0-9._-' '_')
+            java -Djava.net.useSystemProxies=false -cp "$CP" \
+              proofgrid.v08.OekobaudatProfileProbe \
+              "$PROFILE" "$path" "$OUT/$safe.json" "$label"
+          }
+
+          run_probe /tmp/proofgrid-v08-probe/packages/all "indata-v12-complete-ilcd-package"
+          for pkg in /tmp/proofgrid-v08-probe/packages/process-*; do
+            run_probe "$pkg" "$(basename "$pkg")"
+          done
+          run_probe "$GITHUB_WORKSPACE/.proofgrid-upstream/indata-v12/sample_data" "indata-v12-raw-sample-data-root"
+          run_probe "$GITHUB_WORKSPACE/.proofgrid-upstream/indata-v12/sample_data/processes/sample_EPD.xml" "indata-v12-sample_EPD-file"
+
+      - name: Summarize official profile outcomes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib, json
+          root=Path('/tmp/proofgrid-v08-probe/results')
+          rows=[]
+          severities={}
+          aspects={}
+          messages={}
+          for path in sorted(root.glob('*.json')):
+              data=json.loads(path.read_text())
+              rows.append({
+                  'file':path.name,
+                  'label':data['label'],
+                  'positive':data['is_positive'],
+                  'errors':data['error_count'],
+                  'warnings':data['warning_count'],
+                  'successes':data['success_count'],
+                  'events':data['event_count'],
+                  'validators':data['validators'],
+                  'profile_name':data['profile_name'],
+                  'profile_version':data['profile_version'],
+                  'active_aspects':data['active_aspects'],
+              })
+              for event in data['events']:
+                  sev=str(event.get('severity'))
+                  aspect=str(event.get('aspect'))
+                  msg=str(event.get('message'))
+                  severities[sev]=severities.get(sev,0)+1
+                  aspects[aspect]=aspects.get(aspect,0)+1
+                  key=(sev,aspect,msg)
+                  messages[key]=messages.get(key,0)+1
+          positive=[r for r in rows if r['positive']]
+          summary={
+              'scope':'Research probe using official ilcd-validation 2.12.2 + exact ÖKOBAUDAT profile 3.8.0 against pinned public InData v1.2 examples. No compatibility verdict is assigned by this receipt.',
+              'indata_repository':'InDataWG/ILCD-EPD-Data-Format',
+              'indata_commit':'b7233bd2dd5435a6b5973505ffa212cd03d23468',
+              'profile_coordinate':'com.okworx.ilcd.validation.profiles:EPD-1.2-OEKOBAUDAT:3.8.0',
+              'profile_jar_sha256':'96ee05b9cf5172a344df3ea844aa8d94060eae4e4e8188f72e46441a3d61921e',
+              'library_coordinate':'com.okworx.ilcd.validation:ilcd-validation:2.12.2',
+              'library_jar_sha256':'55427919601b5deceee99b34fbbbaf8f00cbcf0aca1fdb1eb493c31f473e077b',
+              'results':rows,
+              'positive_labels':[r['label'] for r in positive],
+              'severity_totals':severities,
+              'aspect_totals':aspects,
+              'distinct_event_messages':[
+                  {'severity':k[0],'aspect':k[1],'message':k[2],'count':v}
+                  for k,v in sorted(messages.items(), key=lambda kv:(kv[0][0],kv[0][1],kv[0][2]))
+              ],
+          }
+          payload=json.dumps(summary,sort_keys=True,separators=(',',':')).encode()
+          summary['receipt_sha256']=hashlib.sha256(payload).hexdigest()
+          out=Path('/tmp/proofgrid-v08-probe/probe-receipt.json')
+          out.write_text(json.dumps(summary,indent=2,sort_keys=True)+'\n')
+          print(json.dumps(summary,indent=2,sort_keys=True))
+          PY
+
+      - name: Show concise result matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          data=json.load(open('/tmp/proofgrid-v08-probe/probe-receipt.json'))
+          print('label\tpositive\terrors\twarnings\tevents')
+          for row in data['results']:
+              print(f"{row['label']}\t{row['positive']}\t{row['errors']}\t{row['warnings']}\t{row['events']}")
+          print('positive_labels=', data['positive_labels'])
+          print('receipt_sha256=', data['receipt_sha256'])
+          PY
+
+      - name: Retain research probe receipt and event results
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v08-indata-v12-profile-probe
+          path: |
+            /tmp/proofgrid-v08-probe/probe-receipt.json
+            /tmp/proofgrid-v08-probe/results/*.json
+            /tmp/proofgrid-v08-probe/*sha256.txt
+            /tmp/proofgrid-v08-probe/*blob.txt
+            /tmp/proofgrid-v08-probe/classpath-entries.txt
+            /tmp/proofgrid-v08-probe/package-layouts.txt
+          if-no-files-found: error
+          retention-days: 30

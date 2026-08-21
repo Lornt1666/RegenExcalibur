@@ -1,0 +1,348 @@
+name: ProofGrid v0.8 Exact Profile Acceptance
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/proofgrid-v08-profile-acceptance.yml'
+      - 'conformance/oekobaudat-v12/build_synthetic_fixture.py'
+      - 'conformance/oekobaudat-v12/OekobaudatProfileProbe.java'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  accept-exact-profile-stack:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v6.1.0
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v5.0.0
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Checkout pinned InData v1.2 samples
+        uses: actions/checkout@v6.1.0
+        with:
+          repository: InDataWG/ILCD-EPD-Data-Format
+          ref: b7233bd2dd5435a6b5973505ffa212cd03d23468
+          path: .proofgrid-upstream/indata-v12
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Checkout pinned InData master data
+        uses: actions/checkout@v6.1.0
+        with:
+          repository: InDataWG/ILCD-EPD-Master-Data
+          ref: 32117b6a70d6c486344247a429449755a2c7eab4
+          path: .proofgrid-upstream/indata-master
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Resolve and freeze exact official validator/profile stack
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=/tmp/proofgrid-v08-acceptance
+          mkdir -p "$OUT"
+          cat > "$OUT/pom.xml" <<'POM'
+          <project xmlns="http://maven.apache.org/POM/4.0.0">
+            <modelVersion>4.0.0</modelVersion>
+            <groupId>proofgrid.v08</groupId>
+            <artifactId>exact-profile-acceptance</artifactId>
+            <version>0.8.0</version>
+            <dependencies>
+              <dependency>
+                <groupId>com.okworx.ilcd.validation</groupId>
+                <artifactId>ilcd-validation</artifactId>
+                <version>2.12.2</version>
+              </dependency>
+              <dependency>
+                <groupId>com.okworx.ilcd.validation.profiles</groupId>
+                <artifactId>EPD-1.2-OEKOBAUDAT</artifactId>
+                <version>3.8.0</version>
+              </dependency>
+            </dependencies>
+          </project>
+          POM
+
+          mvn -B -ntp -f "$OUT/pom.xml" dependency:go-offline
+          mvn -B -ntp -f "$OUT/pom.xml" dependency:build-classpath \
+            -Dmdep.outputFile="$OUT/classpath.txt" -Dmdep.pathSeparator=:
+
+          LIB="$HOME/.m2/repository/com/okworx/ilcd/validation/ilcd-validation/2.12.2/ilcd-validation-2.12.2.jar"
+          LIB_POM="$HOME/.m2/repository/com/okworx/ilcd/validation/ilcd-validation/2.12.2/ilcd-validation-2.12.2.pom"
+          PROFILE="$HOME/.m2/repository/com/okworx/ilcd/validation/profiles/EPD-1.2-OEKOBAUDAT/3.8.0/EPD-1.2-OEKOBAUDAT-3.8.0.jar"
+          PROFILE_POM="$HOME/.m2/repository/com/okworx/ilcd/validation/profiles/EPD-1.2-OEKOBAUDAT/3.8.0/EPD-1.2-OEKOBAUDAT-3.8.0.pom"
+
+          test "$(sha256sum "$LIB" | awk '{print $1}')" = '55427919601b5deceee99b34fbbbaf8f00cbcf0aca1fdb1eb493c31f473e077b'
+          test "$(sha256sum "$LIB_POM" | awk '{print $1}')" = '16430562fe6ebb6da3e4afea4a8c6cce98d822d61f59eb33e0b5dc98a4eb1fc1'
+          test "$(sha256sum "$PROFILE" | awk '{print $1}')" = '96ee05b9cf5172a344df3ea844aa8d94060eae4e4e8188f72e46441a3d61921e'
+          test "$(sha256sum "$PROFILE_POM" | awk '{print $1}')" = '0188dfb7ee16feb4c20c58003f419db7e5007382be7794d47cfd56d67a39047a'
+          test "$(unzip -p "$PROFILE" includes/EPD-1.2-Generic.jar | sha256sum | awk '{print $1}')" = '31402bb2746ddb9d2ab4ce40dd5d3e848ab701d1f4da00f2da004f15c7e1cc25'
+          test "$(unzip -p "$PROFILE" includes/EPD-1.2-EN15804.jar | sha256sum | awk '{print $1}')" = 'a05ac55df8f567985da8c95e30ff6579761d336e0f23087aa73fefb4d9a2b147'
+
+          printf '%s\n' "$PROFILE" > "$OUT/profile-path.txt"
+          mkdir -p "$OUT/classes"
+          javac -encoding UTF-8 -cp "$(cat "$OUT/classpath.txt")" \
+            -d "$OUT/classes" conformance/oekobaudat-v12/OekobaudatProfileProbe.java
+          sha256sum conformance/oekobaudat-v12/OekobaudatProfileProbe.java > "$OUT/probe-source.sha256"
+          sha256sum conformance/oekobaudat-v12/build_synthetic_fixture.py > "$OUT/builder-source.sha256"
+
+      - name: Build synthetic fixture twice independently
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=/tmp/proofgrid-v08-acceptance
+          PROFILE=$(cat "$OUT/profile-path.txt")
+          for NAME in positive-a positive-b; do
+            python conformance/oekobaudat-v12/build_synthetic_fixture.py \
+              --sample-root .proofgrid-upstream/indata-v12/sample_data \
+              --master-root .proofgrid-upstream/indata-master \
+              --profile-jar "$PROFILE" \
+              --output-root "$OUT/$NAME"
+          done
+
+      - name: Prove byte-level deterministic package manifests
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=/tmp/proofgrid-v08-acceptance
+          for NAME in positive-a positive-b; do
+            (
+              cd "$OUT/$NAME"
+              find ILCD -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum
+            ) > "$OUT/$NAME.manifest.sha256"
+            sha256sum "$OUT/$NAME.manifest.sha256" > "$OUT/$NAME.manifest-digest.sha256"
+            find "$OUT/$NAME/ILCD" -type f | wc -l > "$OUT/$NAME.file-count.txt"
+          done
+          diff -u "$OUT/positive-a.manifest.sha256" "$OUT/positive-b.manifest.sha256"
+          test "$(cat "$OUT/positive-a.file-count.txt")" = "$(cat "$OUT/positive-b.file-count.txt")"
+          test "$(sha256sum "$OUT/positive-a.manifest.sha256" | awk '{print $1}')" = \
+               "$(sha256sum "$OUT/positive-b.manifest.sha256" | awk '{print $1}')"
+
+      - name: Validate both positive builds with exact official profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=/tmp/proofgrid-v08-acceptance
+          CP=$(cat "$OUT/classpath.txt"):$OUT/classes
+          PROFILE=$(cat "$OUT/profile-path.txt")
+          for NAME in positive-a positive-b; do
+            java -Djava.net.useSystemProxies=false -cp "$CP" \
+              proofgrid.v08.OekobaudatProfileProbe \
+              "$PROFILE" "$OUT/$NAME" "$OUT/$NAME-result.json" "$NAME"
+          done
+
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib, json, re
+          root=Path('/tmp/proofgrid-v08-acceptance')
+
+          def normalize_reference(ref):
+              if not ref:
+                  return ref
+              return re.sub(
+                  r'# abs\. filename: .*? # -?\d+',
+                  '# abs. filename: <PACKAGE> # <REFHASH>',
+                  ref,
+              )
+
+          def normalized_events(path: Path):
+              data=json.loads(path.read_text())
+              events=[]
+              for event in data['events']:
+                  row=dict(event)
+                  row['reference']=normalize_reference(row.get('reference'))
+                  events.append(row)
+              return data, events
+
+          a, ae=normalized_events(root/'positive-a-result.json')
+          b, be=normalized_events(root/'positive-b-result.json')
+          for label,data in [('positive-a',a),('positive-b',b)]:
+              if data['error_count'] != 0 or not data['is_positive']:
+                  raise SystemExit(f'{label} failed positive acceptance: errors={data["error_count"]} positive={data["is_positive"]}')
+              if data['profile_name'] != 'EPD 1.2 ÖKOBAUDAT' or data['profile_version'] != '3.8.0':
+                  raise SystemExit(f'{label} resolved unexpected profile identity')
+          if ae != be:
+              raise SystemExit('normalized positive validation event streams differ between deterministic builds')
+          event_bytes=(json.dumps(ae,sort_keys=True,separators=(',',':'))+'\n').encode()
+          (root/'positive-events-normalized.sha256').write_text(hashlib.sha256(event_bytes).hexdigest()+'\n')
+          print('positive errors=0 warnings=',a['warning_count'],'events=',a['event_count'])
+          print('normalized event sha256=',hashlib.sha256(event_bytes).hexdigest())
+          PY
+
+      - name: Create deterministic profile-rule corruption
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=/tmp/proofgrid-v08-acceptance
+          cp -a "$OUT/positive-a" "$OUT/negative-category"
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib, json, xml.etree.ElementTree as ET
+
+          root=Path('/tmp/proofgrid-v08-acceptance/negative-category')
+          process=root/'ILCD/processes/6b47f4cf-0bc4-4e0d-b9fd-9d5f845d1de0.xml'
+          tree=ET.parse(process)
+          matches=[]
+          for node in tree.getroot().iter():
+              if node.tag.rsplit('}',1)[-1]=='classification' and node.attrib.get('name')=='oekobau.dat':
+                  matches.append(node)
+          if len(matches) != 1:
+              raise SystemExit(f'expected exactly one oekobau.dat classification, found {len(matches)}')
+          matches[0].attrib['name']='proofgrid-invalid-category-profile'
+          tree.write(process,encoding='utf-8',xml_declaration=True,short_empty_elements=True)
+          digest=hashlib.sha256(process.read_bytes()).hexdigest()
+          receipt={
+            'mutation':'classification name oekobau.dat -> proofgrid-invalid-category-profile',
+            'target':'ILCD/processes/6b47f4cf-0bc4-4e0d-b9fd-9d5f845d1de0.xml',
+            'target_sha256_after_mutation':digest,
+            'purpose':'Deterministic negative control for exact ÖKOBAUDAT profile category rule; not a real EPD.',
+          }
+          raw=json.dumps(receipt,sort_keys=True,separators=(',',':')).encode()
+          receipt['receipt_sha256']=hashlib.sha256(raw).hexdigest()
+          Path('/tmp/proofgrid-v08-acceptance/negative-mutation-receipt.json').write_text(json.dumps(receipt,indent=2,sort_keys=True)+'\n')
+          print(json.dumps(receipt,indent=2,sort_keys=True))
+          PY
+
+      - name: Require official profile rejection of corrupted fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=/tmp/proofgrid-v08-acceptance
+          CP=$(cat "$OUT/classpath.txt"):$OUT/classes
+          PROFILE=$(cat "$OUT/profile-path.txt")
+          java -Djava.net.useSystemProxies=false -cp "$CP" \
+            proofgrid.v08.OekobaudatProfileProbe \
+            "$PROFILE" "$OUT/negative-category" "$OUT/negative-result.json" negative-category
+
+          python - <<'PY'
+          from pathlib import Path
+          import json
+          p=Path('/tmp/proofgrid-v08-acceptance/negative-result.json')
+          data=json.loads(p.read_text())
+          if data['error_count'] <= 0:
+              raise SystemExit('negative category corruption was not rejected')
+          if data['is_positive']:
+              raise SystemExit('negative category corruption was incorrectly marked positive')
+          errors=[e for e in data['events'] if e.get('severity')=='ERROR']
+          text='\n'.join((e.get('message') or '') for e in errors)
+          if 'categories must be present' not in text:
+              raise SystemExit('expected ÖKOBAUDAT category-rule error not observed')
+          print('negative errors=',data['error_count'],'warnings=',data['warning_count'],'events=',data['event_count'])
+          PY
+
+      - name: Produce final v0.8 acceptance receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib, json, re
+          root=Path('/tmp/proofgrid-v08-acceptance')
+          pa=json.loads((root/'positive-a-result.json').read_text())
+          pb=json.loads((root/'positive-b-result.json').read_text())
+          neg=json.loads((root/'negative-result.json').read_text())
+          build=json.loads((root/'positive-a/fixture-build-receipt.json').read_text())
+          mutation=json.loads((root/'negative-mutation-receipt.json').read_text())
+          manifest_hash=hashlib.sha256((root/'positive-a.manifest.sha256').read_bytes()).hexdigest()
+
+          def normalized_event_hash(data):
+              events=[]
+              for event in data['events']:
+                  row=dict(event)
+                  ref=row.get('reference')
+                  if ref:
+                      row['reference']=re.sub(
+                          r'# abs\. filename: .*? # -?\d+',
+                          '# abs. filename: <PACKAGE> # <REFHASH>',
+                          ref,
+                      )
+                  events.append(row)
+              return hashlib.sha256((json.dumps(events,sort_keys=True,separators=(',',':'))+'\n').encode()).hexdigest()
+
+          receipt={
+            'claim_token':'OEKOBAUDAT_V12_PROFILE_380_SYNTHETIC_COMPATIBLE',
+            'compatibility_claim':True,
+            'compatibility_scope':'Deterministic synthetic interoperability fixture only, executed headlessly under exact official ilcd-validation 2.12.2 and ÖKOBAUDAT ILCD+EPD v1.2 profile 3.8.0.',
+            'certified':False,
+            'real_provider_epd_tested':False,
+            'bbsr_or_oekobaudat_acceptance_implied':False,
+            'scientific_or_product_representativeness_implied':False,
+            'source_import_authorization_implied':False,
+            'official_library':{
+              'coordinate':'com.okworx.ilcd.validation:ilcd-validation:2.12.2',
+              'jar_sha256':'55427919601b5deceee99b34fbbbaf8f00cbcf0aca1fdb1eb493c31f473e077b',
+              'pom_sha256':'16430562fe6ebb6da3e4afea4a8c6cce98d822d61f59eb33e0b5dc98a4eb1fc1'
+            },
+            'official_profile':{
+              'coordinate':'com.okworx.ilcd.validation.profiles:EPD-1.2-OEKOBAUDAT:3.8.0',
+              'jar_sha256':'96ee05b9cf5172a344df3ea844aa8d94060eae4e4e8188f72e46441a3d61921e',
+              'pom_sha256':'0188dfb7ee16feb4c20c58003f419db7e5007382be7794d47cfd56d67a39047a'
+            },
+            'pinned_public_sources':{
+              'indata_v12_commit':'b7233bd2dd5435a6b5973505ffa212cd03d23468',
+              'indata_master_commit':'32117b6a70d6c486344247a429449755a2c7eab4'
+            },
+            'builder':{
+              'source_sha256':(root/'builder-source.sha256').read_text().split()[0],
+              'build_receipt_sha256':build['receipt_sha256'],
+              'package_file_count':int((root/'positive-a.file-count.txt').read_text().strip()),
+              'package_manifest_sha256':manifest_hash,
+              'second_build_manifest_matched':True
+            },
+            'positive_control':{
+              'error_count':pa['error_count'],
+              'warning_count':pa['warning_count'],
+              'event_count':pa['event_count'],
+              'is_positive':pa['is_positive'],
+              'normalized_events_sha256':normalized_event_hash(pa),
+              'second_validation_normalized_events_matched':normalized_event_hash(pa)==normalized_event_hash(pb)
+            },
+            'negative_control':{
+              'mutation_receipt_sha256':mutation['receipt_sha256'],
+              'error_count':neg['error_count'],
+              'warning_count':neg['warning_count'],
+              'event_count':neg['event_count'],
+              'is_positive':neg['is_positive'],
+              'normalized_events_sha256':normalized_event_hash(neg),
+              'expected_category_rule_rejection_observed':True
+            },
+            'warnings_policy':'Warnings are retained as evidence and are not filled with invented environmental values merely to silence the validator.',
+            'evidence_dimensions':'Profile compatibility is independent from source rights/import authorization, scientific validity, product representativeness, professional LCA review, and certification.'
+          }
+          if receipt['positive_control']['error_count'] != 0 or not receipt['positive_control']['is_positive']:
+              raise SystemExit('positive acceptance invariant failed')
+          if not receipt['positive_control']['second_validation_normalized_events_matched']:
+              raise SystemExit('validator repeatability invariant failed')
+          if receipt['negative_control']['error_count'] <= 0 or receipt['negative_control']['is_positive']:
+              raise SystemExit('negative rejection invariant failed')
+          raw=json.dumps(receipt,sort_keys=True,separators=(',',':')).encode()
+          receipt['receipt_sha256']=hashlib.sha256(raw).hexdigest()
+          (root/'acceptance-receipt.json').write_text(json.dumps(receipt,indent=2,sort_keys=True)+'\n')
+          print(json.dumps(receipt,indent=2,sort_keys=True))
+          PY
+
+      - name: Retain acceptance metadata and official results only
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v08-exact-profile-acceptance
+          path: |
+            /tmp/proofgrid-v08-acceptance/acceptance-receipt.json
+            /tmp/proofgrid-v08-acceptance/positive-a/fixture-build-receipt.json
+            /tmp/proofgrid-v08-acceptance/positive-a.manifest.sha256
+            /tmp/proofgrid-v08-acceptance/positive-a.manifest-digest.sha256
+            /tmp/proofgrid-v08-acceptance/positive-a-result.json
+            /tmp/proofgrid-v08-acceptance/positive-b-result.json
+            /tmp/proofgrid-v08-acceptance/positive-events-normalized.sha256
+            /tmp/proofgrid-v08-acceptance/negative-mutation-receipt.json
+            /tmp/proofgrid-v08-acceptance/negative-result.json
+            /tmp/proofgrid-v08-acceptance/probe-source.sha256
+            /tmp/proofgrid-v08-acceptance/builder-source.sha256
+          if-no-files-found: error
+          retention-days: 30

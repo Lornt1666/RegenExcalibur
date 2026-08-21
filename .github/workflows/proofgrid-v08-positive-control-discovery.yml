@@ -1,0 +1,187 @@
+name: ProofGrid v0.8 Positive Control Discovery
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/proofgrid-v08-positive-control-discovery.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  discover-positive-control:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v6.1.0
+
+      - name: Retrieve and verify official profile publication
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=/tmp/proofgrid-v08-positive-control
+          mkdir -p "$OUT"
+          BASE="$HOME/.m2/repository/com/okworx/ilcd/validation/profiles/EPD-1.2-OEKOBAUDAT/3.8.0"
+          COORD='com.okworx.ilcd.validation.profiles:EPD-1.2-OEKOBAUDAT:3.8.0'
+          mvn -B -ntp dependency:get -Dartifact="$COORD" -Dtransitive=true
+          JAR="$BASE/EPD-1.2-OEKOBAUDAT-3.8.0.jar"
+          POM="$BASE/EPD-1.2-OEKOBAUDAT-3.8.0.pom"
+          echo '96ee05b9cf5172a344df3ea844aa8d94060eae4e4e8188f72e46441a3d61921e  '"$JAR" | sha256sum -c -
+          echo '0188dfb7ee16feb4c20c58003f419db7e5007382be7794d47cfd56d67a39047a  '"$POM" | sha256sum -c -
+          sha256sum "$JAR" > "$OUT/main-jar.sha256"
+          sha256sum "$POM" > "$OUT/main-pom.sha256"
+          jar tf "$JAR" | sort > "$OUT/main-jar-list.txt"
+          cp "$POM" "$OUT/profile.pom"
+
+      - name: Probe Maven sources and tests classifiers
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=/tmp/proofgrid-v08-positive-control
+          BASE="$HOME/.m2/repository/com/okworx/ilcd/validation/profiles/EPD-1.2-OEKOBAUDAT/3.8.0"
+          GAV='com.okworx.ilcd.validation.profiles:EPD-1.2-OEKOBAUDAT:3.8.0'
+
+          probe() {
+            classifier="$1"
+            set +e
+            mvn -B -ntp dependency:get -Dartifact="$GAV:jar:$classifier" -Dtransitive=false \
+              > "$OUT/${classifier}-maven.log" 2>&1
+            rc=$?
+            set -e
+            printf '%s\n' "$rc" > "$OUT/${classifier}-exit-code.txt"
+            candidate="$BASE/EPD-1.2-OEKOBAUDAT-3.8.0-${classifier}.jar"
+            if [ "$rc" -eq 0 ] && [ -f "$candidate" ]; then
+              printf 'true\n' > "$OUT/${classifier}-available.txt"
+              sha256sum "$candidate" > "$OUT/${classifier}-jar.sha256"
+              jar tf "$candidate" | sort > "$OUT/${classifier}-jar-list.txt"
+            else
+              printf 'false\n' > "$OUT/${classifier}-available.txt"
+              : > "$OUT/${classifier}-jar-list.txt"
+            fi
+          }
+
+          probe sources
+          probe tests
+
+      - name: Inspect publication for fixture-like resources
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=/tmp/proofgrid-v08-positive-control
+          BASE="$HOME/.m2/repository/com/okworx/ilcd/validation/profiles/EPD-1.2-OEKOBAUDAT/3.8.0"
+          JAR="$BASE/EPD-1.2-OEKOBAUDAT-3.8.0.jar"
+
+          grep -Ei '(^|/)(test|tests|fixture|fixtures|sample|samples|example|examples)(/|$)|(^|/).*(process|dataset|epd).*(\.xml|\.zip)$' \
+            "$OUT/main-jar-list.txt" > "$OUT/main-fixture-candidates.txt" || true
+
+          for classifier in sources tests; do
+            if [ "$(cat "$OUT/${classifier}-available.txt")" = true ]; then
+              grep -Ei '(^|/)(test|tests|fixture|fixtures|sample|samples|example|examples)(/|$)|(^|/).*(process|dataset|epd).*(\.xml|\.zip)$' \
+                "$OUT/${classifier}-jar-list.txt" > "$OUT/${classifier}-fixture-candidates.txt" || true
+            else
+              : > "$OUT/${classifier}-fixture-candidates.txt"
+            fi
+          done
+
+          # Inspect the two nested included profiles too. Their bytes are already frozen by prior v0.8 receipts.
+          mkdir -p "$OUT/includes"
+          for entry in includes/EPD-1.2-Generic.jar includes/EPD-1.2-EN15804.jar; do
+            short=$(basename "$entry" .jar)
+            unzip -p "$JAR" "$entry" > "$OUT/includes/${short}.jar"
+            jar tf "$OUT/includes/${short}.jar" | sort > "$OUT/${short}-jar-list.txt"
+            grep -Ei '(^|/)(test|tests|fixture|fixtures|sample|samples|example|examples)(/|$)|(^|/).*(process|dataset|epd).*(\.xml|\.zip)$' \
+              "$OUT/${short}-jar-list.txt" > "$OUT/${short}-fixture-candidates.txt" || true
+          done
+          rm -f "$OUT/includes/"*.jar
+
+      - name: Produce positive-control discovery receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib, json
+
+          out = Path('/tmp/proofgrid-v08-positive-control')
+          def lines(name):
+              p = out / name
+              return [x for x in p.read_text(errors='replace').splitlines() if x.strip()] if p.exists() else []
+          def available(name):
+              p = out / f'{name}-available.txt'
+              return p.exists() and p.read_text().strip() == 'true'
+          def sha_from(name):
+              p = out / name
+              return p.read_text().split()[0] if p.exists() and p.read_text().strip() else None
+
+          candidates = {
+              'main': lines('main-fixture-candidates.txt'),
+              'sources': lines('sources-fixture-candidates.txt'),
+              'tests': lines('tests-fixture-candidates.txt'),
+              'EPD-1.2-Generic': lines('EPD-1.2-Generic-fixture-candidates.txt'),
+              'EPD-1.2-EN15804': lines('EPD-1.2-EN15804-fixture-candidates.txt'),
+          }
+          fixture_candidates = sorted({item for values in candidates.values() for item in values})
+          tests_available = available('tests')
+          sources_available = available('sources')
+
+          report = {
+              'scope': 'Official Maven publication positive-control discovery only. No profile compatibility or certification claim.',
+              'profile_coordinate': 'com.okworx.ilcd.validation.profiles:EPD-1.2-OEKOBAUDAT:3.8.0',
+              'profile_jar_sha256': sha_from('main-jar.sha256'),
+              'profile_pom_sha256': sha_from('main-pom.sha256'),
+              'classifiers': {
+                  'sources': {
+                      'available': sources_available,
+                      'maven_exit_code': int((out/'sources-exit-code.txt').read_text().strip()),
+                      'jar_sha256': sha_from('sources-jar.sha256'),
+                  },
+                  'tests': {
+                      'available': tests_available,
+                      'maven_exit_code': int((out/'tests-exit-code.txt').read_text().strip()),
+                      'jar_sha256': sha_from('tests-jar.sha256'),
+                  },
+              },
+              'fixture_candidates_by_artifact': candidates,
+              'fixture_candidate_count': len(fixture_candidates),
+              'positive_control_admitted': False,
+              'certified': False,
+          }
+          # Mere filename matches are not admission evidence. A positive control needs explicit provenance,
+          # rights, fixture intent, and a zero-error execution receipt under the exact official profile.
+          report['discovery_outcome'] = (
+              'CANDIDATES_REQUIRE_PROVENANCE_REVIEW' if fixture_candidates
+              else 'NO_OFFICIAL_POSITIVE_CONTROL_DISCOVERED_IN_PUBLISHED_ARTIFACTS'
+          )
+          raw = json.dumps(report, sort_keys=True, separators=(',', ':')).encode()
+          report['receipt_sha256'] = hashlib.sha256(raw).hexdigest()
+          (out/'positive-control-discovery-receipt.json').write_text(json.dumps(report, indent=2, sort_keys=True)+'\n')
+          print(json.dumps(report, indent=2, sort_keys=True))
+          PY
+
+      - name: Show discovery evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=/tmp/proofgrid-v08-positive-control
+          cat "$OUT/positive-control-discovery-receipt.json"
+          echo '--- sources classifier status ---'
+          cat "$OUT/sources-available.txt" "$OUT/sources-exit-code.txt"
+          echo '--- tests classifier status ---'
+          cat "$OUT/tests-available.txt" "$OUT/tests-exit-code.txt"
+          echo '--- candidate resources ---'
+          for f in "$OUT"/*fixture-candidates.txt; do echo "### $f"; cat "$f"; done
+
+      - name: Retain metadata and receipt only
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v08-positive-control-discovery
+          path: |
+            /tmp/proofgrid-v08-positive-control/*.txt
+            /tmp/proofgrid-v08-positive-control/*.sha256
+            /tmp/proofgrid-v08-positive-control/*.json
+            /tmp/proofgrid-v08-positive-control/*.pom
+            /tmp/proofgrid-v08-positive-control/*.log
+          if-no-files-found: error
+          retention-days: 30
