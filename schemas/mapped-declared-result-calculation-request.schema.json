@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://regenexcalibur.example/schemas/mapped-declared-result-calculation-request.schema.json",
+  "title": "ProofGrid v1.6 mapped declared-result calculation request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "request_version", "bindings", "selection"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "request_version": {"const": "1.6.0"},
+    "bindings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mapping_record_content_sha256", "mapping_receipt_sha256", "declaration_bundle_content_sha256", "declaration_bundle_receipt_sha256"],
+      "properties": {
+        "mapping_record_content_sha256": {"$ref": "#/$defs/sha"},
+        "mapping_receipt_sha256": {"$ref": "#/$defs/sha"},
+        "declaration_bundle_content_sha256": {"$ref": "#/$defs/sha"},
+        "declaration_bundle_receipt_sha256": {"$ref": "#/$defs/sha"}
+      }
+    },
+    "selection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["indicator_uuid", "module", "scenario"],
+      "properties": {
+        "indicator_uuid": {"type": "string", "minLength": 1},
+        "module": {"type": "string", "minLength": 1},
+        "scenario": {
+          "oneOf": [
+            {"type": "null"},
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["name", "group", "default"],
+              "properties": {
+                "name": {"type": "string", "minLength": 1},
+                "group": {"type": "string", "minLength": 1},
+                "default": {"type": "boolean"}
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sha": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+  }
+}
