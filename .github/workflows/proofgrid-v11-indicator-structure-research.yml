@@ -5,6 +5,7 @@ on:
     paths:
       - '.github/workflows/proofgrid-v11-indicator-structure-research.yml'
       - 'conformance/indicator-extraction-v11/**'
+      - 'requirements-proofgrid-v07.txt'
   workflow_dispatch:
 
 permissions:
