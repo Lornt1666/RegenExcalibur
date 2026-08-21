@@ -8,5 +8,6 @@
 # v1.1 final synchronized research/extraction/inherited acceptance trigger; dependency semantics unchanged.
 # v1.2 cross-run exact-decimal RXEP and inherited validation trigger only; dependency semantics unchanged.
 # v1.2 independent hosted reproducibility confirmation; dependency semantics unchanged.
+# v1.3 independent declared reference-basis reproduction and inherited validation trigger; dependency semantics unchanged.
 xmlschema==4.3.1
 elementpath==5.1.2
