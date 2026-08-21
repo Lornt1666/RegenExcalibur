@@ -1,0 +1,140 @@
+name: ProofGrid v1.6.1 Independent Scaling Reproduction
+
+on:
+  pull_request:
+    paths:
+      - "conformance/mapped-declared-result-v161/**"
+      - ".github/workflows/proofgrid-v161-independent-scaling.yml"
+      - "reference/mapped_declared_result_scale.py"
+      - "schemas/mapped-declared-result-v16*.json"
+      - "requirements-proofgrid.txt"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  reproduce:
+    strategy:
+      fail-fast: false
+      matrix:
+        replica: [a, b]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      V151_ARTIFACT_ID: "9451972654"
+      V151_ZIP_SHA256: "c09d136d1d720032b51b3337d3ade6b7318008d032c5e6115564e436bb24ef76"
+      V15_ARTIFACT_ID: "9451317205"
+      V15_ZIP_SHA256: "a09ae65ef0d221daadbd4cc1bbe7a21e252b92a29bd3bd21c433b13151741034"
+      V141_ARTIFACT_ID: "9450726883"
+      V141_ZIP_SHA256: "ab104603beb2e8643360ac45935ba82a189028a3c9e7319788153fa261fdb262"
+      V14_ARTIFACT_ID: "9450293777"
+      V14_ZIP_SHA256: "6bbc8efb8d762ce8171e94d27d5cffc42d34ab439bf5006cf6f79235cc7df4d2"
+
+    steps:
+      - uses: actions/checkout@v6.1.0
+      - uses: actions/setup-python@v6.0.0
+        with:
+          python-version: "3.11.16"
+          check-latest: false
+
+      - name: Install exact dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-proofgrid.txt
+          python -m pip check
+
+      - name: Download exact accepted parent artifacts independently
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ROOT="/tmp/proofgrid-v161-${{ matrix.replica }}"
+          mkdir -p "${ROOT}"/{v151,v15,v141,v14}
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V151_ARTIFACT_ID}/zip" > "${ROOT}/v151.zip"
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V15_ARTIFACT_ID}/zip" > "${ROOT}/v15.zip"
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V141_ARTIFACT_ID}/zip" > "${ROOT}/v141.zip"
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V14_ARTIFACT_ID}/zip" > "${ROOT}/v14.zip"
+          echo "${V151_ZIP_SHA256}  ${ROOT}/v151.zip" | sha256sum -c -
+          echo "${V15_ZIP_SHA256}  ${ROOT}/v15.zip" | sha256sum -c -
+          echo "${V141_ZIP_SHA256}  ${ROOT}/v141.zip" | sha256sum -c -
+          echo "${V14_ZIP_SHA256}  ${ROOT}/v14.zip" | sha256sum -c -
+          unzip -q "${ROOT}/v151.zip" -d "${ROOT}/v151"
+          unzip -q "${ROOT}/v15.zip" -d "${ROOT}/v15"
+          unzip -q "${ROOT}/v141.zip" -d "${ROOT}/v141"
+          unzip -q "${ROOT}/v14.zip" -d "${ROOT}/v14"
+
+      - name: Reproduce accepted v1.6 independently
+        run: |
+          set -euo pipefail
+          ROOT="/tmp/proofgrid-v161-${{ matrix.replica }}"
+          python conformance/mapped-declared-result-v161/reproduce.py \
+            --v151 "${ROOT}/v151" --v15 "${ROOT}/v15" --v141 "${ROOT}/v141" --v14 "${ROOT}/v14" \
+            --output-dir "${ROOT}/out" --replica "${{ matrix.replica }}"
+
+      - name: Upload replica evidence
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v161-replica-${{ matrix.replica }}
+          path: |
+            /tmp/proofgrid-v161-${{ matrix.replica }}/out/request.json
+            /tmp/proofgrid-v161-${{ matrix.replica }}/out/mapped-declared-result-calculation.json
+            /tmp/proofgrid-v161-${{ matrix.replica }}/out/mapped-declared-result-calculation-receipt.json
+            /tmp/proofgrid-v161-${{ matrix.replica }}/out/replica-receipt.json
+          if-no-files-found: error
+          retention-days: 30
+
+  compare:
+    needs: reproduce
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/setup-python@v6.0.0
+        with:
+          python-version: "3.11.16"
+          check-latest: false
+      - name: Download replica A
+        uses: actions/download-artifact@v4.3.0
+        with:
+          name: proofgrid-v161-replica-a
+          path: /tmp/v161/a
+      - name: Download replica B
+        uses: actions/download-artifact@v4.3.0
+        with:
+          name: proofgrid-v161-replica-b
+          path: /tmp/v161/b
+      - name: Require canonical byte identity
+        run: |
+          set -euo pipefail
+          for F in request.json mapped-declared-result-calculation.json mapped-declared-result-calculation-receipt.json; do
+            diff -u "/tmp/v161/a/${F}" "/tmp/v161/b/${F}"
+          done
+          echo "69921546aa24dd6e0e950964aa3e9bc8bd962f14ab6855f868a5fa8ed639e8d7  /tmp/v161/a/mapped-declared-result-calculation.json" | sha256sum -c -
+          echo "69921546aa24dd6e0e950964aa3e9bc8bd962f14ab6855f868a5fa8ed639e8d7  /tmp/v161/b/mapped-declared-result-calculation.json" | sha256sum -c -
+          echo "a21dbe86fce8eb707fc09b57f5638b8d8d1bcb99ae8712fb16fae2d2f894e69f  /tmp/v161/a/mapped-declared-result-calculation-receipt.json" | sha256sum -c -
+          echo "a21dbe86fce8eb707fc09b57f5638b8d8d1bcb99ae8712fb16fae2d2f894e69f  /tmp/v161/b/mapped-declared-result-calculation-receipt.json" | sha256sum -c -
+      - name: Produce independent comparison receipt
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/v161/comparison
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          root=Path('/tmp/v161')
+          sha=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
+          a=json.loads((root/'a/replica-receipt.json').read_text()); b=json.loads((root/'b/replica-receipt.json').read_text())
+          for key in ('record_content_sha256','record_file_sha256','calculation_receipt_sha256','calculation_receipt_file_sha256','scaled_result_decimal','scaled_result_unit','request_file_sha256'):
+              assert a[key]==b[key],(key,a[key],b[key])
+          assert a['replica']=='a' and b['replica']=='b'
+          report={'verdict':'MAPPED_DECLARED_RESULT_SCALED_INDEPENDENTLY_REPRODUCED','accepted_v16_head':'99876aadeef1b17bdf4a8a739df1c830fb80b9d3','replicas':['a','b'],'independent_runner_count':2,'byte_identical':True,'request_file_sha256':a['request_file_sha256'],'record_content_sha256':a['record_content_sha256'],'record_file_sha256':a['record_file_sha256'],'calculation_receipt_sha256':a['calculation_receipt_sha256'],'calculation_receipt_file_sha256':a['calculation_receipt_file_sha256'],'scaled_result_decimal':a['scaled_result_decimal'],'scaled_result_unit':a['scaled_result_unit'],'calculation_semantics_changed':False,'aggregation_performed':False,'unit_conversion_performed':False,'scientific_validation_performed':False,'professional_review_performed':False,'certified':False}
+          canonical=json.dumps(report,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode(); report['receipt_sha256']=hashlib.sha256(canonical).hexdigest()
+          out=root/'comparison/v161-independent-comparison-receipt.json'; out.write_text(json.dumps(report,indent=2,sort_keys=True)+'\n',encoding='utf-8',newline='\n'); print(json.dumps(report,indent=2,sort_keys=True))
+          PY
+      - name: Upload independent comparison receipt
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v161-independent-comparison
+          path: /tmp/v161/comparison/v161-independent-comparison-receipt.json
+          if-no-files-found: error
+          retention-days: 30
