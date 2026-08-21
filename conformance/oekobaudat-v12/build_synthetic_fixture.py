@@ -14,8 +14,6 @@ import hashlib
 import json
 from pathlib import Path
 import shutil
-import subprocess
-import tempfile
 from typing import Any
 import xml.etree.ElementTree as ET
 import zipfile
@@ -27,15 +25,14 @@ EPD_2013_NS = "http://www.iai.kit.edu/EPD/2013"
 EPD_2019_NS = "http://www.indata.network/EPD/2019"
 XML_NS = "http://www.w3.org/XML/1998/namespace"
 XSI_NS = "http://www.w3.org/2001/XMLSchema-instance"
-CATEGORIES_NS = "http://lca.jrc.it/ILCD/Categories"
 
 START_PROCESS_UUID = "57a4ae65-d305-421e-b21f-a3f0c35b8abe"
 SYNTHETIC_PROCESS_UUID = "6b47f4cf-0bc4-4e0d-b9fd-9d5f845d1de0"
 SYNTHETIC_REGISTRATION_NUMBER = "RX-PROOFGRID-V08-SYNTH-001"
 
-# The UUID below is one of the exact programme-operator identities allowed by
-# ÖKOBAUDAT profile 3.8.0. It is used only as a profile-conformance identifier
-# in a synthetic fixture and does not state affiliation, approval, or authority.
+# This is one of the exact programme-operator UUIDs accepted by ÖKOBAUDAT
+# profile 3.8.0. It is used only as a synthetic profile-conformance identifier.
+# It does not state affiliation, approval, registration, or source-use authority.
 PROFILE_ALLOWED_OPERATOR_UUID = "d111dbec-b024-4be5-86c5-752d6eb2cf95"
 PROFILE_ALLOWED_OPERATOR_NAME = "Institut Bauen und Umwelt e.V."
 
@@ -110,6 +107,7 @@ def build_index(sample_root: Path, master_root: Path) -> dict[str, dict[str, Any
 def copy_reference_closure(sample_root: Path, master_root: Path, package_root: Path) -> dict[str, Any]:
     index = build_index(sample_root, master_root)
     require(START_PROCESS_UUID in index, "pinned Wood panel process is not present in source index")
+
     queue = [START_PROCESS_UUID]
     seen: set[str] = set()
     missing: set[str] = set()
@@ -125,18 +123,21 @@ def copy_reference_closure(sample_root: Path, master_root: Path, package_root: P
         if row is None:
             missing.add(uuid)
             continue
+
         src: Path = row["path"]
         dest = package_root / type_dir(row["kind"]) / src.name
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src, dest)
         copied_source_by_dest[dest.resolve()] = src.resolve()
-        copied.append({
-            "uuid": uuid,
-            "kind": row["kind"],
-            "source": str(src),
-            "dest": str(dest.relative_to(package_root.parent)),
-            "sha256": sha256_file(src),
-        })
+        copied.append(
+            {
+                "uuid": uuid,
+                "kind": row["kind"],
+                "source": str(src),
+                "dest": str(dest.relative_to(package_root.parent)),
+                "sha256": sha256_file(src),
+            }
+        )
 
         tree = ET.parse(src)
         root = tree.getroot()
@@ -147,6 +148,7 @@ def copy_reference_closure(sample_root: Path, master_root: Path, package_root: P
                     queue.append(ref)
                 else:
                     missing.add(ref)
+
             for attr in ("locations", "classes"):
                 value = node.attrib.get(attr)
                 if not value:
@@ -162,28 +164,35 @@ def copy_reference_closure(sample_root: Path, master_root: Path, package_root: P
                     shutil.copy2(candidate, target)
 
     # Resolve non-UUID digital-file links from the original public sample tree.
+    # In ILCD sourceDataSet documents the path is carried by the `uri` attribute.
     copied_digital: list[dict[str, str]] = []
     for dest_resolved, src_resolved in list(copied_source_by_dest.items()):
         tree = ET.parse(dest_resolved)
         for node in tree.getroot().iter():
-            if local_name(node.tag) != "referenceToDigitalFile" or not node.text or not node.text.strip():
+            if local_name(node.tag) != "referenceToDigitalFile":
                 continue
-            rel_text = node.text.strip()
+            rel_text = (node.attrib.get("uri") or (node.text or "")).strip()
+            if not rel_text:
+                continue
+
             original = (src_resolved.parent / rel_text).resolve()
             target = (dest_resolved.parent / rel_text).resolve()
             try:
-                target.relative_to(package_root.parent.resolve())
+                target.relative_to(package_root.resolve())
             except ValueError as exc:
                 raise FixtureError(f"digital-file path escapes package: {rel_text}") from exc
+
             if original.is_file():
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(original, target)
-                copied_digital.append({
-                    "reference": rel_text,
-                    "source": str(original),
-                    "dest": str(target.relative_to(package_root.parent)),
-                    "sha256": sha256_file(original),
-                })
+                copied_digital.append(
+                    {
+                        "reference": rel_text,
+                        "source": str(original),
+                        "dest": str(target.relative_to(package_root.parent)),
+                        "sha256": sha256_file(original),
+                    }
+                )
 
     return {
         "copied": copied,
@@ -192,11 +201,13 @@ def copy_reference_closure(sample_root: Path, master_root: Path, package_root: P
     }
 
 
-def extract_profile_categories(profile_jar: Path, package_root: Path) -> tuple[Path, list[dict[str, str]]]:
+def extract_profile_categories(profile_jar: Path, evidence_root: Path) -> tuple[Path, list[dict[str, str]]]:
     with zipfile.ZipFile(profile_jar) as zf:
         require(PROFILE_CATEGORIES_RESOURCE in zf.namelist(), "ÖKOBAUDAT category resource missing from exact profile JAR")
         data = zf.read(PROFILE_CATEGORIES_RESOURCE)
-    category_path = package_root / "OEKOBAU.DAT_Categories.xml"
+
+    category_path = evidence_root / "oekobaudat-profile-categories.xml"
+    category_path.parent.mkdir(parents=True, exist_ok=True)
     category_path.write_bytes(data)
 
     root = ET.fromstring(data)
@@ -219,6 +230,7 @@ def extract_profile_categories(profile_jar: Path, package_root: Path) -> tuple[P
     for section in root.iter():
         if local_name(section.tag) == "categories" and section.attrib.get("dataType") == "Process":
             walk(section, [])
+
     require(candidates, "no process-category leaf found in ÖKOBAUDAT category resource")
     candidates.sort(key=lambda row: (-row[0], row[1]))
     return category_path, candidates[0][2]
@@ -249,7 +261,11 @@ def mutate_process(process_path: Path, category_path: list[dict[str, str]]) -> d
     require(name is not None, "process name missing")
     for base in name.findall(f"{{{PROCESS_NS}}}baseName"):
         lang = base.attrib.get(f"{{{XML_NS}}}lang")
-        base.text = "ProofGrid Synthetic Wood Panel — ÖKOBAUDAT 3.8.0 Conformance Fixture" if lang != "de" else "ProofGrid Synthetisches Holzpanel — ÖKOBAUDAT 3.8.0 Konformitätstest"
+        base.text = (
+            "ProofGrid Synthetic Wood Panel — ÖKOBAUDAT 3.8.0 Conformance Fixture"
+            if lang != "de"
+            else "ProofGrid Synthetisches Holzpanel — ÖKOBAUDAT 3.8.0 Konformitätstest"
+        )
 
     general = info.find(f"{{{COMMON_NS}}}generalComment")
     if general is not None:
@@ -263,9 +279,16 @@ def mutate_process(process_path: Path, category_path: list[dict[str, str]]) -> d
     for child in list(class_info):
         if local_name(child.tag) == "classification":
             class_info.remove(child)
-    classification = ET.SubElement(class_info, f"{{{COMMON_NS}}}classification", {"classes": "../OEKOBAU.DAT_Categories.xml"})
+
+    # Public InData v1.2 examples use the classification name `oekobau.dat`.
+    # The selected path is drawn from the exact 3.8.0 profile category resource.
+    classification = ET.SubElement(class_info, f"{{{COMMON_NS}}}classification", {"name": "oekobau.dat"})
     for level, entry in enumerate(category_path):
-        cls = ET.SubElement(classification, f"{{{COMMON_NS}}}class", {"level": str(level), "classId": entry["id"]})
+        cls = ET.SubElement(
+            classification,
+            f"{{{COMMON_NS}}}class",
+            {"level": str(level), "classId": entry["id"]},
+        )
         cls.text = entry["name"]
 
     removed_preceding = 0
@@ -299,6 +322,7 @@ def mutate_process(process_path: Path, category_path: list[dict[str, str]]) -> d
         "removed_preceding_dataset_references": removed_preceding,
         "changed_program_operator_references": changed_operator_refs,
         "selected_oekobaudat_category_path": category_path,
+        "classification_name": "oekobau.dat",
     }
 
 
@@ -309,12 +333,15 @@ def create_synthetic_operator_contact(source_contact: Path, target_contact: Path
     uuid_node = next((x for x in root.iter() if local_name(x.tag) == "UUID"), None)
     require(uuid_node is not None, "operator contact UUID missing")
     uuid_node.text = PROFILE_ALLOWED_OPERATOR_UUID
+
     for node in root.iter():
         if local_name(node.tag) in {"shortName", "name"}:
             node.text = PROFILE_ALLOWED_OPERATOR_NAME
+
     version = next((x for x in root.iter() if local_name(x.tag) == "dataSetVersion"), None)
     if version is not None:
         version.text = "00.00.002"
+
     target_contact.parent.mkdir(parents=True, exist_ok=True)
     tree.write(target_contact, encoding="utf-8", xml_declaration=True, short_empty_elements=True)
     return {
@@ -340,7 +367,7 @@ def build(sample_root: Path, master_root: Path, profile_jar: Path, output_root: 
     package_root.mkdir(parents=True)
 
     closure = copy_reference_closure(sample_root, master_root, package_root)
-    categories_file, category_path = extract_profile_categories(profile_jar, package_root)
+    categories_file, category_path = extract_profile_categories(profile_jar, output_root / "_profile_evidence")
 
     original_process = package_root / "processes" / "57a4ae65-d305-421e-b21f-a3f0c35b8abe.xml"
     require(original_process.is_file(), "closure did not include base process")
@@ -349,18 +376,29 @@ def build(sample_root: Path, master_root: Path, profile_jar: Path, output_root: 
     process_changes = mutate_process(synthetic_process, category_path)
 
     original_operator = package_root / "contacts" / "bee77d31-1837-404b-abdf-ef271c83e5a7.xml"
-    require(original_operator.is_file(), "closure did not include base operator contact")
+    require(original_operator.is_file(), "closure did not include base Swift contact")
     synthetic_operator = package_root / "contacts" / f"{PROFILE_ALLOWED_OPERATOR_UUID}.xml"
     operator_receipt = create_synthetic_operator_contact(original_operator, synthetic_operator)
-    original_operator.unlink()
+    # Retain the original Swift contact because public source-document datasets
+    # in the recursive closure still reference it independently of the process's
+    # registration-authority/publisher fields.
 
-    files = []
+    files: list[dict[str, Any]] = []
     for path in sorted(output_root.rglob("*")):
         if path.is_file():
-            files.append({"path": str(path.relative_to(output_root)), "sha256": sha256_file(path), "size": path.stat().st_size})
+            files.append(
+                {
+                    "path": str(path.relative_to(output_root)),
+                    "sha256": sha256_file(path),
+                    "size": path.stat().st_size,
+                }
+            )
 
     receipt: dict[str, Any] = {
-        "builder": {"name": "ProofGrid v0.8 synthetic ÖKOBAUDAT fixture builder", "version": "0.8.0-iteration-1"},
+        "builder": {
+            "name": "ProofGrid v0.8 synthetic ÖKOBAUDAT fixture builder",
+            "version": "0.8.0-iteration-2",
+        },
         "source": {
             "indata_v12_process_uuid": START_PROCESS_UUID,
             "source_semantics": "Pinned public Apache-2.0 InData sample plus pinned public InData master data.",
@@ -383,8 +421,10 @@ def build(sample_root: Path, master_root: Path, profile_jar: Path, output_root: 
         ],
     }
     receipt["receipt_sha256"] = canonical_sha256(receipt)
-    output_root.mkdir(parents=True, exist_ok=True)
-    (output_root / "fixture-build-receipt.json").write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    (output_root / "fixture-build-receipt.json").write_text(
+        json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
     return receipt
 
 
@@ -400,12 +440,20 @@ def main() -> int:
     except Exception as exc:
         print(f"ERROR: {exc}")
         return 2
-    print(json.dumps({
-        "receipt_sha256": receipt["receipt_sha256"],
-        "synthetic_process_uuid": receipt["process_changes"]["synthetic_process_uuid"],
-        "selected_category_path": receipt["process_changes"]["selected_oekobaudat_category_path"],
-        "output_files": len(receipt["output_files"]),
-    }, indent=2))
+
+    print(
+        json.dumps(
+            {
+                "receipt_sha256": receipt["receipt_sha256"],
+                "synthetic_process_uuid": receipt["process_changes"]["synthetic_process_uuid"],
+                "selected_category_path": receipt["process_changes"]["selected_oekobaudat_category_path"],
+                "classification_name": receipt["process_changes"]["classification_name"],
+                "copied_digital_files": len(receipt["closure"]["copied_digital_files"]),
+                "output_files": len(receipt["output_files"]),
+            },
+            indent=2,
+        )
+    )
     return 0
 
 
