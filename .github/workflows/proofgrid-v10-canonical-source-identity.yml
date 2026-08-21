@@ -1,13 +1,16 @@
-name: ProofGrid v1.0 Canonical Source Identity
+name: ProofGrid v1.0.1 Hardened Canonical Source Identity
 
 on:
   pull_request:
     paths:
       - '.github/workflows/proofgrid-v10-canonical-source-identity.yml'
       - 'reference/environmental_source_identity.py'
+      - 'reference/environmental_source_identity_v101.py'
       - 'reference/environmental_admission.py'
+      - 'reference/environmental_admission_v091.py'
       - 'schemas/environmental-source-identity.schema.json'
       - 'tests/test_environmental_source_identity.py'
+      - 'tests/test_environmental_admission_v091.py'
       - 'conformance/source-identity-v10/**'
       - 'requirements-proofgrid.txt'
       - 'requirements-proofgrid-v07.txt'
@@ -38,7 +41,13 @@ jobs:
           python -m pip install -r requirements-proofgrid-v07.txt
           python -m pip check
 
-      - name: Run v1.0 fail-closed unit suite
+      - name: Run v0.9.1 exact-stack adversarial suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest -v tests.test_environmental_admission_v091
+
+      - name: Run v1.0.1 fail-closed source-identity suite
         shell: bash
         run: |
           set -euo pipefail
@@ -53,7 +62,7 @@ jobs:
           import json
           from tests.test_environmental_source_identity import build_source, chain
 
-          root=Path('/tmp/proofgrid-v10')
+          root=Path('/tmp/proofgrid-v101')
           root.mkdir(parents=True,exist_ok=True)
           for version in ('1.2','1.3'):
               case=root/f'v{version.replace(".","")}'
@@ -65,14 +74,14 @@ jobs:
               (case/'source-path.txt').write_text(str(source)+'\n',encoding='utf-8')
           PY
 
-      - name: Normalize v1.2 twice and prove byte determinism
+      - name: Normalize v1.2 twice and prove hardened byte determinism
         shell: bash
         run: |
           set -euo pipefail
-          ROOT=/tmp/proofgrid-v10/v12
+          ROOT=/tmp/proofgrid-v101/v12
           SOURCE=$(cat "$ROOT/source-path.txt")
           for N in a b; do
-            python reference/environmental_source_identity.py \
+            python reference/environmental_source_identity_v101.py \
               --source "$SOURCE" \
               --preflight "$ROOT/preflight.json" \
               --conformance "$ROOT/conformance.json" \
@@ -83,30 +92,35 @@ jobs:
           diff -u "$ROOT/out-a/canonicalization-receipt.json" "$ROOT/out-b/canonicalization-receipt.json"
           python - <<'PY'
           import json
-          root='/tmp/proofgrid-v10/v12/out-a'
+          from reference import environmental_admission_v091 as admission
+          root='/tmp/proofgrid-v101/v12/out-a'
           record=json.load(open(root+'/canonical-source-identity.json'))
           receipt=json.load(open(root+'/canonicalization-receipt.json'))
           assert record['verdict']=='ADMITTED_ENVIRONMENTAL_SOURCE_IDENTITY_VERIFIABLE'
           assert record['source']['format_version']=='1.2'
           assert record['routing']['route']=='OEKOBAUDAT_V12_PROFILE_3_8_0'
           assert record['conformance']['profile_validation_performed'] is True
+          assert record['conformance']['official_stack']==admission.EXPECTED_V12_STACK
+          assert record['conformance']['official_stack_sha256']==admission.EXPECTED_V12_STACK_SHA256
           assert record['impact_values_normalized'] is False
           assert record['scientific_validation_performed'] is False
           assert record['professional_review_performed'] is False
           assert record['certified'] is False
           assert record['rxep_bridge']['review_state_elevation_permitted'] is False
+          assert receipt['engine']['version']=='1.0.1'
           assert receipt['certified'] is False
-          print('V10_V12_CANONICALIZATION=PASS')
+          print('V101_V12_HARDENED_CANONICALIZATION=PASS')
+          print('official_stack_sha256=', admission.EXPECTED_V12_STACK_SHA256)
           PY
 
       - name: Normalize v1.3 twice and prove byte determinism
         shell: bash
         run: |
           set -euo pipefail
-          ROOT=/tmp/proofgrid-v10/v13
+          ROOT=/tmp/proofgrid-v101/v13
           SOURCE=$(cat "$ROOT/source-path.txt")
           for N in a b; do
-            python reference/environmental_source_identity.py \
+            python reference/environmental_source_identity_v101.py \
               --source "$SOURCE" \
               --preflight "$ROOT/preflight.json" \
               --conformance "$ROOT/conformance.json" \
@@ -117,7 +131,7 @@ jobs:
           diff -u "$ROOT/out-a/canonicalization-receipt.json" "$ROOT/out-b/canonicalization-receipt.json"
           python - <<'PY'
           import json
-          root='/tmp/proofgrid-v10/v13/out-a'
+          root='/tmp/proofgrid-v101/v13/out-a'
           record=json.load(open(root+'/canonical-source-identity.json'))
           receipt=json.load(open(root+'/canonicalization-receipt.json'))
           assert record['verdict']=='ADMITTED_ENVIRONMENTAL_SOURCE_IDENTITY_VERIFIABLE'
@@ -129,19 +143,47 @@ jobs:
           assert record['professional_review_performed'] is False
           assert record['certified'] is False
           assert record['rxep_bridge']['review_state_elevation_permitted'] is False
+          assert receipt['engine']['version']=='1.0.1'
           assert receipt['certified'] is False
-          print('V10_V13_CANONICALIZATION=PASS')
+          print('V101_V13_CANONICALIZATION=PASS')
           PY
+
+      - name: Prove hardened CLI rejects forged v1.2 stack
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT=/tmp/proofgrid-v101/v12
+          python - <<'PY'
+          import json
+          p='/tmp/proofgrid-v101/v12/conformance.json'
+          d=json.load(open(p))
+          d['official_stack']['profile']['jar_sha256']='9'*64
+          d.pop('receipt_sha256',None)
+          import hashlib
+          raw=json.dumps(d,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()
+          d['receipt_sha256']=hashlib.sha256(raw).hexdigest()
+          json.dump(d,open('/tmp/proofgrid-v101/v12/forged-conformance.json','w'),indent=2,sort_keys=True)
+          PY
+          if python reference/environmental_source_identity_v101.py \
+            --source "$(cat "$ROOT/source-path.txt")" \
+            --preflight "$ROOT/preflight.json" \
+            --conformance "$ROOT/forged-conformance.json" \
+            --admission "$ROOT/admission.json" \
+            --output-dir "$ROOT/should-not-exist-forged"; then
+            echo 'forged v1.2 stack unexpectedly normalized' >&2
+            exit 1
+          fi
+          echo 'FORGED_V12_STACK_REJECTED=PASS'
 
       - name: Prove CLI rejects post-admission source tampering
         shell: bash
         run: |
           set -euo pipefail
-          ROOT=/tmp/proofgrid-v10/v13
+          ROOT=/tmp/proofgrid-v101/v13
           SOURCE=$(cat "$ROOT/source-path.txt")
           cp "$SOURCE" "$ROOT/tampered.xml"
           printf '\n' >> "$ROOT/tampered.xml"
-          if python reference/environmental_source_identity.py \
+          if python reference/environmental_source_identity_v101.py \
             --source "$ROOT/tampered.xml" \
             --preflight "$ROOT/preflight.json" \
             --conformance "$ROOT/conformance.json" \
@@ -152,21 +194,24 @@ jobs:
           fi
           echo 'POST_ADMISSION_SOURCE_TAMPER_REJECTED=PASS'
 
-      - name: Produce v1.0 integration receipt
+      - name: Produce v1.0.1 integration receipt
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
           import hashlib,json
-          root=Path('/tmp/proofgrid-v10')
+          from reference import environmental_admission_v091 as admission
+          root=Path('/tmp/proofgrid-v101')
           def load(path): return json.loads(path.read_text())
           v12=load(root/'v12/out-a/canonicalization-receipt.json')
           v13=load(root/'v13/out-a/canonicalization-receipt.json')
           report={
             'verdict':'ADMITTED_ENVIRONMENTAL_SOURCE_IDENTITY_VERIFIABLE',
             'certified':False,
-            'engine':{'name':'RegenExcalibur ProofGrid v1.0 canonical source identity integration','version':'1.0.0'},
+            'engine':{'name':'RegenExcalibur ProofGrid v1.0.1 hardened canonical source identity integration','version':'1.0.1'},
+            'parent_admission_version':'0.9.1',
+            'v12_official_stack_sha256':admission.EXPECTED_V12_STACK_SHA256,
             'v12':{
               'record_file_sha256':v12['record_file_sha256'],
               'record_content_sha256':v12['record_content_sha256'],
@@ -182,30 +227,32 @@ jobs:
               'impact_values_normalized':v13['impact_values_normalized'],
             },
             'deterministic_repetition':True,
+            'forged_v12_stack_rejected':True,
             'post_admission_source_tamper_rejected':True,
             'scientific_validation_performed':False,
             'professional_review_performed':False,
             'rxep_review_state_elevation_permitted':False,
             'limitations':[
-              'v1.0 normalizes admitted environmental source identity/provenance metadata only.',
+              'v1.0.1 normalizes admitted environmental source identity/provenance metadata only.',
+              'The v1.2 route is accepted only when the full pinned validator/profile JAR/POM/include fingerprint matches exactly.',
               'No environmental impact values, scientific validity, professional review, programme-operator/BBSR approval, or certification are produced by this gate.'
             ]
           }
           raw=json.dumps(report,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()
           report['receipt_sha256']=hashlib.sha256(raw).hexdigest()
-          (root/'v10-integration-receipt.json').write_text(json.dumps(report,indent=2,sort_keys=True,ensure_ascii=False)+'\n')
+          (root/'v101-integration-receipt.json').write_text(json.dumps(report,indent=2,sort_keys=True,ensure_ascii=False)+'\n')
           print(json.dumps(report,indent=2,sort_keys=True,ensure_ascii=False))
           PY
 
-      - name: Retain canonical records and receipts only
+      - name: Retain hardened canonical records and receipts only
         uses: actions/upload-artifact@v4.6.2
         with:
-          name: proofgrid-v10-canonical-source-identity
+          name: proofgrid-v101-hardened-canonical-source-identity
           path: |
-            /tmp/proofgrid-v10/v10-integration-receipt.json
-            /tmp/proofgrid-v10/v12/out-a/canonical-source-identity.json
-            /tmp/proofgrid-v10/v12/out-a/canonicalization-receipt.json
-            /tmp/proofgrid-v10/v13/out-a/canonical-source-identity.json
-            /tmp/proofgrid-v10/v13/out-a/canonicalization-receipt.json
+            /tmp/proofgrid-v101/v101-integration-receipt.json
+            /tmp/proofgrid-v101/v12/out-a/canonical-source-identity.json
+            /tmp/proofgrid-v101/v12/out-a/canonicalization-receipt.json
+            /tmp/proofgrid-v101/v13/out-a/canonical-source-identity.json
+            /tmp/proofgrid-v101/v13/out-a/canonicalization-receipt.json
           if-no-files-found: error
           retention-days: 30
