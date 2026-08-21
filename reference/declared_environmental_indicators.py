@@ -88,6 +88,12 @@ def local_name(tag: str) -> str:
     return tag.rsplit("}", 1)[-1] if "}" in tag else tag
 
 
+def epd_attribute(node: ET.Element, name: str) -> str | None:
+    """Return only an attribute in the researched EPD/2013 namespace."""
+
+    return node.attrib.get(f"{{{EPD_2013_NS}}}{name}")
+
+
 def validate_schema(instance: dict[str, Any]) -> None:
     schema = load_json(SCHEMA_PATH)
     try:
@@ -153,7 +159,10 @@ def load_frozen_map(path: Path = FROZEN_MAP_PATH) -> tuple[dict[str, Any], str]:
         data.get("upstreams", {}).get("ef30_catalogue_sha256") == EXPECTED_EF30_SHA256,
         "frozen map EF3.0 catalogue digest mismatch",
     )
-    require(data.get("structure", {}).get("unscoped_mean_amount_extracted") is False, "frozen map may not authorize meanAmount extraction")
+    structure = data.get("structure", {})
+    require(structure.get("amount_namespace") == EPD_2013_NS, "frozen map amount namespace mismatch")
+    require(structure.get("attribute_namespace") == EPD_2013_NS, "frozen map attribute namespace mismatch")
+    require(structure.get("unscoped_mean_amount_extracted") is False, "frozen map may not authorize meanAmount extraction")
     return data, sha256_file(path)
 
 
@@ -214,14 +223,14 @@ def scenario_registry(root: ET.Element) -> dict[str, dict[str, Any]]:
         return {}
     result: dict[str, dict[str, Any]] = {}
     for node in scenarios.findall(f"{{{EPD_2013_NS}}}scenario"):
-        name = (node.attrib.get("name") or "").strip()
-        require(bool(name), "declared scenario is missing a name")
+        name = (epd_attribute(node, "name") or "").strip()
+        require(bool(name), "declared scenario is missing a namespaced EPD name")
         require(name not in result, f"duplicate declared scenario name: {name}")
-        default_lexical = (node.attrib.get("default") or "false").lower()
+        default_lexical = (epd_attribute(node, "default") or "false").lower()
         require(default_lexical in {"true", "false"}, f"invalid scenario default flag for {name}: {default_lexical}")
         result[name] = {
             "name": name,
-            "group": (node.attrib.get("group") or "").strip() or None,
+            "group": (epd_attribute(node, "group") or "").strip() or None,
             "default": default_lexical == "true",
         }
     return result
@@ -297,9 +306,9 @@ def extract_record(
     seen: set[tuple[str, str | None]] = set()
     rows: list[dict[str, Any]] = []
     for amount_ordinal, amount in enumerate(amounts, start=1):
-        module = (amount.attrib.get("module") or "").strip()
-        require(module in supported_modules, f"unsupported or missing lifecycle module: {module!r}")
-        scenario_name = (amount.attrib.get("scenario") or "").strip() or None
+        module = (epd_attribute(amount, "module") or "").strip()
+        require(module in supported_modules, f"unsupported or missing namespaced lifecycle module: {module!r}")
+        scenario_name = (epd_attribute(amount, "scenario") or "").strip() or None
         scenario: dict[str, Any] | None = None
         if scenario_name is not None:
             require(scenario_name in scenarios, f"module amount references undeclared scenario: {scenario_name}")
@@ -386,7 +395,7 @@ def extract_record(
             "aggregation_performed": False,
         },
         "limitations": [
-            "v1.1 extracts only values explicitly declared as EPD/2013 amount elements for the exact frozen GWP-total identity.",
+            "v1.1 extracts only values explicitly declared as EPD/2013 amount elements with EPD/2013 namespaced identity attributes for the exact frozen GWP-total identity.",
             "No missing lifecycle module is converted to zero; absent values remain absent.",
             "No unit conversion or lifecycle-module aggregation is performed.",
             "Declared-value extraction does not establish scientific validity, product representativeness, professional LCA review, programme-operator/BBSR approval, provider authority, code/engineering/architectural approval, regulatory approval, or certification.",
