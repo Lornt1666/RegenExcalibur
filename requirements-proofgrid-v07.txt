@@ -1,0 +1,4 @@
+# ProofGrid v0.7 authoritative ILCD+EPD v1.3 conformance dependencies.
+# Separate from requirements-proofgrid.txt so the frozen R5 reproduction lock is unchanged.
+xmlschema==4.3.2
+elementpath==5.1.2
