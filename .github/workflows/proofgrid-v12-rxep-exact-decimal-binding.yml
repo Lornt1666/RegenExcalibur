@@ -1,0 +1,249 @@
+name: ProofGrid v1.2 RXEP Exact Decimal Binding
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/proofgrid-v12-rxep-exact-decimal-binding.yml'
+      - 'reference/rxep_declared_indicator_binding.py'
+      - 'specs/rxep/v0.2/**'
+      - 'schemas/rxep-v02-declared-indicator-bundle.schema.json'
+      - 'tests/test_rxep_declared_indicator_binding.py'
+      - 'requirements-proofgrid.txt'
+      - 'requirements-proofgrid-v07.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rxep-exact-decimal-binding:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v6.1.0
+
+      - name: Prove RXEP v0.1 schema is unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object specs/rxep/evidence-envelope.schema.json)" = '730e81f97e06b41e67fafdabfb74a90d627f5555'
+          echo 'RXEP_V01_UNCHANGED=PASS'
+
+      - name: Setup Python 3.11.16
+        uses: actions/setup-python@v6.0.0
+        with:
+          python-version: '3.11.16'
+
+      - name: Install exact ProofGrid dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-proofgrid.txt
+          python -m pip install -r requirements-proofgrid-v07.txt
+          python -m pip check
+
+      - name: Run v1.2 fail-closed unit suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest -v tests.test_rxep_declared_indicator_binding
+
+      - name: Checkout pinned InData v1.2 parent structure
+        uses: actions/checkout@v6.1.0
+        with:
+          repository: InDataWG/ILCD-EPD-Data-Format
+          ref: b7233bd2dd5435a6b5973505ffa212cd03d23468
+          path: .proofgrid-upstream/indata-v12
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Checkout pinned InData v1.3 parent structure
+        uses: actions/checkout@v6.1.0
+        with:
+          repository: InDataWG/ILCD-EPD-Data-Format
+          ref: 7625c7dfc0d5b6bc2020eb0cf0b0503349c914aa
+          path: .proofgrid-upstream/indata-v13
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Stage exact v1.1 parent records with TEST_ONLY receipt chains
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import json, zipfile
+          from tests.test_declared_environmental_indicators import receipt_chain, write_zip_entry
+          from reference import environmental_source_identity as canonical
+          from reference import declared_environmental_indicators as declared
+
+          root=Path('/tmp/proofgrid-v12-rxep'); root.mkdir(parents=True,exist_ok=True)
+          for version in ('1.2','1.3'):
+              case=root/f'v{version.replace(".","")}'
+              case.mkdir()
+              if version=='1.2':
+                  raw=Path('.proofgrid-upstream/indata-v12/sample_data/processes/57a4ae65-d305-421e-b21f-a3f0c35b8abe.xml').read_bytes()
+                  source=case/'source.zip'
+                  with zipfile.ZipFile(source,'w',compression=zipfile.ZIP_STORED) as zf:
+                      write_zip_entry(zf,'ILCD/processes/57a4ae65-d305-421e-b21f-a3f0c35b8abe.xml',raw)
+                  media='application/zip'
+              else:
+                  source=case/'source.xml'
+                  source.write_bytes(Path('.proofgrid-upstream/indata-v13/sample_data/processes/EPDv1.3_example_57a4ae65-d305-421e-b21f-a3f0c35b8abe.xml').read_bytes())
+                  media='application/xml'
+              pre,conf,final=receipt_chain(source,media,version)
+              canonical_record=canonical.build_record(source,pre,conf,final)
+              extraction=declared.extract_record(source,canonical_record)
+              record_path=case/'declared-environmental-indicators.json'
+              record_bytes=(json.dumps(extraction,indent=2,sort_keys=True,ensure_ascii=False)+'\n').encode()
+              record_path.write_bytes(record_bytes)
+              receipt=declared.build_receipt(extraction,record_bytes)
+              (case/'extraction-receipt.json').write_text(json.dumps(receipt,indent=2,sort_keys=True,ensure_ascii=False)+'\n')
+          print('PARENT_SCOPE=PINNED_PUBLIC_STRUCTURE_WITH_TEST_ONLY_SYNTHETIC_ADMISSION_CHAIN')
+          PY
+
+      - name: Bind v1.2 parent to RXEP v0.2 twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT=/tmp/proofgrid-v12-rxep/v12
+          for N in a b; do
+            python reference/rxep_declared_indicator_binding.py \
+              --extraction-record "$ROOT/declared-environmental-indicators.json" \
+              --extraction-receipt "$ROOT/extraction-receipt.json" \
+              --output-dir "$ROOT/out-$N"
+          done
+          diff -u "$ROOT/out-a/rxep-v02-declared-indicator-bundle.json" "$ROOT/out-b/rxep-v02-declared-indicator-bundle.json"
+          diff -u "$ROOT/out-a/rxep-v02-binding-receipt.json" "$ROOT/out-b/rxep-v02-binding-receipt.json"
+
+      - name: Bind v1.3 parent to RXEP v0.2 twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT=/tmp/proofgrid-v12-rxep/v13
+          for N in a b; do
+            python reference/rxep_declared_indicator_binding.py \
+              --extraction-record "$ROOT/declared-environmental-indicators.json" \
+              --extraction-receipt "$ROOT/extraction-receipt.json" \
+              --output-dir "$ROOT/out-$N"
+          done
+          diff -u "$ROOT/out-a/rxep-v02-declared-indicator-bundle.json" "$ROOT/out-b/rxep-v02-declared-indicator-bundle.json"
+          diff -u "$ROOT/out-a/rxep-v02-binding-receipt.json" "$ROOT/out-b/rxep-v02-binding-receipt.json"
+
+      - name: Verify bounded RXEP v0.2 semantics
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          expected_values=[
+            '15.559479677163699','3.890472762252513','10.403452605105544',
+            '16.861343234824155','12.55722191320309','21.473728298846915',
+            '29.83997231119644','10.621689444677362','37.34889504407421'
+          ]
+          for version in ('v12','v13'):
+              d=json.load(open(f'/tmp/proofgrid-v12-rxep/{version}/out-a/rxep-v02-declared-indicator-bundle.json'))
+              assert d['verdict']=='RXEP_DECLARED_INDICATOR_EVIDENCE_BOUND_VERIFIABLE'
+              assert d['protocol_version']=='0.2'
+              assert d['review_state']=='CLAIMED'
+              assert d['signed'] is False
+              assert d['certified'] is False
+              assert d['envelope_count']==9
+              values=[]
+              for env in d['envelopes']:
+                  assert env['protocol_version']=='0.2'
+                  assert env['claim']['type']=='SOURCE_DECLARED_ENVIRONMENTAL_INDICATOR'
+                  assert env['review']=={'state':'CLAIMED','reviewer':None}
+                  assert env['integrity']['signature'] is None
+                  assert env['measurement']['value_origin']=='DECLARED_IN_SOURCE'
+                  assert env['measurement']['calculated'] is False
+                  assert env['measurement']['unit_conversion_performed'] is False
+                  assert 'value' not in env['measurement']
+                  assert env['methodology']['formula'] is None
+                  assert env['methodology']['aggregation_performed'] is False
+                  assert env['evidence_dimensions']['scientific_validity']=='NOT_EVALUATED'
+                  assert env['evidence_dimensions']['professional_review']=='NOT_EVALUATED'
+                  assert env['evidence_dimensions']['certification']=='NOT_EVALUATED'
+                  assert env['jurisdiction']=='SOURCE_DECLARATION_ONLY_NO_REGULATORY_APPLICABILITY_INFERRED'
+                  values.append(env['measurement']['value_decimal'])
+              assert values==expected_values,(version,values)
+          print('RXEP_V02_BOUNDED_SEMANTICS=PASS')
+          PY
+
+      - name: Prove automatic review elevation fails through CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT=/tmp/proofgrid-v12-rxep/v13
+          if python reference/rxep_declared_indicator_binding.py \
+            --extraction-record "$ROOT/declared-environmental-indicators.json" \
+            --extraction-receipt "$ROOT/extraction-receipt.json" \
+            --review-state REVIEWED \
+            --output-dir "$ROOT/should-not-exist"; then
+            echo 'automatic REVIEWED elevation unexpectedly succeeded' >&2
+            exit 1
+          fi
+          echo 'RXEP_REVIEW_ELEVATION_REJECTED=PASS'
+
+      - name: Produce v1.2 integration receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib,json,subprocess
+          root=Path('/tmp/proofgrid-v12-rxep')
+          def load(path): return json.loads(path.read_text())
+          v12=load(root/'v12/out-a/rxep-v02-binding-receipt.json')
+          v13=load(root/'v13/out-a/rxep-v02-binding-receipt.json')
+          report={
+            'verdict':'RXEP_DECLARED_INDICATOR_EVIDENCE_BOUND_VERIFIABLE',
+            'protocol_version':'0.2',
+            'certified':False,
+            'review_state':'CLAIMED',
+            'signed':False,
+            'rxep_v01_git_blob':'730e81f97e06b41e67fafdabfb74a90d627f5555',
+            'rxep_v01_unchanged':True,
+            'parent_v11_head':'356457fd510ae8d267ee708c85f5428699ca66a1',
+            'v12':{
+              'binding_receipt_sha256':v12['receipt_sha256'],
+              'bundle_content_sha256':v12['bundle_content_sha256'],
+              'bundle_file_sha256':v12['bundle_file_sha256'],
+              'envelope_count':v12['envelope_count']
+            },
+            'v13':{
+              'binding_receipt_sha256':v13['receipt_sha256'],
+              'bundle_content_sha256':v13['bundle_content_sha256'],
+              'bundle_file_sha256':v13['bundle_file_sha256'],
+              'envelope_count':v13['envelope_count']
+            },
+            'deterministic_repeat_within_run':True,
+            'automatic_review_elevation_rejected':True,
+            'binary_float_integrity_authority':False,
+            'scientific_validation_performed':False,
+            'professional_review_performed':False,
+            'limitations':[
+              'RXEP v0.2 envelopes assert only what the admitted source declares; they do not establish scientific correctness or real-product representativeness.',
+              'All envelopes remain CLAIMED, unsigned, non-calculated, non-converted, and non-certified.'
+            ]
+          }
+          raw=json.dumps(report,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()
+          report['receipt_sha256']=hashlib.sha256(raw).hexdigest()
+          (root/'v12-rxep-integration-receipt.json').write_text(json.dumps(report,indent=2,sort_keys=True,ensure_ascii=False)+'\n')
+          print(json.dumps(report,indent=2,sort_keys=True,ensure_ascii=False))
+          PY
+
+      - name: Retain RXEP bundles and receipts only
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v12-rxep-exact-decimal-binding
+          path: |
+            /tmp/proofgrid-v12-rxep/v12-rxep-integration-receipt.json
+            /tmp/proofgrid-v12-rxep/v12/out-a/rxep-v02-declared-indicator-bundle.json
+            /tmp/proofgrid-v12-rxep/v12/out-a/rxep-v02-binding-receipt.json
+            /tmp/proofgrid-v12-rxep/v13/out-a/rxep-v02-declared-indicator-bundle.json
+            /tmp/proofgrid-v12-rxep/v13/out-a/rxep-v02-binding-receipt.json
+          if-no-files-found: error
+          retention-days: 30
