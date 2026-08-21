@@ -8,7 +8,16 @@ IFC_AVAILABLE = importlib.util.find_spec("ifcopenshell") is not None
 
 @unittest.skipUnless(IFC_AVAILABLE, "IfcOpenShell not installed")
 class IFCExtractionV04Tests(unittest.TestCase):
-    def build_model(self, path: Path, *, prefix: str | None = None, duplicate_conflict: bool = False, include_quantity: bool = True, use_layer_set: bool = False) -> None:
+    def build_model(
+        self,
+        path: Path,
+        *,
+        prefix: str | None = None,
+        duplicate_conflict: bool = False,
+        include_quantity: bool = True,
+        use_layer_set: bool = False,
+        unnamed_material: bool = False,
+    ) -> None:
         import ifcopenshell
         import ifcopenshell.guid
 
@@ -35,7 +44,8 @@ class IFCExtractionV04Tests(unittest.TestCase):
             layer2 = model.create_entity("IfcMaterialLayer", Material=insulation, LayerThickness=0.089)
             relating_material = model.create_entity("IfcMaterialLayerSet", MaterialLayers=[layer1, layer2], LayerSetName="Wall Layers")
         else:
-            relating_material = model.create_entity("IfcMaterial", Name="Concrete")
+            material_name = "" if unnamed_material else "Concrete"
+            relating_material = model.create_entity("IfcMaterial", Name=material_name)
         model.create_entity("IfcRelAssociatesMaterial", GlobalId=ifcopenshell.guid.new(), RelatedObjects=[wall], RelatingMaterial=relating_material)
 
         if include_quantity:
@@ -111,6 +121,15 @@ class IFCExtractionV04Tests(unittest.TestCase):
             names = [item["name"] for item in wall["materials"]]
             self.assertEqual(names, ["Gypsum Board", "Insulation"])
             self.assertTrue(all(item["source_type"] == "IfcMaterialLayerSet" for item in wall["materials"]))
+
+    def test_ambiguous_blank_material_name_is_preserved_and_warned(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "unnamed-material.ifc"
+            self.build_model(path, unnamed_material=True)
+            wall = self.wall(self.extract(path))
+            self.assertEqual(wall["materials"][0]["name"], "")
+            self.assertTrue(any(warning.startswith("MATERIAL_NAME_MISSING:IfcMaterial") for warning in wall["warnings"]))
+            self.assertNotIn("source_record_id", wall["materials"][0])
 
 
 if __name__ == "__main__":
