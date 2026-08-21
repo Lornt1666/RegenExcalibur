@@ -1,0 +1,10 @@
+FICTIONAL DEMONSTRATION FACTORS — DO NOT USE FOR REAL PROJECTS
+RegenExcalibur ProofGrid v0.3 synthetic test source.
+Purpose: deterministic software testing only.
+
+Records:
+RX-FICT-WOOD-A1A3: dimensional lumber; 1 kg reference quantity; GWP 0.08 kgCO2e; modules A1-A3.
+RX-FICT-CONCRETE-A1A3: concrete; 1 kg reference quantity; GWP 0.12 kgCO2e; modules A1-A3.
+RX-FICT-STEEL-A1A3: reinforcing steel; 1 kg reference quantity; GWP 1.4 kgCO2e; modules A1-A3.
+
+These values are fabricated synthetic test data. They are not EPDs, verified datasets, engineering data, procurement data, code evidence, or environmental declarations.
