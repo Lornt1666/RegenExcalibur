@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://regenexcalibur.example/schemas/lca-source-records.schema.json",
+  "title": "ProofGrid LCA/EPD Source Registry v0.3",
+  "type": "array",
+  "minItems": 1,
+  "items": {
+    "type": "object",
+    "required": ["id", "material", "declared_unit", "reference_quantity", "indicator", "system_boundary", "source", "synthetic", "limitations", "data_quality_flags"],
+    "properties": {
+      "id": {"type": "string", "minLength": 1},
+      "material": {
+        "type": "object",
+        "required": ["id", "name"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "name": {"type": "string", "minLength": 1}
+        },
+        "additionalProperties": false
+      },
+      "declared_unit": {"type": "string", "minLength": 1},
+      "reference_quantity": {"type": "number", "exclusiveMinimum": 0},
+      "indicator": {
+        "type": "object",
+        "required": ["name", "value", "unit"],
+        "properties": {
+          "name": {"type": "string", "minLength": 1},
+          "value": {"type": "number"},
+          "unit": {"type": "string", "minLength": 1}
+        },
+        "additionalProperties": false
+      },
+      "system_boundary": {
+        "type": "object",
+        "required": ["modules"],
+        "properties": {
+          "modules": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+        },
+        "additionalProperties": false
+      },
+      "source": {
+        "type": "object",
+        "required": ["publisher", "document_id", "version", "verification", "reference", "source_content_sha256", "redistribution_status"],
+        "properties": {
+          "publisher": {"type": "string", "minLength": 1},
+          "document_id": {"type": "string", "minLength": 1},
+          "version": {"type": "string", "minLength": 1},
+          "publication_date": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$"},
+          "geography": {"type": "string", "minLength": 1},
+          "verification": {
+            "type": "object",
+            "required": ["state", "evidence_reference"],
+            "properties": {
+              "state": {"enum": ["UNVERIFIED", "THIRD_PARTY_VERIFIED", "PROGRAM_OPERATOR_VERIFIED"]},
+              "evidence_reference": {"type": ["string", "null"]}
+            },
+            "allOf": [{
+              "if": {"properties": {"state": {"not": {"const": "UNVERIFIED"}}}},
+              "then": {"properties": {"evidence_reference": {"type": "string", "minLength": 1}}}
+            }],
+            "additionalProperties": false
+          },
+          "reference": {"type": "string", "minLength": 1},
+          "source_uri": {"type": "string", "minLength": 1},
+          "source_content_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "redistribution_status": {"enum": ["SYNTHETIC_OPEN", "REDISTRIBUTABLE", "REFERENCE_ONLY", "RESTRICTED"]}
+        },
+        "additionalProperties": false
+      },
+      "synthetic": {"type": "boolean"},
+      "limitations": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+      "data_quality_flags": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+    },
+    "additionalProperties": false
+  }
+}
