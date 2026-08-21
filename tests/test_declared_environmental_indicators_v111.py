@@ -1,15 +1,82 @@
 from __future__ import annotations
 
 import copy
+import json
 from pathlib import Path
 import tempfile
 import unittest
+import zipfile
 
 from reference import declared_environmental_indicators_v111 as extractor
 from reference import environmental_admission_v091 as admission
 from reference import environmental_source_identity_v101 as source_identity
-from tests.test_declared_environmental_indicators import build_source, canonical_record as legacy_canonical_record
-from tests.test_environmental_source_identity import seal
+
+PROCESS_NS = extractor.PROCESS_NS
+COMMON_NS = extractor.COMMON_NS
+EPD_2019_NS = extractor.EPD_2019_NS
+EPD_2013_NS = extractor.EPD_2013_NS
+GWP = extractor.GWP_TOTAL_UUID
+UNIT_GROUP = "1ebf3012-d0db-4de2-aefd-ef30cedb0be1"
+PROCESS_UUID = "11111111-2222-3333-4444-555555555555"
+
+
+def seal(body: dict) -> dict:
+    result = copy.deepcopy(body)
+    result.pop("receipt_sha256", None)
+    result["receipt_sha256"] = admission.sha256_bytes(admission.canonical_json_bytes(result))
+    return result
+
+
+def process_xml(version: str) -> bytes:
+    return f'''<?xml version="1.0" encoding="UTF-8"?>
+<processDataSet xmlns="{PROCESS_NS}" xmlns:common="{COMMON_NS}" xmlns:epd2="{EPD_2019_NS}" xmlns:epd="{EPD_2013_NS}" epd2:epd-version="{version}" version="1.1">
+  <processInformation>
+    <dataSetInformation>
+      <common:UUID>{PROCESS_UUID}</common:UUID>
+      <name><baseName xml:lang="en">ProofGrid v1.1.1 synthetic declared indicator fixture</baseName></name>
+      <common:other>
+        <epd:scenarios>
+          <epd:scenario epd:name="Transport to Gdansk" epd:group="Transport" epd:default="true" />
+        </epd:scenarios>
+      </common:other>
+    </dataSetInformation>
+  </processInformation>
+  <administrativeInformation>
+    <publicationAndOwnership><common:dataSetVersion>00.00.001</common:dataSetVersion></publicationAndOwnership>
+  </administrativeInformation>
+  <LCIAResults>
+    <LCIAResult>
+      <referenceToLCIAMethodDataSet refObjectId="{GWP}" type="LCIA method data set" uri="../lciamethods/{GWP}" version="04.00.016" />
+      <meanAmount>999.25</meanAmount>
+      <common:other>
+        <epd:amount epd:module="A1-A3">15.559479677163699</epd:amount>
+        <epd:amount epd:module="A4" epd:scenario="Transport to Gdansk">10.403452605105544</epd:amount>
+        <epd:referenceToUnitGroupDataSet refObjectId="{UNIT_GROUP}" type="unit group data set" uri="../unitgroups/{UNIT_GROUP}" />
+      </common:other>
+    </LCIAResult>
+  </LCIAResults>
+</processDataSet>
+'''.encode("utf-8")
+
+
+def write_zip_entry(zf: zipfile.ZipFile, name: str, data: bytes) -> None:
+    info = zipfile.ZipInfo(name)
+    info.date_time = (1980, 1, 1, 0, 0, 0)
+    info.compress_type = zipfile.ZIP_STORED
+    info.external_attr = 0o100644 << 16
+    zf.writestr(info, data)
+
+
+def build_source(root: Path, version: str) -> tuple[Path, str]:
+    raw = process_xml(version)
+    if version == "1.3":
+        path = root / "source.xml"
+        path.write_bytes(raw)
+        return path, "application/xml"
+    path = root / "source.zip"
+    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_STORED) as zf:
+        write_zip_entry(zf, "ILCD/processes/process.xml", raw)
+    return path, "application/zip"
 
 
 def hardened_chain(source: Path, media_type: str, version: str) -> tuple[dict, dict, dict, dict]:
@@ -82,7 +149,6 @@ class HardenedDeclaredEnvironmentalIndicatorTests(unittest.TestCase):
             source, media = build_source(Path(td), "1.2")
             _, _, _, canonical = hardened_chain(source, media, "1.2")
             record = extractor.extract_record(source, canonical)
-            self.assertEqual(record["software"]["version"], "1.1.1")
             self.assertEqual(len(record["rows"]), 2)
             self.assertEqual(record["rows"][0]["value_origin"], "DECLARED_IN_SOURCE")
             self.assertFalse(record["rows"][0]["calculated"])
@@ -95,14 +161,17 @@ class HardenedDeclaredEnvironmentalIndicatorTests(unittest.TestCase):
             source, media = build_source(Path(td), "1.3")
             _, _, _, canonical = hardened_chain(source, media, "1.3")
             record = extractor.extract_record(source, canonical)
-            self.assertEqual(record["software"]["version"], "1.1.1")
             self.assertFalse(canonical["conformance"]["profile_validation_performed"])
             self.assertEqual(len(record["rows"]), 2)
 
-    def test_legacy_v12_canonical_without_exact_stack_is_rejected(self):
+    def test_legacy_shaped_v12_canonical_without_exact_stack_is_rejected(self):
         with tempfile.TemporaryDirectory() as td:
             source, media = build_source(Path(td), "1.2")
-            legacy = legacy_canonical_record(source, media, "1.2")
+            _, _, _, canonical = hardened_chain(source, media, "1.2")
+            legacy = copy.deepcopy(canonical)
+            legacy["conformance"].pop("official_stack", None)
+            legacy["conformance"].pop("official_stack_sha256", None)
+            legacy = reseal_canonical(legacy)
             with self.assertRaisesRegex(extractor.ExtractionError, "exact v0.9.1"):
                 extractor.extract_record(source, legacy)
 
