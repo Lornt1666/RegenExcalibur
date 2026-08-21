@@ -1,0 +1,281 @@
+name: ProofGrid v0.8 Developer Documentation Probe
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/proofgrid-v08-developer-docs-research.yml'
+      - 'conformance/oekobaudat-v12/OekobaudatProfileProbe.java'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe-official-developer-examples:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v6.1.0
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v5.0.0
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Download and freeze official Developer Documentation archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=/tmp/proofgrid-v08-devdocs
+          mkdir -p "$OUT"
+          URL='https://www.oekobaudat.de/fileadmin/downloads/Technische_Dokumentation/Developer_Documentation_ILCD_EPD_1.2_MR7_2023_12_19.zip'
+          curl --fail --location --silent --show-error --retry 3 --retry-all-errors \
+            --connect-timeout 30 --max-time 180 \
+            "$URL" -o "$OUT/developer-docs.zip"
+          test -s "$OUT/developer-docs.zip"
+          unzip -tq "$OUT/developer-docs.zip" >/dev/null
+          sha256sum "$OUT/developer-docs.zip" | tee "$OUT/archive.sha256"
+          stat -c '%s' "$OUT/developer-docs.zip" | tee "$OUT/archive-size.txt"
+          printf '%s\n' "$URL" > "$OUT/archive-url.txt"
+          unzip -Z1 "$OUT/developer-docs.zip" | LC_ALL=C sort > "$OUT/archive-listing.txt"
+          sha256sum "$OUT/archive-listing.txt" > "$OUT/archive-listing.sha256"
+
+      - name: Safely extract and inventory documentation examples
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib, json, os, zipfile
+
+          out = Path('/tmp/proofgrid-v08-devdocs')
+          archive = out / 'developer-docs.zip'
+          root = out / 'extracted'
+          root.mkdir(parents=True, exist_ok=True)
+
+          with zipfile.ZipFile(archive) as z:
+              for info in z.infolist():
+                  name = info.filename.replace('\\', '/')
+                  target = (root / name).resolve()
+                  if root.resolve() not in (target, *target.parents):
+                      raise SystemExit(f'unsafe archive path: {name}')
+              z.extractall(root)
+
+          files = [p for p in root.rglob('*') if p.is_file()]
+          def rel(p): return p.relative_to(root).as_posix()
+          def sha(p):
+              h=hashlib.sha256()
+              with p.open('rb') as f:
+                  for block in iter(lambda:f.read(1024*1024), b''):
+                      h.update(block)
+              return h.hexdigest()
+
+          process_xml=[]
+          for p in files:
+              if p.suffix.lower() != '.xml':
+                  continue
+              try:
+                  head=p.read_bytes()[:8192].decode('utf-8','ignore')
+              except Exception:
+                  continue
+              if '<processDataSet' in head:
+                  process_xml.append(rel(p))
+
+          package_roots=set()
+          for p in files:
+              parts=p.relative_to(root).parts
+              if 'ILCD' in parts:
+                  i=parts.index('ILCD')
+                  if i > 0:
+                      package_roots.add('/'.join(parts[:i]))
+                  else:
+                      package_roots.add('.')
+          for d in [p for p in root.rglob('*') if p.is_dir()]:
+              child_names={c.name.lower() for c in d.iterdir()} if d.exists() else set()
+              if 'processes' in child_names and ('flows' in child_names or 'sources' in child_names):
+                  package_roots.add(rel(d))
+
+          nested_zips=[rel(p) for p in files if p.suffix.lower()=='.zip']
+          license_like=[rel(p) for p in files if p.name.lower().startswith(('license','licence','notice','copying','readme'))]
+
+          inventory={
+              'file_count':len(files),
+              'process_xml_count':len(process_xml),
+              'process_xml':sorted(process_xml),
+              'package_root_count':len(package_roots),
+              'package_roots':sorted(package_roots),
+              'nested_zip_count':len(nested_zips),
+              'nested_zips':sorted(nested_zips),
+              'license_or_readme_files':[{'path':r,'sha256':sha(root/r)} for r in sorted(license_like)],
+          }
+          raw=json.dumps(inventory,sort_keys=True,separators=(',',':')).encode()
+          inventory['inventory_sha256']=hashlib.sha256(raw).hexdigest()
+          (out/'inventory.json').write_text(json.dumps(inventory,indent=2,sort_keys=True)+'\n')
+          print(json.dumps(inventory,indent=2,sort_keys=True))
+          PY
+
+      - name: Resolve exact official validation library and profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=/tmp/proofgrid-v08-devdocs
+          cat > "$OUT/pom.xml" <<'POM'
+          <project xmlns="http://maven.apache.org/POM/4.0.0">
+            <modelVersion>4.0.0</modelVersion>
+            <groupId>proofgrid.v08</groupId>
+            <artifactId>developer-docs-probe</artifactId>
+            <version>1.0.0</version>
+            <dependencies>
+              <dependency><groupId>com.okworx.ilcd.validation</groupId><artifactId>ilcd-validation</artifactId><version>2.12.2</version></dependency>
+              <dependency><groupId>com.okworx.ilcd.validation.profiles</groupId><artifactId>EPD-1.2-OEKOBAUDAT</artifactId><version>3.8.0</version></dependency>
+            </dependencies>
+          </project>
+          POM
+          mvn -B -ntp -f "$OUT/pom.xml" dependency:go-offline
+          mvn -B -ntp -f "$OUT/pom.xml" dependency:build-classpath -Dmdep.outputFile="$OUT/classpath.txt" -Dmdep.pathSeparator=:
+          LIB="$HOME/.m2/repository/com/okworx/ilcd/validation/ilcd-validation/2.12.2/ilcd-validation-2.12.2.jar"
+          PROFILE="$HOME/.m2/repository/com/okworx/ilcd/validation/profiles/EPD-1.2-OEKOBAUDAT/3.8.0/EPD-1.2-OEKOBAUDAT-3.8.0.jar"
+          test "$(sha256sum "$LIB" | awk '{print $1}')" = '55427919601b5deceee99b34fbbbaf8f00cbcf0aca1fdb1eb493c31f473e077b'
+          test "$(sha256sum "$PROFILE" | awk '{print $1}')" = '96ee05b9cf5172a344df3ea844aa8d94060eae4e4e8188f72e46441a3d61921e'
+          printf '%s\n' "$PROFILE" > "$OUT/profile-path.txt"
+          mkdir -p "$OUT/classes"
+          javac -encoding UTF-8 -cp "$(cat "$OUT/classpath.txt")" -d "$OUT/classes" conformance/oekobaudat-v12/OekobaudatProfileProbe.java
+          sha256sum conformance/oekobaudat-v12/OekobaudatProfileProbe.java > "$OUT/probe-source.sha256"
+
+      - name: Safely expand nested example archives
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import json, zipfile
+          out=Path('/tmp/proofgrid-v08-devdocs')
+          root=out/'extracted'
+          inv=json.loads((out/'inventory.json').read_text())
+          nested_root=out/'nested'
+          nested_root.mkdir(parents=True,exist_ok=True)
+          expanded=[]
+          for i, rel in enumerate(inv['nested_zips'][:30]):
+              src=root/rel
+              dest=nested_root/f'z{i:02d}'
+              dest.mkdir(parents=True,exist_ok=True)
+              try:
+                  with zipfile.ZipFile(src) as z:
+                      for info in z.infolist():
+                          name=info.filename.replace('\\','/')
+                          target=(dest/name).resolve()
+                          if dest.resolve() not in (target,*target.parents):
+                              raise ValueError(f'unsafe nested path {name}')
+                      z.extractall(dest)
+                  expanded.append({'source':rel,'dest':str(dest)})
+              except Exception as exc:
+                  expanded.append({'source':rel,'error':str(exc)})
+          (out/'nested-expansion.json').write_text(json.dumps(expanded,indent=2,sort_keys=True)+'\n')
+          print(json.dumps(expanded,indent=2,sort_keys=True))
+          PY
+
+      - name: Run exact profile against plausible official examples
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib, json, os, subprocess
+
+          out=Path('/tmp/proofgrid-v08-devdocs')
+          root=out/'extracted'
+          inv=json.loads((out/'inventory.json').read_text())
+          profile=(out/'profile-path.txt').read_text().strip()
+          cp=(out/'classpath.txt').read_text().strip()+':'+str(out/'classes')
+          result_dir=out/'results'
+          result_dir.mkdir(exist_ok=True)
+
+          candidates=[]
+          seen=set()
+          def add(label,path,kind):
+              p=Path(path)
+              key=str(p.resolve())
+              if key in seen or not p.exists(): return
+              seen.add(key)
+              candidates.append({'label':label,'path':p,'kind':kind})
+
+          for rel in inv['package_roots'][:30]:
+              p=root if rel=='.' else root/rel
+              add('package:'+rel,p,'package')
+          for rel in inv['process_xml'][:60]:
+              add('process:'+rel,root/rel,'process_xml')
+
+          nested_root=out/'nested'
+          if nested_root.exists():
+              for d in nested_root.rglob('*'):
+                  if not d.is_dir(): continue
+                  names={c.name.lower() for c in d.iterdir()}
+                  if 'ilcd' in names:
+                      add('nested-package:'+str(d.relative_to(nested_root)),d,'nested_package')
+                  elif 'processes' in names and ('flows' in names or 'sources' in names):
+                      add('nested-ilcd-root:'+str(d.relative_to(nested_root)),d,'nested_ilcd_root')
+              for p in nested_root.rglob('*.xml'):
+                  try: head=p.read_bytes()[:8192].decode('utf-8','ignore')
+                  except Exception: continue
+                  if '<processDataSet' in head:
+                      add('nested-process:'+str(p.relative_to(nested_root)),p,'nested_process_xml')
+
+          rows=[]
+          for i,c in enumerate(candidates[:100]):
+              result=result_dir/f'candidate-{i:03d}.json'
+              cmd=['java','-Djava.net.useSystemProxies=false','-cp',cp,'proofgrid.v08.OekobaudatProfileProbe',profile,str(c['path']),str(result),c['label']]
+              proc=subprocess.run(cmd,text=True,capture_output=True,timeout=90)
+              row={'label':c['label'],'kind':c['kind'],'relative_path':str(c['path'].relative_to(root)) if root in c['path'].parents or c['path']==root else str(c['path']),'exit_code':proc.returncode}
+              if result.exists():
+                  data=json.loads(result.read_text())
+                  events=data.get('events',[])
+                  row.update({
+                    'positive':data.get('is_positive'),
+                    'errors':data.get('error_count'),
+                    'warnings':data.get('warning_count'),
+                    'successes':data.get('success_count'),
+                    'events':data.get('event_count'),
+                    'events_sha256':hashlib.sha256((json.dumps(events,sort_keys=True,separators=(',',':'))+'\n').encode()).hexdigest(),
+                  })
+              else:
+                  row['stderr_sha256']=hashlib.sha256(proc.stderr.encode()).hexdigest()
+              rows.append(row)
+
+          rows.sort(key=lambda r:(r.get('errors',10**9),r.get('warnings',10**9),r['label']))
+          zero=[r for r in rows if r.get('errors')==0]
+          report={
+            'scope':'Official ÖKOBAUDAT Developer Documentation ILCD+EPD v1.2 MR7 example discovery under exact ilcd-validation 2.12.2 + ÖKOBAUDAT profile 3.8.0; no source examples are retained.',
+            'archive_sha256':(out/'archive.sha256').read_text().split()[0],
+            'inventory_sha256':inv['inventory_sha256'],
+            'candidate_count':len(rows),
+            'zero_error_candidate_count':len(zero),
+            'zero_error_candidates':zero,
+            'best_candidates':rows[:25],
+            'all_candidates':rows,
+            'compatibility_claim':False,
+            'certified':False,
+          }
+          raw=json.dumps(report,sort_keys=True,separators=(',',':')).encode()
+          report['receipt_sha256']=hashlib.sha256(raw).hexdigest()
+          (out/'developer-docs-probe-receipt.json').write_text(json.dumps(report,indent=2,sort_keys=True)+'\n')
+          print(json.dumps({k:report[k] for k in ('archive_sha256','candidate_count','zero_error_candidate_count','best_candidates','receipt_sha256')},indent=2,sort_keys=True))
+          PY
+
+      - name: Retain metadata and validation summaries only
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v08-developer-docs-probe
+          path: |
+            /tmp/proofgrid-v08-devdocs/archive.sha256
+            /tmp/proofgrid-v08-devdocs/archive-size.txt
+            /tmp/proofgrid-v08-devdocs/archive-url.txt
+            /tmp/proofgrid-v08-devdocs/archive-listing.txt
+            /tmp/proofgrid-v08-devdocs/archive-listing.sha256
+            /tmp/proofgrid-v08-devdocs/inventory.json
+            /tmp/proofgrid-v08-devdocs/nested-expansion.json
+            /tmp/proofgrid-v08-devdocs/probe-source.sha256
+            /tmp/proofgrid-v08-devdocs/developer-docs-probe-receipt.json
+          if-no-files-found: error
+          retention-days: 30
