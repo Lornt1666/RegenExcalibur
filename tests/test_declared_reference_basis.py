@@ -225,7 +225,7 @@ class DeclaredReferenceBasisTests(unittest.TestCase):
 
     def test_product_flow_uuid_mismatch_fails(self):
         with tempfile.TemporaryDirectory() as td:
-            with self.assertRaisesRegex(Exception, "product flow UUID"):
+            with self.assertRaisesRegex(Exception, "product-flow UUID chain mismatch"):
                 self.run_extract(Path(td), flow_uuid="00000000-0000-0000-0000-000000000000")
 
     def test_non_identity_process_amount_fails(self):
