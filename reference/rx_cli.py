@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""ProofGrid / RX Evidence Fabric v0.1 reference verifier.
+"""ProofGrid / RX Evidence Fabric v0.2 reference verifier.
 
-Standard-library only. This genesis implementation is intentionally narrow:
-it validates a project fixture, performs a deterministic material-GWP
-calculation, emits provenance-bearing evidence, and labels the result
-VERIFIABLE rather than CERTIFIED.
+The verifier validates canonical JSON documents against Draft 2020-12 JSON
+Schemas, performs a deterministic material-GWP calculation, emits provenance-
+bearing evidence, and labels the result VERIFIABLE rather than CERTIFIED.
+
+The IFC subcommand is read-only and uses IfcOpenShell for real IFC parsing.
 """
 
 from __future__ import annotations
@@ -15,23 +16,26 @@ import hashlib
 import html
 import json
 from pathlib import Path
+import sys
 from typing import Any
 
+from jsonschema import Draft202012Validator, SchemaError
+
 ENGINE_NAME = "RegenExcalibur ProofGrid Reference Verifier"
-ENGINE_VERSION = "0.1.0"
+ENGINE_VERSION = "0.2.0"
 METHOD_NAME = "material_quantity_times_gwp_factor"
-METHOD_VERSION = "0.1.0"
+METHOD_VERSION = "0.2.0"
 QUANT = Decimal("0.000001")
 
-REQUIRED_PROJECT_FIELDS = ("id", "name", "jurisdiction", "building_type")
-REQUIRED_MATERIAL_FIELDS = (
-    "id",
-    "name",
-    "quantity",
-    "unit",
-    "gwp_kgco2e_per_unit",
-    "factor_source",
-)
+REPO_ROOT = Path(__file__).resolve().parents[1]
+SCHEMA_ROOT = REPO_ROOT / "schemas"
+RXEP_SCHEMA_ROOT = REPO_ROOT / "specs" / "rxep"
+BUILDING_SCHEMA = SCHEMA_ROOT / "building.schema.json"
+MATERIALS_SCHEMA = SCHEMA_ROOT / "materials.schema.json"
+EVIDENCE_SCHEMA = RXEP_SCHEMA_ROOT / "evidence-envelope.schema.json"
+
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 
 class VerificationError(ValueError):
@@ -64,10 +68,31 @@ def load_json(path: Path) -> Any:
         raise VerificationError(f"invalid JSON in {path}: {exc}") from exc
 
 
-def require_fields(obj: dict[str, Any], fields: tuple[str, ...], label: str) -> None:
-    missing = [field for field in fields if field not in obj]
-    if missing:
-        raise VerificationError(f"{label} missing fields: {', '.join(missing)}")
+def _error_path(error: Any) -> str:
+    if not error.path:
+        return "$"
+    return "$" + "".join(
+        f"[{part}]" if isinstance(part, int) else f".{part}" for part in error.path
+    )
+
+
+def validate_json_schema(instance: Any, schema_path: Path, label: str) -> None:
+    """Validate one document against a Draft 2020-12 schema, fail closed."""
+    schema = load_json(schema_path)
+    try:
+        Draft202012Validator.check_schema(schema)
+    except SchemaError as exc:
+        raise VerificationError(f"invalid schema {schema_path}: {exc.message}") from exc
+
+    validator = Draft202012Validator(schema)
+    errors = sorted(validator.iter_errors(instance), key=lambda error: list(error.path))
+    if errors:
+        preview = "; ".join(
+            f"{_error_path(error)}: {error.message}" for error in errors[:5]
+        )
+        if len(errors) > 5:
+            preview += f"; +{len(errors) - 5} more"
+        raise VerificationError(f"{label} failed schema validation: {preview}")
 
 
 def as_decimal(value: Any, label: str) -> Decimal:
@@ -89,7 +114,6 @@ def calculate_materials(materials: list[dict[str, Any]]) -> tuple[list[dict[str,
     for index, material in enumerate(materials):
         if not isinstance(material, dict):
             raise VerificationError(f"material[{index}] must be an object")
-        require_fields(material, REQUIRED_MATERIAL_FIELDS, f"material[{index}]")
 
         quantity = as_decimal(material["quantity"], f"material[{index}].quantity")
         factor = as_decimal(
@@ -121,9 +145,8 @@ def build_evidence(project_dir: Path) -> tuple[dict[str, Any], dict[str, Any]]:
     project = load_json(project_path)
     materials = load_json(materials_path)
 
-    if not isinstance(project, dict):
-        raise VerificationError("project.json must contain an object")
-    require_fields(project, REQUIRED_PROJECT_FIELDS, "project")
+    validate_json_schema(project, BUILDING_SCHEMA, "project.json")
+    validate_json_schema(materials, MATERIALS_SCHEMA, "materials.json")
 
     rows, total = calculate_materials(materials)
 
@@ -159,6 +182,7 @@ def build_evidence(project_dir: Path) -> tuple[dict[str, Any], dict[str, Any]]:
         "review": {"state": "CALCULATED", "reviewer": None},
         "limitations": [
             "Fictional demonstration dataset; factors are not suitable for real project claims.",
+            "Schema validation establishes structural conformance, not scientific truth, code compliance, or source authority.",
             "No professional engineering, architectural, code, LCA, audit, or regulatory certification is provided.",
             "Integrity hashes establish byte consistency, not scientific truth or source authority.",
         ],
@@ -171,14 +195,22 @@ def build_evidence(project_dir: Path) -> tuple[dict[str, Any], dict[str, Any]]:
         canonical_json_bytes(digest_payload)
     )
 
+    validate_json_schema(envelope, EVIDENCE_SCHEMA, "generated evidence envelope")
+
     receipt = {
         "verdict": "VERIFIABLE",
         "certified": False,
         "engine": {"name": ENGINE_NAME, "version": ENGINE_VERSION},
         "project_id": str(project["id"]),
+        "schema_validation": {
+            "draft": "2020-12",
+            "project": str(BUILDING_SCHEMA.relative_to(REPO_ROOT)),
+            "materials": str(MATERIALS_SCHEMA.relative_to(REPO_ROOT)),
+            "evidence": str(EVIDENCE_SCHEMA.relative_to(REPO_ROOT)),
+        },
         "source_hashes": sources,
         "evidence_content_sha256": envelope["integrity"]["content_sha256"],
-        "meaning": "Inputs were structurally accepted, the declared deterministic calculation completed, and integrity digests were emitted. This is not certification.",
+        "meaning": "Inputs and generated evidence passed structural schema checks, the declared deterministic calculation completed, and integrity digests were emitted. This is not certification.",
     }
     receipt["receipt_sha256"] = sha256_bytes(canonical_json_bytes(receipt))
     return envelope, receipt
@@ -231,7 +263,7 @@ def write_outputs(project_dir: Path, output_dir: Path) -> dict[str, Any]:
 <html lang=\"en\"><meta charset=\"utf-8\">
 <title>ProofGrid Verification — {project_name}</title>
 <body>
-<h1>RegenExcalibur ProofGrid v0.1</h1>
+<h1>RegenExcalibur ProofGrid v0.2</h1>
 <h2>{project_name}</h2>
 <p><strong>RESULT: VERIFIABLE — NOT CERTIFIED</strong></p>
 <p>Calculated sample material GWP: <strong>{total} kgCO2e</strong></p>
@@ -253,12 +285,32 @@ def write_outputs(project_dir: Path, output_dir: Path) -> dict[str, Any]:
     }
 
 
+def inspect_ifc(path: Path, output: Path | None = None) -> dict[str, Any]:
+    from adapters.ifc.reader import IFCAdapterError, inspect_ifc as adapter_inspect_ifc
+
+    try:
+        summary = adapter_inspect_ifc(path)
+    except IFCAdapterError as exc:
+        raise VerificationError(str(exc)) from exc
+
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return summary
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="rx", description="RegenExcalibur ProofGrid reference verifier")
     sub = parser.add_subparsers(dest="command", required=True)
+
     verify = sub.add_parser("verify", help="verify a ProofGrid project fixture")
     verify.add_argument("project_dir", type=Path)
     verify.add_argument("--output", type=Path, default=None)
+
+    ifc = sub.add_parser("ifc-inspect", help="read-only IFC structural inspection via IfcOpenShell")
+    ifc.add_argument("ifc_file", type=Path)
+    ifc.add_argument("--output", type=Path, default=None)
+
     args = parser.parse_args(argv)
 
     if args.command == "verify":
@@ -269,6 +321,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"FAILED: {exc}")
             return 2
 
+        print("✓ Draft 2020-12 schema validation")
         print("✓ source integrity")
         print("✓ material quantities")
         print("✓ environmental calculation")
@@ -281,6 +334,23 @@ def main(argv: list[str] | None = None) -> int:
         print("NOT CERTIFIED")
         print(f"Calculated sample GWP: {result['total_kgco2e']} kgCO2e")
         print(f"Artifacts: {output}")
+        return 0
+
+    if args.command == "ifc-inspect":
+        try:
+            summary = inspect_ifc(args.ifc_file, args.output)
+        except VerificationError as exc:
+            print(f"FAILED: {exc}")
+            return 2
+
+        print("✓ IFC parsed with IfcOpenShell")
+        print(f"Schema: {summary['schema']}")
+        print(f"Projects: {summary['counts']['projects']}")
+        print(f"Buildings: {summary['counts']['buildings']}")
+        print("RESULT: STRUCTURALLY_INGESTED")
+        print("NO COMPLIANCE, LCA, ENGINEERING, OR CERTIFICATION CONCLUSION")
+        if args.output:
+            print(f"Summary: {args.output}")
         return 0
 
     return 1
