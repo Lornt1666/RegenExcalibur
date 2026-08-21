@@ -1,5 +1,6 @@
 # ProofGrid v0.2 resolved dependency lock captured from hosted CI run #13.
 # Exact versions are intentional; upgrade by evidence-gated PR and rerun hosted CI.
+# v1.0.1 exact-head synchronization marker only; dependency semantics unchanged.
 jsonschema==4.26.0
 attrs==26.1.0
 jsonschema-specifications==2025.9.1
