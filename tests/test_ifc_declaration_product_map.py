@@ -49,14 +49,14 @@ class IFCDeclarationProductMappingTests(unittest.TestCase):
           'limitations':['synthetic mapping fixture; workflow review is not professional licensure']}}
         mp=root/'mapping.json'; write_json(mp,mapping); return ep,mp,cp,crp,mapping,extraction
 
-    def run(self,p): return mapper.map_product(p[0],p[1],p[2],p[3])
+    def run_map(self,p): return mapper.map_product(p[0],p[1],p[2],p[3])
     def mutate(self,p,fn):
         fn(p[4]); write_json(p[1],p[4])
-        with self.assertRaises(mapper.ProductMappingError): self.run(p)
+        with self.assertRaises(mapper.ProductMappingError): self.run_map(p)
 
     def test_explicit_mapping_succeeds_despite_unrelated_names(self):
         with tempfile.TemporaryDirectory() as td:
-            r=self.run(self.prepare(Path(td))); self.assertEqual(r['verdict'],mapper.VERDICT); self.assertEqual(r['declaration']['product_flow_uuid'],PRODUCT_UUID); self.assertEqual(r['declaration']['product_flow_version'],PRODUCT_VERSION); self.assertEqual(r['ifc']['material']['declared_name'],'RX-MATERIAL-UNRELATED-TO-WOOD-PANEL'); self.assertEqual(r['ifc']['quantity']['value'],1000.0); self.assertEqual(r['ifc']['quantity']['unit_identity'],'kg'); self.assertFalse(r['automatic_name_mapping_performed']); self.assertFalse(r['building_quantity_multiplication_performed']); self.assertFalse(r['certified'])
+            r=self.run_map(self.prepare(Path(td))); self.assertEqual(r['verdict'],mapper.VERDICT); self.assertEqual(r['declaration']['product_flow_uuid'],PRODUCT_UUID); self.assertEqual(r['declaration']['product_flow_version'],PRODUCT_VERSION); self.assertEqual(r['ifc']['material']['declared_name'],'RX-MATERIAL-UNRELATED-TO-WOOD-PANEL'); self.assertEqual(r['ifc']['quantity']['value'],1000.0); self.assertEqual(r['ifc']['quantity']['unit_identity'],'kg'); self.assertFalse(r['automatic_name_mapping_performed']); self.assertFalse(r['building_quantity_multiplication_performed']); self.assertFalse(r['certified'])
     def test_wrong_ifc_source_rejected(self):
         with tempfile.TemporaryDirectory() as td: self.mutate(self.prepare(Path(td)),lambda m:m['mapping']['source_ifc'].__setitem__('sha256','0'*64))
     def test_wrong_element_global_id_rejected(self):
@@ -71,12 +71,12 @@ class IFCDeclarationProductMappingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td: self.mutate(self.prepare(Path(td)),lambda m:m['mapping']['declaration'].__setitem__('closure_content_sha256','a'*64))
     def test_gram_unit_rejected_no_implicit_conversion(self):
         with tempfile.TemporaryDirectory() as td:
-            with self.assertRaisesRegex(mapper.ProductMappingError,'not identical to declaration'): self.run(self.prepare(Path(td),mass_prefix=None))
+            with self.assertRaisesRegex(mapper.ProductMappingError,'not identical to declaration'): self.run_map(self.prepare(Path(td),mass_prefix=None))
     def test_unreviewed_mapping_rejected_by_schema(self):
         with tempfile.TemporaryDirectory() as td: self.mutate(self.prepare(Path(td)),lambda m:m['mapping']['review'].__setitem__('state','DRAFT'))
     def test_tampered_closure_rejected(self):
         with tempfile.TemporaryDirectory() as td:
             p=list(self.prepare(Path(td))); c=json.loads(p[2].read_text()); c['product_flow']['version']='99.99.999'; write_json(p[2],c)
-            with self.assertRaisesRegex(mapper.ProductMappingError,'content SHA-256 mismatch'): self.run(tuple(p))
+            with self.assertRaisesRegex(mapper.ProductMappingError,'content SHA-256 mismatch'): self.run_map(tuple(p))
 
 if __name__=='__main__': unittest.main()
