@@ -92,9 +92,124 @@ jobs:
         run: python reference/rx_cli.py ifc-inspect /tmp/proofgrid-smoke.ifc --output /tmp/proofgrid-ifc-summary.json
       - name: Extract declared IFC quantities and materials
         run: python reference/ifc_extract.py /tmp/proofgrid-smoke.ifc --output /tmp/proofgrid-ifc-extraction.json
+      - name: Build v0.5 explicit mass-mapping IFC fixture
+        run: |
+          python - <<'PY'
+          import ifcopenshell
+          import ifcopenshell.guid
+
+          model = ifcopenshell.file(schema="IFC4")
+          mass_unit = model.create_entity("IfcSIUnit", UnitType="MASSUNIT", Prefix="KILO", Name="GRAM")
+          units = model.create_entity("IfcUnitAssignment", Units=[mass_unit])
+          model.create_entity(
+              "IfcProject",
+              GlobalId="0hS$wWKLjAuhSPZ5IG0yTw",
+              Name="ProofGrid v0.5 CI Mapping Project",
+              UnitsInContext=units,
+          )
+          wall = model.create_entity("IfcWall", GlobalId="1BXL7DJx51bvggyIPU2Xi5", Name="Mapped Wall")
+          material = model.create_entity("IfcMaterial", Name="Concrete")
+          model.create_entity(
+              "IfcRelAssociatesMaterial",
+              GlobalId=ifcopenshell.guid.new(),
+              RelatedObjects=[wall],
+              RelatingMaterial=material,
+          )
+          quantity = model.create_entity("IfcQuantityWeight", Name="Mass", WeightValue=1000.0)
+          qset = model.create_entity(
+              "IfcElementQuantity",
+              GlobalId=ifcopenshell.guid.new(),
+              Name="Qto_WallBaseQuantities",
+              Quantities=[quantity],
+          )
+          model.create_entity(
+              "IfcRelDefinesByProperties",
+              GlobalId=ifcopenshell.guid.new(),
+              RelatedObjects=[wall],
+              RelatingPropertyDefinition=qset,
+          )
+          model.write("/tmp/proofgrid-v05-mapping.ifc")
+          PY
+      - name: Extract v0.5 declared mapping identities
+        run: python reference/ifc_extract.py /tmp/proofgrid-v05-mapping.ifc --output /tmp/proofgrid-v05-extraction.json
+      - name: Create explicit reviewed v0.5 synthetic mapping artifact
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          extraction = json.loads(Path('/tmp/proofgrid-v05-extraction.json').read_text(encoding='utf-8'))
+          wall = next(item for item in extraction['elements'] if item['ifc_type'] == 'IfcWall')
+          material = wall['materials'][0]
+          quantity = next(item for item in wall['quantities'] if item['ifc_quantity_type'] == 'IfcQuantityWeight')
+          unit = quantity['unit']
+          mapping = {
+              'schema_version': '1.0',
+              'artifact_version': '0.5.0-ci-synthetic',
+              'mappings': [{
+                  'id': 'RX-MAP-CI-WALL-CONCRETE-MASS',
+                  'source_ifc': {'sha256': extraction['source_sha256'], 'schema': extraction['schema']},
+                  'element': {
+                      'global_id': wall['global_id'],
+                      'step_id': wall['step_id'],
+                      'ifc_type': wall['ifc_type'],
+                  },
+                  'material': {
+                      'association_step_id': material['association_step_id'],
+                      'material_step_id': material['material_step_id'],
+                      'declared_name': material['name'],
+                      'source_type': material['source_type'],
+                  },
+                  'quantity': {
+                      'set_step_id': quantity['set_step_id'],
+                      'quantity_step_id': quantity['quantity_step_id'],
+                      'name': quantity['name'],
+                      'ifc_quantity_type': quantity['ifc_quantity_type'],
+                      'value': quantity['value'],
+                      'unit': {
+                          'unit_type': unit['unit_type'],
+                          'name': unit['name'],
+                          'prefix': unit['prefix'],
+                          'source': unit['source'],
+                      },
+                  },
+                  'target': {
+                      'material_identity_id': 'concrete',
+                      'source_record_id': 'RX-FICT-CONCRETE-A1A3',
+                  },
+                  'review': {
+                      'state': 'REVIEWED',
+                      'author': 'ProofGrid CI synthetic conformance fixture',
+                      'rationale': 'Explicit synthetic v0.5 mapping. Target is deliberately supplied by the fixture and is not inferred from the IFC material name.',
+                      'reference': 'issue-8-known-answer',
+                  },
+              }],
+          }
+          Path('/tmp/proofgrid-v05-mapping.json').write_bytes((json.dumps(mapping, indent=2, sort_keys=True) + '\n').encode('utf-8'))
+          PY
+      - name: Verify explicit IFC environmental mapping
+        run: |
+          python reference/ifc_lca_map.py \
+            --extraction /tmp/proofgrid-v05-extraction.json \
+            --mapping /tmp/proofgrid-v05-mapping.json \
+            --registry evidence/examples/alberta-house/lca-sources.json \
+            --output /tmp/proofgrid-v05-mapping-receipt.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          receipt = json.loads(Path('/tmp/proofgrid-v05-mapping-receipt.json').read_text(encoding='utf-8'))
+          assert receipt['total_kgco2e'] == 120.0
+          assert receipt['results'][0]['quantity']['unit_identity'] == 'kg'
+          assert receipt['results'][0]['quantity']['numerical_conversion_applied'] is False
+          assert receipt['results'][0]['target']['source_record_id'] == 'RX-FICT-CONCRETE-A1A3'
+          assert receipt['verdict'] == 'EXPLICIT_IFC_ENVIRONMENTAL_MAPPING_VERIFIABLE'
+          assert receipt['certified'] is False
+          print('v0.5 known-answer assertions: PASS')
+          PY
       - name: Show receipts
         run: |
           cat /tmp/proofgrid-lca-registry.json
           cat /tmp/proofgrid-output/receipt.json
           cat /tmp/proofgrid-ifc-summary.json
           cat /tmp/proofgrid-ifc-extraction.json
+          cat /tmp/proofgrid-v05-mapping-receipt.json
