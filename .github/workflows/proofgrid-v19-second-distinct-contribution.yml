@@ -1,0 +1,290 @@
+name: ProofGrid v1.9 Second Distinct Contribution
+
+on:
+  pull_request:
+    paths:
+      - "reference/second_distinct_contribution_v19.py"
+      - "tests/test_second_distinct_contribution_v19.py"
+      - "conformance/second-distinct-contribution-v19/**"
+      - ".github/workflows/proofgrid-v19-second-distinct-contribution.yml"
+      - "requirements-proofgrid.txt"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  reproduce-second:
+    strategy:
+      fail-fast: false
+      matrix:
+        replica: [a, b]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      V141_ARTIFACT_ID: "9450726883"
+      V141_ZIP_SHA256: "ab104603beb2e8643360ac45935ba82a189028a3c9e7319788153fa261fdb262"
+      V14_ARTIFACT_ID: "9450293777"
+      V14_ZIP_SHA256: "6bbc8efb8d762ce8171e94d27d5cffc42d34ab439bf5006cf6f79235cc7df4d2"
+
+    steps:
+      - uses: actions/checkout@v6.1.0
+      - uses: actions/setup-python@v6.0.0
+        with:
+          python-version: "3.11.16"
+          check-latest: false
+
+      - name: Install exact ProofGrid dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-proofgrid.txt
+          python -m pip check
+
+      - name: Run v1.9 fail-closed unit suite
+        run: |
+          set -euo pipefail
+          python -m unittest -v tests.test_second_distinct_contribution_v19
+
+      - name: Download exact accepted declaration parents independently
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ROOT="/tmp/proofgrid-v19-${{ matrix.replica }}"
+          mkdir -p "${ROOT}"/{v141,v14,out}
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V141_ARTIFACT_ID}/zip" > "${ROOT}/v141.zip"
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V14_ARTIFACT_ID}/zip" > "${ROOT}/v14.zip"
+          echo "${V141_ZIP_SHA256}  ${ROOT}/v141.zip" | sha256sum -c -
+          echo "${V14_ZIP_SHA256}  ${ROOT}/v14.zip" | sha256sum -c -
+          unzip -q "${ROOT}/v141.zip" -d "${ROOT}/v141"
+          unzip -q "${ROOT}/v14.zip" -d "${ROOT}/v14"
+
+      - name: Reproduce second distinct contribution
+        run: |
+          set -euo pipefail
+          ROOT="/tmp/proofgrid-v19-${{ matrix.replica }}"
+          python conformance/second-distinct-contribution-v19/reproduce.py \
+            --v141 "${ROOT}/v141" \
+            --v14 "${ROOT}/v14" \
+            --output-dir "${ROOT}/out" \
+            --replica "${{ matrix.replica }}"
+
+      - name: Assert second exact identity and bounded result
+        run: |
+          set -euo pipefail
+          ROOT="/tmp/proofgrid-v19-${{ matrix.replica }}/out"
+          python - <<'PY'
+          import json
+          from decimal import Decimal
+          from pathlib import Path
+          import os
+          root=Path('/tmp/proofgrid-v19-${{ matrix.replica }}/out')
+          q=json.loads((root/'ifc-declared-quantity-exact-decimal.json').read_text())
+          c=json.loads((root/'mapped-declared-result-calculation.json').read_text())
+          assert q['ifc_identity']['element_global_id']=='1CXL7DJx51bvggyIPU2Xi6'
+          assert Decimal(q['quantity']['quantity_lexical'])==Decimal('500')
+          assert q['quantity']['quantity_decimal']=='500'
+          assert q['quantity']['source_token_is_authority'] is True
+          assert q['quantity']['parser_numeric_value_is_authority'] is False
+          assert c['calculation']['scaled_result_decimal']=='7779.7398385818495'
+          assert c['aggregation_performed'] is False
+          assert c['unit_conversion_performed'] is False
+          assert c['certified'] is False
+          print('SECOND_SOURCE_TOKEN='+q['quantity']['quantity_lexical'])
+          print('SECOND_RESULT='+c['calculation']['scaled_result_decimal'])
+          PY
+
+      - name: Upload replica evidence
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v19-second-replica-${{ matrix.replica }}
+          path: |
+            /tmp/proofgrid-v19-${{ matrix.replica }}/out/fixture.ifc
+            /tmp/proofgrid-v19-${{ matrix.replica }}/out/ifc-extraction.json
+            /tmp/proofgrid-v19-${{ matrix.replica }}/out/mapping-artifact.json
+            /tmp/proofgrid-v19-${{ matrix.replica }}/out/ifc-declaration-product-mapping.json
+            /tmp/proofgrid-v19-${{ matrix.replica }}/out/ifc-declaration-product-mapping-receipt.json
+            /tmp/proofgrid-v19-${{ matrix.replica }}/out/ifc-declared-quantity-exact-decimal.json
+            /tmp/proofgrid-v19-${{ matrix.replica }}/out/ifc-declared-quantity-exact-decimal-receipt.json
+            /tmp/proofgrid-v19-${{ matrix.replica }}/out/mapped-declared-result-calculation.json
+            /tmp/proofgrid-v19-${{ matrix.replica }}/out/mapped-declared-result-calculation-receipt.json
+            /tmp/proofgrid-v19-${{ matrix.replica }}/out/replica-receipt.json
+          if-no-files-found: error
+          retention-days: 30
+
+  compare-and-admit:
+    needs: reproduce-second
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      V17_ARTIFACT_ID: "9461745262"
+      V17_ZIP_SHA256: "f6f6ce536edc1a8997538b688663a3b82913a32cb23bad752b972169e379b861"
+      V16_ARTIFACT_ID: "9461315121"
+      V16_ZIP_SHA256: "ced27bed9f4debfe210d0abb7f44b0f573587884d2318358b5c670d4d3269917"
+
+    steps:
+      - uses: actions/checkout@v6.1.0
+      - uses: actions/setup-python@v6.0.0
+        with:
+          python-version: "3.11.16"
+          check-latest: false
+      - name: Install exact ProofGrid dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-proofgrid.txt
+          python -m pip check
+
+      - name: Download second replica A
+        uses: actions/download-artifact@v4.3.0
+        with:
+          name: proofgrid-v19-second-replica-a
+          path: /tmp/v19/a
+      - name: Download second replica B
+        uses: actions/download-artifact@v4.3.0
+        with:
+          name: proofgrid-v19-second-replica-b
+          path: /tmp/v19/b
+
+      - name: Require second contribution byte identity
+        run: |
+          set -euo pipefail
+          for F in fixture.ifc ifc-extraction.json mapping-artifact.json ifc-declaration-product-mapping.json ifc-declaration-product-mapping-receipt.json ifc-declared-quantity-exact-decimal.json ifc-declared-quantity-exact-decimal-receipt.json mapped-declared-result-calculation.json mapped-declared-result-calculation-receipt.json; do
+            diff -u "/tmp/v19/a/${F}" "/tmp/v19/b/${F}"
+          done
+
+      - name: Produce second independent reproduction receipt
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/v19/comparison
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          root=Path('/tmp/v19')
+          a=json.loads((root/'a/replica-receipt.json').read_text()); b=json.loads((root/'b/replica-receipt.json').read_text())
+          for key in ('ifc_source_sha256','element_global_id','quantity_lexical','quantity_decimal','mapping_record_content_sha256','mapping_record_file_sha256','mapping_receipt_sha256','quantity_record_content_sha256','quantity_record_file_sha256','quantity_receipt_sha256','calculation_record_content_sha256','calculation_record_file_sha256','calculation_receipt_sha256','calculation_receipt_file_sha256','scaled_result_decimal','scaled_result_unit'):
+              assert a[key]==b[key],(key,a[key],b[key])
+          assert a['replica']=='a' and b['replica']=='b'
+          report={'verdict':'SECOND_DISTINCT_CONTRIBUTION_INDEPENDENTLY_REPRODUCED','replicas':['a','b'],'independent_runner_count':2,'byte_identical':True,'ifc_source_sha256':a['ifc_source_sha256'],'element_global_id':a['element_global_id'],'quantity_lexical':a['quantity_lexical'],'quantity_decimal':a['quantity_decimal'],'mapping_record_content_sha256':a['mapping_record_content_sha256'],'quantity_record_content_sha256':a['quantity_record_content_sha256'],'calculation_record_content_sha256':a['calculation_record_content_sha256'],'calculation_record_file_sha256':a['calculation_record_file_sha256'],'calculation_receipt_sha256':a['calculation_receipt_sha256'],'calculation_receipt_file_sha256':a['calculation_receipt_file_sha256'],'scaled_result_decimal':a['scaled_result_decimal'],'scaled_result_unit':a['scaled_result_unit'],'aggregation_performed':False,'unit_conversion_performed':False,'scientific_validation_performed':False,'professional_review_performed':False,'certified':False}
+          report['receipt_sha256']=hashlib.sha256(json.dumps(report,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()
+          out=root/'comparison/v19-second-independent-reproduction-receipt.json'; out.write_text(json.dumps(report,indent=2,sort_keys=True)+'\n',encoding='utf-8',newline='\n')
+          print(json.dumps(report,indent=2,sort_keys=True))
+          PY
+
+      - name: Bind second exact calculation into RXEP
+        run: |
+          set -euo pipefail
+          python reference/second_distinct_contribution_v19.py bind-rxep \
+            --calculation-record /tmp/v19/a/mapped-declared-result-calculation.json \
+            --calculation-receipt /tmp/v19/a/mapped-declared-result-calculation-receipt.json \
+            --reproduction-receipt /tmp/v19/comparison/v19-second-independent-reproduction-receipt.json \
+            --output-dir /tmp/v19/second-rxep
+
+      - name: Download exact first accepted contribution evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/v19/{v17,v16}
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V17_ARTIFACT_ID}/zip" > /tmp/v19/v17.zip
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V16_ARTIFACT_ID}/zip" > /tmp/v19/v16.zip
+          echo "${V17_ZIP_SHA256}  /tmp/v19/v17.zip" | sha256sum -c -
+          echo "${V16_ZIP_SHA256}  /tmp/v19/v16.zip" | sha256sum -c -
+          unzip -q /tmp/v19/v17.zip -d /tmp/v19/v17
+          unzip -q /tmp/v19/v16.zip -d /tmp/v19/v16
+
+      - name: Build exact two-member PARTIAL set request
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/v19/set/members/{first,second}
+          cp /tmp/v19/v17/out-a/rxep-exact-decimal-calculated-contribution.json /tmp/v19/set/members/first/rxep.json
+          cp /tmp/v19/v17/out-a/rxep-exact-decimal-calculated-contribution-receipt.json /tmp/v19/set/members/first/rxep-receipt.json
+          cp /tmp/v19/v16/out-a/mapped-declared-result-calculation.json /tmp/v19/set/members/first/calculation.json
+          cp /tmp/v19/v16/out-a/mapped-declared-result-calculation-receipt.json /tmp/v19/set/members/first/calculation-receipt.json
+          cp /tmp/v19/second-rxep/rxep-exact-decimal-calculated-contribution.json /tmp/v19/set/members/second/rxep.json
+          cp /tmp/v19/second-rxep/rxep-exact-decimal-calculated-contribution-receipt.json /tmp/v19/set/members/second/rxep-receipt.json
+          cp /tmp/v19/a/mapped-declared-result-calculation.json /tmp/v19/set/members/second/calculation.json
+          cp /tmp/v19/a/mapped-declared-result-calculation-receipt.json /tmp/v19/set/members/second/calculation-receipt.json
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          root=Path('/tmp/v19/set')
+          sha=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
+          def member(name,mid):
+              r=json.loads((root/f'members/{name}/rxep.json').read_text()); rr=json.loads((root/f'members/{name}/rxep-receipt.json').read_text()); c=json.loads((root/f'members/{name}/calculation.json').read_text()); cr=json.loads((root/f'members/{name}/calculation-receipt.json').read_text())
+              return {'member_id':mid,'rxep_record_path':f'members/{name}/rxep.json','rxep_record_content_sha256':r['integrity']['content_sha256'],'rxep_record_file_sha256':sha(root/f'members/{name}/rxep.json'),'rxep_receipt_path':f'members/{name}/rxep-receipt.json','rxep_receipt_sha256':rr['receipt_sha256'],'rxep_receipt_file_sha256':sha(root/f'members/{name}/rxep-receipt.json'),'calculation_record_path':f'members/{name}/calculation.json','calculation_record_content_sha256':c['integrity']['content_sha256'],'calculation_record_file_sha256':sha(root/f'members/{name}/calculation.json'),'calculation_receipt_path':f'members/{name}/calculation-receipt.json','calculation_receipt_sha256':cr['receipt_sha256'],'calculation_receipt_file_sha256':sha(root/f'members/{name}/calculation-receipt.json')}
+          req={'schema_version':'1.0','request_version':'1.8.0','set_id':'proofgrid-v19-two-distinct-members','scope_id':'proofgrid:v19:two-distinct-elements-partial','completeness_status':'PARTIAL','compatibility':{'indicator_code':'GWP-total','indicator_uuid':'6a37f984-a4b3-458a-a20a-64418c145fa2','unit':'kg CO2 eqv.','module':'A1-A3','scenario':None},'members':[member('first','first-accepted-contribution'),member('second','second-distinct-contribution')]}
+          (root/'request.json').write_text(json.dumps(req,indent=2,sort_keys=True)+'\n',encoding='utf-8',newline='\n')
+          PY
+
+      - name: Admit two distinct members without summation
+        run: |
+          set -euo pipefail
+          python reference/environmental_contribution_set.py --request /tmp/v19/set/request.json --output-dir /tmp/v19/set/out-a
+          python reference/environmental_contribution_set.py --request /tmp/v19/set/request.json --output-dir /tmp/v19/set/out-b
+          diff -u /tmp/v19/set/out-a/environmental-contribution-set.json /tmp/v19/set/out-b/environmental-contribution-set.json
+          diff -u /tmp/v19/set/out-a/environmental-contribution-set-receipt.json /tmp/v19/set/out-b/environmental-contribution-set-receipt.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.loads(Path('/tmp/v19/set/out-a/environmental-contribution-set.json').read_text())
+          assert r['member_count']==2
+          assert r['completeness_status']=='PARTIAL'
+          ids=[m['semantic_identity_sha256'] for m in r['members']]
+          assert len(set(ids))==2,ids
+          assert r['aggregation_performed'] is False
+          assert r['sum_performed'] is False
+          assert r['missing_contributions_are_zero'] is False
+          assert r['certified'] is False
+          print('TWO_MEMBER_SEMANTIC_IDENTITIES='+','.join(ids))
+          PY
+
+      - name: Reject rewrapped first contribution duplicate
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import copy,json
+          from pathlib import Path
+          p=Path('/tmp/v19/set/request.json'); r=json.loads(p.read_text()); d=copy.deepcopy(r['members'][0]); d['member_id']='first-rewrapped-duplicate'; r['members'].append(d)
+          Path('/tmp/v19/set/duplicate.json').write_text(json.dumps(r,indent=2,sort_keys=True)+'\n',encoding='utf-8',newline='\n')
+          PY
+          if python reference/environmental_contribution_set.py --request /tmp/v19/set/duplicate.json --output-dir /tmp/v19/set/negative; then
+            echo 'semantic duplicate unexpectedly admitted' >&2; exit 1
+          else
+            echo 'FIRST_MEMBER_REWRAP_DUPLICATE_REJECTED=PASS'
+          fi
+
+      - name: Produce bounded v1.9 integration receipt
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          root=Path('/tmp/v19'); sha=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
+          q=json.loads((root/'a/ifc-declared-quantity-exact-decimal.json').read_text()); c=json.loads((root/'a/mapped-declared-result-calculation.json').read_text()); rr=json.loads((root/'comparison/v19-second-independent-reproduction-receipt.json').read_text()); rx=json.loads((root/'second-rxep/rxep-exact-decimal-calculated-contribution.json').read_text()); rxr=json.loads((root/'second-rxep/rxep-exact-decimal-calculated-contribution-receipt.json').read_text()); s=json.loads((root/'set/out-a/environmental-contribution-set.json').read_text()); sr=json.loads((root/'set/out-a/environmental-contribution-set-receipt.json').read_text())
+          report={'verdict':'ENVIRONMENTAL_CONTRIBUTION_SET_TWO_DISTINCT_MEMBERS_VERIFIABLE','second_ifc_source_sha256':q['ifc_source']['sha256'],'second_element_global_id':q['ifc_identity']['element_global_id'],'second_quantity_lexical':q['quantity']['quantity_lexical'],'second_quantity_decimal':q['quantity']['quantity_decimal'],'second_calculation_record_content_sha256':c['integrity']['content_sha256'],'second_calculation_record_file_sha256':sha(root/'a/mapped-declared-result-calculation.json'),'second_calculation_receipt_sha256':json.loads((root/'a/mapped-declared-result-calculation-receipt.json').read_text())['receipt_sha256'],'second_reproduction_receipt_sha256':rr['receipt_sha256'],'second_rxep_record_content_sha256':rx['integrity']['content_sha256'],'second_rxep_record_file_sha256':sha(root/'second-rxep/rxep-exact-decimal-calculated-contribution.json'),'second_rxep_receipt_sha256':rxr['receipt_sha256'],'second_scaled_result_decimal':rx['measurement']['value_decimal'],'second_scaled_result_unit':rx['measurement']['unit'],'set_record_content_sha256':s['integrity']['content_sha256'],'set_record_file_sha256':sha(root/'set/out-a/environmental-contribution-set.json'),'set_receipt_sha256':sr['receipt_sha256'],'member_count':s['member_count'],'member_semantic_identity_sha256':[m['semantic_identity_sha256'] for m in s['members']],'completeness_status':'PARTIAL','independent_runner_count':2,'byte_identical_second_contribution':True,'aggregation_performed':False,'sum_performed':False,'missing_contributions_are_zero':False,'unit_conversion_performed':False,'scientific_validation_performed':False,'professional_review_performed':False,'certified':False}
+          report['receipt_sha256']=hashlib.sha256(json.dumps(report,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()
+          (root/'v19-integration-receipt.json').write_text(json.dumps(report,indent=2,sort_keys=True)+'\n',encoding='utf-8',newline='\n'); print(json.dumps(report,indent=2,sort_keys=True))
+          PY
+
+      - name: Retain bounded v1.9 evidence only
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v19-two-distinct-members
+          path: |
+            /tmp/v19/a/fixture.ifc
+            /tmp/v19/a/ifc-declaration-product-mapping.json
+            /tmp/v19/a/ifc-declaration-product-mapping-receipt.json
+            /tmp/v19/a/ifc-declared-quantity-exact-decimal.json
+            /tmp/v19/a/ifc-declared-quantity-exact-decimal-receipt.json
+            /tmp/v19/a/mapped-declared-result-calculation.json
+            /tmp/v19/a/mapped-declared-result-calculation-receipt.json
+            /tmp/v19/comparison/v19-second-independent-reproduction-receipt.json
+            /tmp/v19/second-rxep/rxep-exact-decimal-calculated-contribution.json
+            /tmp/v19/second-rxep/rxep-exact-decimal-calculated-contribution-receipt.json
+            /tmp/v19/set/out-a/environmental-contribution-set.json
+            /tmp/v19/set/out-a/environmental-contribution-set-receipt.json
+            /tmp/v19/v19-integration-receipt.json
+          if-no-files-found: error
+          retention-days: 30
