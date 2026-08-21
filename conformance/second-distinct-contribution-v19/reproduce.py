@@ -17,6 +17,7 @@ from reference import second_distinct_contribution_v19 as v19
 
 ELEMENT_GLOBAL_ID=v19.SECOND_ELEMENT_GLOBAL_ID
 MAPPING_ID=v19.SECOND_MAPPING_ID
+SYNTHETIC_SOURCE_URI="synthetic://proofgrid-v19/fixture.ifc"
 
 def pretty(v): return (json.dumps(v,indent=2,sort_keys=True,ensure_ascii=False)+"\n").encode()
 def sha(path:Path): return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -45,7 +46,11 @@ def main():
     bundle=a.v14/"v13/a/declaration-evidence-bundle.json"; bundle_receipt=a.v14/"v13/a/declaration-evidence-bundle-receipt.json"
 
     source=root/"fixture.ifc"; build_ifc(source)
-    extraction=extract_ifc_declared_data(source); ifc_extract.validate_output(extraction)
+    extraction=extract_ifc_declared_data(source)
+    # Synthetic-only canonicalization: absolute hosted-runner paths are not evidence authority.
+    # The raw IFC bytes remain unchanged and are bound by source_sha256 below.
+    extraction["source"]=SYNTHETIC_SOURCE_URI
+    ifc_extract.validate_output(extraction)
     extraction_path=root/"ifc-extraction.json"; extraction_path.write_bytes(pretty(extraction))
 
     closure_record,closure_raw=mapper.load_json(closure); closure_receipt_obj,_=mapper.load_json(closure_receipt)
