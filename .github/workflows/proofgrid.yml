@@ -50,6 +50,16 @@ jobs:
         run: python reference/rx_cli.py lca-registry-validate evidence/examples/alberta-house --output /tmp/proofgrid-lca-registry.json
       - name: Verify fictional Alberta fixture
         run: python reference/rx_cli.py verify evidence/examples/alberta-house --output /tmp/proofgrid-output
+      - name: Hash deterministic environmental artifacts
+        run: |
+          python - <<'PY'
+          import hashlib
+          from pathlib import Path
+          root = Path('/tmp/proofgrid-output')
+          for name in ('evidence.json', 'graph.jsonld', 'receipt.json', 'report.html'):
+              digest = hashlib.sha256((root / name).read_bytes()).hexdigest()
+              print(f'{name} sha256:{digest}')
+          PY
       - name: Build real IFC quantity/material conformance fixture
         run: |
           python - <<'PY'
