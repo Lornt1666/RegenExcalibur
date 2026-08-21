@@ -3,6 +3,10 @@ name: ProofGrid v0.7 ILCD+EPD v1.3 Conformance
 on:
   pull_request:
     paths:
+      - "README.md"
+      - "ARCHITECTURE.md"
+      - "adapters/lca/README.md"
+      - "specs/rxep/README.md"
       - "reference/ilcd_epd_v13_conformance.py"
       - "conformance/ilcd-epd-v13/**"
       - "requirements-proofgrid-v07.txt"
