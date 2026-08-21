@@ -1,16 +1,30 @@
 # IFC Adapter
 
-Status: **planned / not implemented in v0.1**.
+Status: **read-only structural ingestion implemented in v0.2**.
 
-The adapter will ingest Industry Foundation Classes (IFC) data into the canonical ProofGrid building graph while preserving source identifiers and provenance.
+ProofGrid uses IfcOpenShell behind an explicit adapter boundary. The current adapter opens real `.ifc` STEP files and reports bounded project/building structure while preserving source metadata. It does **not** yet transform IFC quantities or materials into environmental claims.
 
-Initial responsibilities:
+## Current command
 
-- map project/building/storey/space/product identifiers;
-- extract declared quantities where available;
-- preserve IFC entity IDs and source hashes;
-- emit mapping warnings rather than silently invent missing values;
-- keep units explicit;
-- support conformance fixtures before production use.
+```bash
+python reference/rx_cli.py ifc-inspect path/to/model.ifc --output ifc-summary.json
+```
 
-The v0.1 genesis slice deliberately uses JSON fixtures so the evidence kernel can be validated independently of IFC parser complexity.
+Current responsibilities:
+
+- parse real IFC files with pinned IfcOpenShell;
+- report IFC schema and bounded entity counts;
+- preserve STEP IDs, GlobalIds, names, and IFC entity types for projects/buildings;
+- fail closed on missing, unsupported, or unparseable files;
+- state explicit limitations in generated summaries.
+
+## Deliberately not implemented yet
+
+- material quantity takeoff;
+- unit normalization across IFC quantity/property sets;
+- EPD/LCA factor matching;
+- code-compliance inference;
+- engineering or architectural conclusions;
+- certification.
+
+Those require separate conformance fixtures, unit/system-boundary rules, provenance, and evidence gates. Structural IFC ingestion is therefore **input capability**, not proof of environmental or regulatory correctness.
