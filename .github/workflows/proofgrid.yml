@@ -1,0 +1,38 @@
+name: ProofGrid Genesis
+
+on:
+  pull_request:
+    paths:
+      - "reference/**"
+      - "specs/rxep/**"
+      - "schemas/**"
+      - "evidence/examples/**"
+      - "tests/**"
+      - ".github/workflows/proofgrid.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "reference/**"
+      - "specs/rxep/**"
+      - "schemas/**"
+      - "evidence/examples/**"
+      - "tests/**"
+
+permissions:
+  contents: read
+
+jobs:
+  proofgrid:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Unit tests
+        run: python -m unittest discover -s tests -v
+      - name: Verify fictional Alberta fixture
+        run: python reference/rx_cli.py verify evidence/examples/alberta-house --output /tmp/proofgrid-output
+      - name: Show receipt
+        run: cat /tmp/proofgrid-output/receipt.json
