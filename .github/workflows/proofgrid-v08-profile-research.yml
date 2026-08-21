@@ -49,7 +49,6 @@ jobs:
             echo "pom_path=$POM"
           } | tee /tmp/proofgrid-v08-research/profile-coordinate.txt
 
-          # Inspect license/notice/profile resources without copying the profile JAR itself.
           jar tf "$JAR" | grep -Ei '(^|/)(LICENSE|NOTICE|COPYING|.*profile.*|.*validation.*|.*rule.*|.*xml$|.*xsd$|.*properties$|.*json$)' \
             > /tmp/proofgrid-v08-research/profile-interesting-resources.txt || true
           while IFS= read -r entry; do
@@ -62,13 +61,14 @@ jobs:
           done < /tmp/proofgrid-v08-research/profile-interesting-resources.txt
 
       - name: Inspect official Validation Tool Bitbucket source
+        timeout-minutes: 5
         shell: bash
         run: |
           set -euo pipefail
           TOOL_URL='https://bitbucket.org/okusche/ilcdvalidationtool.git'
-          git ls-remote --heads "$TOOL_URL" | tee /tmp/proofgrid-v08-research/tool-heads.txt
-          git ls-remote --tags "$TOOL_URL" | tee /tmp/proofgrid-v08-research/tool-tags.txt
-          git clone "$TOOL_URL" /tmp/ilcdvalidationtool
+          timeout 90s git ls-remote --heads "$TOOL_URL" | tee /tmp/proofgrid-v08-research/tool-heads.txt
+          timeout 90s git ls-remote --tags "$TOOL_URL" | tee /tmp/proofgrid-v08-research/tool-tags.txt
+          timeout 120s git clone --depth 1 --no-tags "$TOOL_URL" /tmp/ilcdvalidationtool
           git -C /tmp/ilcdvalidationtool rev-parse HEAD | tee /tmp/proofgrid-v08-research/tool-head-commit.txt
           git -C /tmp/ilcdvalidationtool log -1 --format='%H%n%aI%n%s' | tee /tmp/proofgrid-v08-research/tool-head-log.txt
           git -C /tmp/ilcdvalidationtool remote -v | tee /tmp/proofgrid-v08-research/tool-remotes.txt
@@ -76,8 +76,6 @@ jobs:
             | sed 's#^/tmp/ilcdvalidationtool/##' \
             | sort > /tmp/proofgrid-v08-research/tool-file-list.txt
 
-          # Preserve the build/configuration evidence needed to identify versions,
-          # Java requirements, dependencies, main classes and CLI/API surfaces.
           for f in pom.xml build.gradle build.gradle.kts settings.gradle settings.gradle.kts gradle.properties README README.md LICENSE LICENSE.txt NOTICE NOTICE.txt; do
             if [ -f "/tmp/ilcdvalidationtool/$f" ]; then
               cp "/tmp/ilcdvalidationtool/$f" "/tmp/proofgrid-v08-research/tool-${f//\//_}"
@@ -93,11 +91,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          PROFILE_DIR="$HOME/.m2/repository/com/okworx/ilcd/validation/profiles/EPD-1.2-OEKOBAUDAT/3.8.0"
-          JAR="$PROFILE_DIR/EPD-1.2-OEKOBAUDAT-3.8.0.jar"
           python - <<'PY'
           from pathlib import Path
-          import hashlib, json, os, re, subprocess, xml.etree.ElementTree as ET
+          import hashlib, json, xml.etree.ElementTree as ET
 
           out = Path('/tmp/proofgrid-v08-research')
           pom = out / 'profile.pom'
