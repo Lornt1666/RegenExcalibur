@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://regenexcalibur.example/schemas/ifc-quantity-exact-decimal.schema.json",
+  "title": "ProofGrid IFC Declared Quantity Exact Decimal v1.5.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "record_type",
+    "verdict",
+    "ifc_source",
+    "mapping_evidence",
+    "ifc_identity",
+    "quantity",
+    "calculation_performed",
+    "environmental_calculation_performed",
+    "building_quantity_multiplication_performed",
+    "unit_conversion_performed",
+    "scientific_validation_performed",
+    "professional_review_performed",
+    "certified",
+    "limitations",
+    "integrity"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "record_type": {"const": "ProofGridIFCDeclaredQuantityExactDecimal"},
+    "verdict": {"const": "IFC_DECLARED_QUANTITY_EXACT_DECIMAL_VERIFIABLE"},
+    "ifc_source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256", "schema"],
+      "properties": {
+        "sha256": {"$ref": "#/$defs/sha"},
+        "schema": {"type": "string", "minLength": 1}
+      }
+    },
+    "mapping_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mapping_id", "mapping_content_sha256", "mapping_file_sha256", "mapping_receipt_sha256", "product_flow_uuid", "product_flow_version"],
+      "properties": {
+        "mapping_id": {"type": "string", "minLength": 1},
+        "mapping_content_sha256": {"$ref": "#/$defs/sha"},
+        "mapping_file_sha256": {"$ref": "#/$defs/sha"},
+        "mapping_receipt_sha256": {"$ref": "#/$defs/sha"},
+        "product_flow_uuid": {"type": "string", "minLength": 1},
+        "product_flow_version": {"type": "string", "minLength": 1}
+      }
+    },
+    "ifc_identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["element_step_id", "element_global_id", "material_association_step_id", "material_step_id", "quantity_step_id", "quantity_entity_type", "quantity_name", "quantity_statement_sha256"],
+      "properties": {
+        "element_step_id": {"type": "integer", "minimum": 1},
+        "element_global_id": {"type": "string", "minLength": 1},
+        "material_association_step_id": {"type": "integer", "minimum": 1},
+        "material_step_id": {"type": "integer", "minimum": 1},
+        "quantity_step_id": {"type": "integer", "minimum": 1},
+        "quantity_entity_type": {"const": "IFCQUANTITYWEIGHT"},
+        "quantity_name": {"type": "string", "minLength": 1},
+        "quantity_statement_sha256": {"$ref": "#/$defs/sha"}
+      }
+    },
+    "quantity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["quantity_lexical", "quantity_decimal", "mapped_parser_numeric_string", "mapped_parser_consistent_with_source", "unit_identity", "source_token_is_authority", "parser_numeric_value_is_authority"],
+      "properties": {
+        "quantity_lexical": {"type": "string", "minLength": 1},
+        "quantity_decimal": {"type": "string", "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$"},
+        "mapped_parser_numeric_string": {"type": "string", "minLength": 1},
+        "mapped_parser_consistent_with_source": {"const": true},
+        "unit_identity": {"const": "kg"},
+        "source_token_is_authority": {"const": true},
+        "parser_numeric_value_is_authority": {"const": false}
+      }
+    },
+    "calculation_performed": {"const": false},
+    "environmental_calculation_performed": {"const": false},
+    "building_quantity_multiplication_performed": {"const": false},
+    "unit_conversion_performed": {"const": false},
+    "scientific_validation_performed": {"const": false},
+    "professional_review_performed": {"const": false},
+    "certified": {"const": false},
+    "limitations": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["content_sha256", "canonicalization", "signature"],
+      "properties": {
+        "content_sha256": {"$ref": "#/$defs/sha"},
+        "canonicalization": {"const": "UTF-8 JSON; sorted keys; compact separators; ensure_ascii=false"},
+        "signature": {"type": "null"}
+      }
+    }
+  },
+  "$defs": {
+    "sha": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+  }
+}
