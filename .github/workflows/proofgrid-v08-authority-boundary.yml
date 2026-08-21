@@ -1,21 +1,23 @@
-name: ProofGrid v0.8 Synthetic Authority Boundary
+name: ProofGrid v0.8 Authority-Safe Profile Acceptance
 
 on:
   pull_request:
     paths:
       - '.github/workflows/proofgrid-v08-authority-boundary.yml'
       - 'conformance/oekobaudat-v12/assert_synthetic_authority_boundary.py'
+      - 'conformance/oekobaudat-v12/assert_v12_package.py'
+      - 'conformance/oekobaudat-v12/build_authority_safe_fixture.py'
       - 'conformance/oekobaudat-v12/build_synthetic_fixture.py'
-      - 'conformance/oekobaudat-v12/run_final_gate.sh'
+      - 'conformance/oekobaudat-v12/OekobaudatProfileProbe.java'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  synthetic-authority-boundary:
+  authority-safe-profile-acceptance:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Checkout candidate
         uses: actions/checkout@v6.1.0
@@ -44,42 +46,309 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Reproduce exact final profile gate
+      - name: Resolve exact official validator and profile
         shell: bash
         run: |
           set -euo pipefail
-          bash conformance/oekobaudat-v12/run_final_gate.sh > /tmp/proofgrid-v08-authority-final.log 2>&1
-          grep -F 'FINAL_V08_GATE=PASS' /tmp/proofgrid-v08-authority-final.log
+          OUT=/tmp/proofgrid-v08-authority-safe
+          mkdir -p "$OUT/classes"
+          cat > "$OUT/pom.xml" <<'POM'
+          <project xmlns="http://maven.apache.org/POM/4.0.0">
+            <modelVersion>4.0.0</modelVersion>
+            <groupId>proofgrid.v08</groupId>
+            <artifactId>authority-safe-profile-acceptance</artifactId>
+            <version>0.8.1</version>
+            <dependencies>
+              <dependency>
+                <groupId>com.okworx.ilcd.validation</groupId>
+                <artifactId>ilcd-validation</artifactId>
+                <version>2.12.2</version>
+              </dependency>
+              <dependency>
+                <groupId>com.okworx.ilcd.validation.profiles</groupId>
+                <artifactId>EPD-1.2-OEKOBAUDAT</artifactId>
+                <version>3.8.0</version>
+              </dependency>
+            </dependencies>
+          </project>
+          POM
 
-      - name: Enforce synthetic non-affiliation and non-authority semantics
+          mvn -B -ntp -f "$OUT/pom.xml" dependency:go-offline
+          mvn -B -ntp -f "$OUT/pom.xml" dependency:build-classpath \
+            -Dmdep.outputFile="$OUT/classpath.txt" -Dmdep.pathSeparator=:
+
+          LIB="$HOME/.m2/repository/com/okworx/ilcd/validation/ilcd-validation/2.12.2/ilcd-validation-2.12.2.jar"
+          LIB_POM="$HOME/.m2/repository/com/okworx/ilcd/validation/ilcd-validation/2.12.2/ilcd-validation-2.12.2.pom"
+          PROFILE="$HOME/.m2/repository/com/okworx/ilcd/validation/profiles/EPD-1.2-OEKOBAUDAT/3.8.0/EPD-1.2-OEKOBAUDAT-3.8.0.jar"
+          PROFILE_POM="$HOME/.m2/repository/com/okworx/ilcd/validation/profiles/EPD-1.2-OEKOBAUDAT/3.8.0/EPD-1.2-OEKOBAUDAT-3.8.0.pom"
+
+          test "$(sha256sum "$LIB" | awk '{print $1}')" = '55427919601b5deceee99b34fbbbaf8f00cbcf0aca1fdb1eb493c31f473e077b'
+          test "$(sha256sum "$LIB_POM" | awk '{print $1}')" = '16430562fe6ebb6da3e4afea4a8c6cce98d822d61f59eb33e0b5dc98a4eb1fc1'
+          test "$(sha256sum "$PROFILE" | awk '{print $1}')" = '96ee05b9cf5172a344df3ea844aa8d94060eae4e4e8188f72e46441a3d61921e'
+          test "$(sha256sum "$PROFILE_POM" | awk '{print $1}')" = '0188dfb7ee16feb4c20c58003f419db7e5007382be7794d47cfd56d67a39047a'
+          test "$(unzip -p "$PROFILE" includes/EPD-1.2-Generic.jar | sha256sum | awk '{print $1}')" = '31402bb2746ddb9d2ab4ce40dd5d3e848ab701d1f4da00f2da004f15c7e1cc25'
+          test "$(unzip -p "$PROFILE" includes/EPD-1.2-EN15804.jar | sha256sum | awk '{print $1}')" = 'a05ac55df8f567985da8c95e30ff6579761d336e0f23087aa73fefb4d9a2b147'
+
+          printf '%s\n' "$PROFILE" > "$OUT/profile-path.txt"
+          javac -encoding UTF-8 -cp "$(cat "$OUT/classpath.txt")" -d "$OUT/classes" \
+            conformance/oekobaudat-v12/OekobaudatProfileProbe.java
+          sha256sum conformance/oekobaudat-v12/build_synthetic_fixture.py > "$OUT/base-builder-source.sha256"
+          sha256sum conformance/oekobaudat-v12/build_authority_safe_fixture.py > "$OUT/authority-builder-source.sha256"
+          sha256sum conformance/oekobaudat-v12/assert_synthetic_authority_boundary.py > "$OUT/authority-guard-source.sha256"
+
+      - name: Build authority-safe fixture twice independently
         shell: bash
         run: |
           set -euo pipefail
-          python conformance/oekobaudat-v12/assert_synthetic_authority_boundary.py \
-            --package-root /tmp/proofgrid-v08-final/package \
-            --build-receipt /tmp/proofgrid-v08-final/fixture-build-receipt.json \
-            --final-receipt /tmp/proofgrid-v08-final/proofgrid-v08-final-receipt.json \
-            --output /tmp/proofgrid-v08-final/synthetic-authority-boundary-receipt.json
+          OUT=/tmp/proofgrid-v08-authority-safe
+          PROFILE=$(cat "$OUT/profile-path.txt")
+          for NAME in positive-a positive-b; do
+            python conformance/oekobaudat-v12/build_authority_safe_fixture.py \
+              --sample-root .proofgrid-upstream/indata-v12/sample_data \
+              --master-root .proofgrid-upstream/indata-master \
+              --profile-jar "$PROFILE" \
+              --output-root "$OUT/$NAME"
+          done
+
+      - name: Prove byte-level deterministic authority-safe packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=/tmp/proofgrid-v08-authority-safe
+          for NAME in positive-a positive-b; do
+            (
+              cd "$OUT/$NAME"
+              find ILCD -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum
+            ) > "$OUT/$NAME.manifest.sha256"
+            sha256sum "$OUT/$NAME.manifest.sha256" > "$OUT/$NAME.manifest-digest.sha256"
+          done
+          diff -u "$OUT/positive-a.manifest.sha256" "$OUT/positive-b.manifest.sha256"
+          test "$(sha256sum "$OUT/positive-a.manifest.sha256" | awk '{print $1}')" = \
+               "$(sha256sum "$OUT/positive-b.manifest.sha256" | awk '{print $1}')"
+          test "$(python -c 'import json; print(json.load(open("/tmp/proofgrid-v08-authority-safe/positive-a/fixture-build-receipt.json"))["receipt_sha256"])')" = \
+               "$(python -c 'import json; print(json.load(open("/tmp/proofgrid-v08-authority-safe/positive-b/fixture-build-receipt.json"))["receipt_sha256"])')"
+
+      - name: Validate both authority-safe builds with exact official profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=/tmp/proofgrid-v08-authority-safe
+          CP=$(cat "$OUT/classpath.txt"):$OUT/classes
+          PROFILE=$(cat "$OUT/profile-path.txt")
+          for NAME in positive-a positive-b; do
+            python conformance/oekobaudat-v12/assert_v12_package.py \
+              "$OUT/$NAME" --output "$OUT/$NAME-version-guard.json"
+            java -Djava.net.useSystemProxies=false -cp "$CP" \
+              proofgrid.v08.OekobaudatProfileProbe \
+              "$PROFILE" "$OUT/$NAME" "$OUT/$NAME-result.json" "$NAME"
+          done
+
           python - <<'PY'
-          import json
-          p='/tmp/proofgrid-v08-final/synthetic-authority-boundary-receipt.json'
-          d=json.load(open(p, encoding='utf-8'))
-          assert d['verdict'] == 'SYNTHETIC_AUTHORITY_BOUNDARY_PASS'
-          assert d['authority_inference_allowed'] is False
-          assert d['certified'] is False
-          assert d['profile_operator_identifier_role'] == 'SYNTHETIC_INTEROPERABILITY_TEST_INPUT_ONLY'
-          assert d['synthetic_operator_placeholder']['forbidden_contact_channels_present'] == []
-          print('SYNTHETIC_AUTHORITY_BOUNDARY=PASS')
-          print('receipt_sha256=', d['receipt_sha256'])
+          from pathlib import Path
+          import hashlib, json, re
+          root=Path('/tmp/proofgrid-v08-authority-safe')
+          a=json.loads((root/'positive-a-result.json').read_text())
+          b=json.loads((root/'positive-b-result.json').read_text())
+          def normalized(data):
+              rows=[]
+              for event in data['events']:
+                  row=dict(event)
+                  ref=row.get('reference')
+                  if ref:
+                      row['reference']=re.sub(r'# abs\. filename: .*? # -?\d+', '# abs. filename: <PACKAGE> # <REFHASH>', ref)
+                  rows.append(row)
+              return rows
+          for label,data in [('positive-a',a),('positive-b',b)]:
+              assert data['profile_name']=='EPD 1.2 ÖKOBAUDAT', (label,data['profile_name'])
+              assert data['profile_version']=='3.8.0', (label,data['profile_version'])
+              assert data['error_count']==0, (label,data['error_count'])
+              assert data['is_positive'] is True, (label,data['is_positive'])
+              assert data['warning_count']==26, (label,data['warning_count'])
+              assert all(e['severity']=='WARNING' for e in data['events'])
+          assert normalized(a)==normalized(b), 'normalized official validation event streams differ'
+          raw=(json.dumps(normalized(a),sort_keys=True,separators=(',',':'),ensure_ascii=False)+'\n').encode()
+          fingerprint=hashlib.sha256(raw).hexdigest()
+          (root/'authority-safe-events.sha256').write_text(fingerprint+'\n')
+          print('AUTHORITY_SAFE_OFFICIAL_PROFILE_POSITIVE=PASS')
+          print('errors=0 warnings=26')
+          print('normalized_events_sha256=',fingerprint)
           PY
 
-      - name: Retain receipts only — no synthetic package bytes
+      - name: Require exact profile rejection of authority-safe category corruption
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=/tmp/proofgrid-v08-authority-safe
+          cp -a "$OUT/positive-a" "$OUT/negative-category"
+          python - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          root=Path('/tmp/proofgrid-v08-authority-safe/negative-category/ILCD/processes')
+          files=list(root.glob('*.xml'))
+          assert len(files)==1, files
+          tree=ET.parse(files[0]); doc=tree.getroot()
+          matches=[]
+          for node in doc.iter():
+              if node.tag.rsplit('}',1)[-1]=='classification' and node.attrib.get('name')=='oekobau.dat':
+                  matches.append(node)
+          assert len(matches)==1, len(matches)
+          matches[0].attrib['name']='proofgrid-invalid-category-profile'
+          tree.write(files[0],encoding='utf-8',xml_declaration=True,short_empty_elements=True)
+          PY
+          python conformance/oekobaudat-v12/assert_v12_package.py \
+            "$OUT/negative-category" --output "$OUT/negative-category-version-guard.json"
+          CP=$(cat "$OUT/classpath.txt"):$OUT/classes
+          PROFILE=$(cat "$OUT/profile-path.txt")
+          java -Djava.net.useSystemProxies=false -cp "$CP" \
+            proofgrid.v08.OekobaudatProfileProbe \
+            "$PROFILE" "$OUT/negative-category" "$OUT/negative-category-result.json" negative-category
+          python - <<'PY'
+          import json
+          d=json.load(open('/tmp/proofgrid-v08-authority-safe/negative-category-result.json'))
+          assert d['is_positive'] is False
+          assert d['error_count'] >= 1
+          errors=[e['message'] for e in d['events'] if e.get('severity')=='ERROR']
+          assert any('OEKOBAU.DAT categories must be present.' in m for m in errors), errors
+          print('AUTHORITY_SAFE_CATEGORY_NEGATIVE=PASS')
+          PY
+
+      - name: Require v1.3 mutation rejection before profile evaluation
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=/tmp/proofgrid-v08-authority-safe
+          cp -a "$OUT/positive-a" "$OUT/wrong-version"
+          python - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          EPD='http://www.indata.network/EPD/2019'
+          files=list(Path('/tmp/proofgrid-v08-authority-safe/wrong-version/ILCD/processes').glob('*.xml'))
+          assert len(files)==1, files
+          tree=ET.parse(files[0]); root=tree.getroot()
+          assert root.attrib.get(f'{{{EPD}}}epd-version')=='1.2'
+          root.attrib[f'{{{EPD}}}epd-version']='1.3'
+          tree.write(files[0],encoding='utf-8',xml_declaration=True,short_empty_elements=True)
+          PY
+          if python conformance/oekobaudat-v12/assert_v12_package.py \
+            "$OUT/wrong-version" --output "$OUT/wrong-version-should-not-exist.json"; then
+            echo 'v1.3 mutation unexpectedly passed v1.2 guard' >&2
+            exit 1
+          fi
+          echo 'AUTHORITY_SAFE_V13_PRE_REJECTION=PASS'
+
+      - name: Produce bounded authority-safe compatibility receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib, json, re
+          root=Path('/tmp/proofgrid-v08-authority-safe')
+          build=json.loads((root/'positive-a/fixture-build-receipt.json').read_text())
+          pos=json.loads((root/'positive-a-result.json').read_text())
+          neg=json.loads((root/'negative-category-result.json').read_text())
+          manifest_sha=hashlib.sha256((root/'positive-a.manifest.sha256').read_bytes()).hexdigest()
+          receipt={
+            'claim_token':'OEKOBAUDAT_V12_PROFILE_380_SYNTHETIC_AUTHORITY_SAFE_COMPATIBLE',
+            'compatibility_claim':True,
+            'compatibility_scope':'Deterministic authority-safe synthetic interoperability fixture only, executed headlessly under exact official ilcd-validation 2.12.2 and ÖKOBAUDAT ILCD+EPD v1.2 profile 3.8.0.',
+            'certified':False,
+            'authority_inference_allowed':False,
+            'real_provider_epd_tested':False,
+            'bbsr_or_oekobaudat_acceptance_implied':False,
+            'scientific_or_product_representativeness_implied':False,
+            'source_import_authorization_implied':False,
+            'profile_operator_identifier_role':'SYNTHETIC_INTEROPERABILITY_TEST_INPUT_ONLY',
+            'official_library':{
+              'coordinate':'com.okworx.ilcd.validation:ilcd-validation:2.12.2',
+              'jar_sha256':'55427919601b5deceee99b34fbbbaf8f00cbcf0aca1fdb1eb493c31f473e077b'
+            },
+            'official_profile':{
+              'coordinate':'com.okworx.ilcd.validation.profiles:EPD-1.2-OEKOBAUDAT:3.8.0',
+              'jar_sha256':'96ee05b9cf5172a344df3ea844aa8d94060eae4e4e8188f72e46441a3d61921e'
+            },
+            'pinned_public_sources':{
+              'indata_v12_commit':'b7233bd2dd5435a6b5973505ffa212cd03d23468',
+              'indata_master_commit':'32117b6a70d6c486344247a429449755a2c7eab4'
+            },
+            'fixture_build_receipt_sha256':build['receipt_sha256'],
+            'authority_safe_builder_version':build['builder']['version'],
+            'package_manifest_sha256':manifest_sha,
+            'operator_placeholder_sha256':build['operator_contact']['sha256'],
+            'synthetic_process_sha256':build['process_changes']['synthetic_process_sha256_after_authority_hardening'],
+            'positive_control':{
+              'error_count':pos['error_count'],
+              'warning_count':pos['warning_count'],
+              'event_count':pos['event_count'],
+              'is_positive':pos['is_positive'],
+              'normalized_events_sha256':(root/'authority-safe-events.sha256').read_text().strip(),
+              'second_build_and_validation_matched':True
+            },
+            'negative_controls':{
+              'missing_oekobaudat_classification':{
+                'error_count':neg['error_count'],
+                'is_positive':neg['is_positive'],
+                'required_error_observed':True
+              },
+              'v13_mutation':'REJECTED_BY_V12_VERSION_GUARD_BEFORE_PROFILE_EVALUATION'
+            },
+            'warnings_policy':'All 26 official profile warnings are retained; no environmental values were invented merely to silence warnings.',
+            'limitations':[
+              'The fixture is synthetic and non-production; profile compatibility is not BBSR plausibility approval, programme-operator acceptance, registration, or certification.',
+              'Use of a profile-allowed programme-operator UUID is solely a synthetic interoperability input; the fixture explicitly does not state affiliation, authority, approval, registration, contact authority, or provider/source-use rights.',
+              'Profile compatibility does not establish scientific validity, product representativeness, professional LCA suitability, code compliance, engineering/architectural approval, procurement approval, or regulatory approval.',
+              'This v1.2 profile receipt must not be interpreted as ILCD+EPD v1.3 profile compliance; v0.7 remains the separate v1.3 XSD/master-data gate.',
+              'Source acquisition/use authorization remains a separate v0.6 evidence dimension and is not implied by this receipt.'
+            ]
+          }
+          assert receipt['positive_control']['error_count']==0
+          assert receipt['positive_control']['is_positive'] is True
+          assert receipt['certified'] is False
+          assert receipt['authority_inference_allowed'] is False
+          raw=json.dumps(receipt,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()
+          receipt['receipt_sha256']=hashlib.sha256(raw).hexdigest()
+          (root/'authority-safe-compatibility-receipt.json').write_text(json.dumps(receipt,indent=2,sort_keys=True,ensure_ascii=False)+'\n')
+          print(json.dumps(receipt,indent=2,sort_keys=True,ensure_ascii=False))
+          PY
+
+      - name: Enforce byte-level synthetic non-affiliation boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=/tmp/proofgrid-v08-authority-safe
+          python conformance/oekobaudat-v12/assert_synthetic_authority_boundary.py \
+            --package-root "$OUT/positive-a" \
+            --build-receipt "$OUT/positive-a/fixture-build-receipt.json" \
+            --final-receipt "$OUT/authority-safe-compatibility-receipt.json" \
+            --output "$OUT/synthetic-authority-boundary-receipt.json"
+          python - <<'PY'
+          import json
+          d=json.load(open('/tmp/proofgrid-v08-authority-safe/synthetic-authority-boundary-receipt.json',encoding='utf-8'))
+          assert d['verdict']=='SYNTHETIC_AUTHORITY_BOUNDARY_PASS'
+          assert d['authority_inference_allowed'] is False
+          assert d['certified'] is False
+          assert d['profile_operator_identifier_role']=='SYNTHETIC_INTEROPERABILITY_TEST_INPUT_ONLY'
+          assert d['synthetic_operator_placeholder']['forbidden_contact_channels_present']==[]
+          print('SYNTHETIC_AUTHORITY_BOUNDARY=PASS')
+          print('receipt_sha256=',d['receipt_sha256'])
+          PY
+
+      - name: Retain receipts/results only — no synthetic package bytes
         uses: actions/upload-artifact@v4.6.2
         with:
-          name: proofgrid-v08-synthetic-authority-boundary
+          name: proofgrid-v08-authority-safe-profile-acceptance
           path: |
-            /tmp/proofgrid-v08-final/synthetic-authority-boundary-receipt.json
-            /tmp/proofgrid-v08-final/proofgrid-v08-final-receipt.json
-            /tmp/proofgrid-v08-final/fixture-build-receipt.json
+            /tmp/proofgrid-v08-authority-safe/authority-safe-compatibility-receipt.json
+            /tmp/proofgrid-v08-authority-safe/synthetic-authority-boundary-receipt.json
+            /tmp/proofgrid-v08-authority-safe/positive-a/fixture-build-receipt.json
+            /tmp/proofgrid-v08-authority-safe/positive-a.manifest.sha256
+            /tmp/proofgrid-v08-authority-safe/positive-a.manifest-digest.sha256
+            /tmp/proofgrid-v08-authority-safe/positive-a-result.json
+            /tmp/proofgrid-v08-authority-safe/positive-b-result.json
+            /tmp/proofgrid-v08-authority-safe/authority-safe-events.sha256
+            /tmp/proofgrid-v08-authority-safe/negative-category-result.json
+            /tmp/proofgrid-v08-authority-safe/base-builder-source.sha256
+            /tmp/proofgrid-v08-authority-safe/authority-builder-source.sha256
+            /tmp/proofgrid-v08-authority-safe/authority-guard-source.sha256
           if-no-files-found: error
           retention-days: 30
