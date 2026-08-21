@@ -1,0 +1,85 @@
+name: ProofGrid v0.8 Synthetic Authority Boundary
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/proofgrid-v08-authority-boundary.yml'
+      - 'conformance/oekobaudat-v12/assert_synthetic_authority_boundary.py'
+      - 'conformance/oekobaudat-v12/build_synthetic_fixture.py'
+      - 'conformance/oekobaudat-v12/run_final_gate.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  synthetic-authority-boundary:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v6.1.0
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v5.0.0
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Checkout pinned InData ILCD+EPD v1.2 samples
+        uses: actions/checkout@v6.1.0
+        with:
+          repository: InDataWG/ILCD-EPD-Data-Format
+          ref: b7233bd2dd5435a6b5973505ffa212cd03d23468
+          path: .proofgrid-upstream/indata-v12
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Checkout pinned InData master data
+        uses: actions/checkout@v6.1.0
+        with:
+          repository: InDataWG/ILCD-EPD-Master-Data
+          ref: 32117b6a70d6c486344247a429449755a2c7eab4
+          path: .proofgrid-upstream/indata-master
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Reproduce exact final profile gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash conformance/oekobaudat-v12/run_final_gate.sh > /tmp/proofgrid-v08-authority-final.log 2>&1
+          grep -F 'FINAL_V08_GATE=PASS' /tmp/proofgrid-v08-authority-final.log
+
+      - name: Enforce synthetic non-affiliation and non-authority semantics
+        shell: bash
+        run: |
+          set -euo pipefail
+          python conformance/oekobaudat-v12/assert_synthetic_authority_boundary.py \
+            --package-root /tmp/proofgrid-v08-final/package \
+            --build-receipt /tmp/proofgrid-v08-final/fixture-build-receipt.json \
+            --final-receipt /tmp/proofgrid-v08-final/proofgrid-v08-final-receipt.json \
+            --output /tmp/proofgrid-v08-final/synthetic-authority-boundary-receipt.json
+          python - <<'PY'
+          import json
+          p='/tmp/proofgrid-v08-final/synthetic-authority-boundary-receipt.json'
+          d=json.load(open(p, encoding='utf-8'))
+          assert d['verdict'] == 'SYNTHETIC_AUTHORITY_BOUNDARY_PASS'
+          assert d['authority_inference_allowed'] is False
+          assert d['certified'] is False
+          assert d['profile_operator_identifier_role'] == 'SYNTHETIC_INTEROPERABILITY_TEST_INPUT_ONLY'
+          assert d['synthetic_operator_placeholder']['forbidden_contact_channels_present'] == []
+          print('SYNTHETIC_AUTHORITY_BOUNDARY=PASS')
+          print('receipt_sha256=', d['receipt_sha256'])
+          PY
+
+      - name: Retain receipts only — no synthetic package bytes
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v08-synthetic-authority-boundary
+          path: |
+            /tmp/proofgrid-v08-final/synthetic-authority-boundary-receipt.json
+            /tmp/proofgrid-v08-final/proofgrid-v08-final-receipt.json
+            /tmp/proofgrid-v08-final/fixture-build-receipt.json
+          if-no-files-found: error
+          retention-days: 30
