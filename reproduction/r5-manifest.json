@@ -1,10 +1,14 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "gate": "ProofGrid R5 clean-environment reproduction candidate",
   "implementation_commit": "b0f3e0b4afbc7e787d7063f4b1cfa693083dd0d4",
   "runtime": {
-    "python": "3.11.16",
-    "dependencies": "requirements-proofgrid.txt"
+    "python_by_platform": {
+      "Linux": "3.11.16",
+      "Windows": "3.11.9"
+    },
+    "dependencies": "requirements-proofgrid.txt",
+    "policy": "Exact CPython patch versions are declared per operating-system family. Windows uses 3.11.9 because later CPython 3.11 security releases are not provisioned as Windows binaries by the hosted setup catalog; both runtimes execute the same locked ProofGrid dependency set and frozen implementation."
   },
   "core_paths": [
     ".gitattributes",
