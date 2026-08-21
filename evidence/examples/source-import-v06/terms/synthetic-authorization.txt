@@ -1,0 +1,7 @@
+RegenExcalibur ProofGrid synthetic source-import authorization fixture.
+Purpose: software conformance testing only.
+Storage: allowed for the synthetic fixture.
+Transformation: allowed for the synthetic fixture.
+Commercial use: prohibited.
+Redistribution of the raw source carrier: prohibited.
+This text grants no rights to any real EPD, programme operator dataset, or third-party source.

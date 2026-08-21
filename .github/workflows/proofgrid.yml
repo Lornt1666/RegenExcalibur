@@ -206,6 +206,31 @@ jobs:
           assert receipt['certified'] is False
           print('v0.5 known-answer assertions: PASS')
           PY
+      - name: Verify v0.6 authorization-aware source import
+        run: |
+          python reference/source_import.py \
+            evidence/examples/source-import-v06 \
+            --output-dir /tmp/proofgrid-v06-import \
+            --as-of 2026-08-20
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          receipt = json.loads(Path('/tmp/proofgrid-v06-import/import-receipt.json').read_text(encoding='utf-8'))
+          registry = json.loads(Path('/tmp/proofgrid-v06-import/normalized-registry.json').read_text(encoding='utf-8'))
+          assert receipt['verdict'] == 'AUTHORIZED_SOURCE_IMPORT_VERIFIABLE'
+          assert receipt['certified'] is False
+          assert receipt['rights']['status'] == 'TEST_ONLY'
+          assert receipt['rights']['decision'] == 'AUTHORIZED_FOR_DECLARED_IMPORT_ONLY'
+          assert receipt['source']['redistribution_status'] == 'RESTRICTED'
+          assert receipt['source']['raw_export']['exported'] is False
+          assert receipt['normalized_record']['id'] == 'RX-IMPORTED-SYNTH-CONCRETE-A1A3'
+          assert len(registry) == 1
+          assert registry[0]['indicator'] == {'name': 'GWP-total', 'value': 0.15, 'unit': 'kgCO2e'}
+          assert registry[0]['system_boundary']['modules'] == ['A1', 'A2', 'A3']
+          assert registry[0]['source']['redistribution_status'] == 'RESTRICTED'
+          assert registry[0]['synthetic'] is True
+          print('v0.6 source-import assertions: PASS')
+          PY
       - name: Show receipts
         run: |
           cat /tmp/proofgrid-lca-registry.json
@@ -213,3 +238,5 @@ jobs:
           cat /tmp/proofgrid-ifc-summary.json
           cat /tmp/proofgrid-ifc-extraction.json
           cat /tmp/proofgrid-v05-mapping-receipt.json
+          cat /tmp/proofgrid-v06-import/import-receipt.json
+          cat /tmp/proofgrid-v06-import/normalized-registry.json

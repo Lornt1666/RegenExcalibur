@@ -1,0 +1,44 @@
+{
+  "schema_version": "1.0",
+  "import_id": "RX-IMPORT-SYNTH-CONCRETE-001",
+  "manifest_version": "0.6.0",
+  "provider": {
+    "name": "RegenExcalibur Synthetic Test Publisher",
+    "program": "ProofGrid Synthetic Source Import Conformance",
+    "source_locator": "synthetic://proofgrid/v0.6/concrete"
+  },
+  "acquisition": {
+    "method": "TEST_FIXTURE",
+    "synthetic": true,
+    "intended_use": "INTERNAL_TEST"
+  },
+  "authorization": {
+    "status": "TEST_ONLY",
+    "commercial_use": "PROHIBITED",
+    "storage": "ALLOWED",
+    "transformation": "ALLOWED",
+    "redistribution": "PROHIBITED",
+    "terms_reference": "synthetic-local-test-authorization-v1",
+    "terms_snapshot": {
+      "path": "terms/synthetic-authorization.txt",
+      "sha256": "18437a5c104ffe5b26a83004300d0b47c240bcc96e09b1119b9992da819fc601"
+    },
+    "approval_reference": null,
+    "valid_until": "2099-12-31"
+  },
+  "source": {
+    "path": "source/synthetic-declaration.xml",
+    "sha256": "1326aa51e0d62444209e78a39cef62046c5683c85609eaf7aea675839ec1a338",
+    "media_type": "application/xml",
+    "declared_format": {
+      "name": "RX-SYNTHETIC-EPD-CARRIER",
+      "version": "1.0"
+    }
+  },
+  "parser": {
+    "name": "rx-synthetic-epd-carrier",
+    "version": "0.6.0",
+    "profile": "rx-synthetic-epd-carrier-1.0"
+  },
+  "normalized_record_id": "RX-IMPORTED-SYNTH-CONCRETE-A1A3"
+}
