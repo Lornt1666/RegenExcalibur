@@ -21,8 +21,12 @@
     "other_namespace": "http://lca.jrc.it/ILCD/Common",
     "amount_namespace": "http://www.iai.kit.edu/EPD/2013",
     "amount_element": "amount",
+    "attribute_namespace": "http://www.iai.kit.edu/EPD/2013",
     "module_attribute": "module",
     "scenario_attribute": "scenario",
+    "scenario_name_attribute": "name",
+    "scenario_group_attribute": "group",
+    "scenario_default_attribute": "default",
     "unit_group_reference_element": "referenceToUnitGroupDataSet",
     "unscoped_mean_amount_extracted": false
   },
@@ -64,6 +68,7 @@
   },
   "limitations": [
     "The v1.1 frozen map initially accepts only EF3.0 GWP-total. Other catalogue indicators require separately researched unit/reference identities before admission to this map.",
+    "Scenario and amount identity attributes are accepted only in the researched EPD/2013 XML namespace; unqualified lookalike attributes are not an accepted v1.1 structure.",
     "LCIAResult meanAmount is not extracted as a lifecycle-module value.",
     "Missing modules are not zero. No warning text or human-readable label is used as environmental-value evidence.",
     "Declared-value extraction does not establish scientific validity, professional review, programme-operator/BBSR approval, provider authority, or certification."
