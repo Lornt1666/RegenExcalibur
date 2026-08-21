@@ -1,0 +1,87 @@
+name: ProofGrid v0.7 ILCD+EPD Technical Validation
+
+on:
+  pull_request:
+    paths:
+      - "validation/ilcd-epd/**"
+      - ".github/workflows/proofgrid-v07-ilcd.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  phase-a-authoritative-validator:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6.1.0
+
+      - uses: actions/setup-java@v5.6.0
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: validation/ilcd-epd/pom.xml
+
+      - name: Show Java and Maven runtime
+        run: |
+          java -version
+          mvn -version
+
+      - name: Build pinned ILCD validation harness
+        working-directory: validation/ilcd-epd
+        run: |
+          mvn -B -ntp -DskipTests package
+          mvn -B -ntp dependency:copy-dependencies -DoutputDirectory=target/dependency
+          test -f target/dependency/ilcd-validation-3.0.0.jar
+          test -f target/dependency/EPD-1.2-OEKOBAUDAT-3.8.0.jar
+
+      - name: Authoritative profile must reject invalid fixture
+        working-directory: validation/ilcd-epd
+        run: |
+          set +e
+          java -cp "target/classes:target/dependency/*" \
+            com.regenexcalibur.proofgrid.IlcdProfileValidator \
+            --input fixtures/invalid-minimal/ILCD \
+            --output target/phase-a-invalid-receipt.json \
+            --profile-jar target/dependency/EPD-1.2-OEKOBAUDAT-3.8.0.jar \
+            --validator-jar target/dependency/ilcd-validation-3.0.0.jar
+          status=$?
+          set -e
+
+          if [ "$status" -ne 2 ]; then
+            echo "Expected dataset/profile validation failure exit 2; got $status"
+            cat target/phase-a-invalid-receipt.json || true
+            exit 1
+          fi
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          receipt = json.loads(Path('target/phase-a-invalid-receipt.json').read_text(encoding='utf-8'))
+          assert receipt['verdict'] == 'TECHNICAL_ILCD_EPD_PROFILE_ERRORS'
+          assert receipt['technical_conformance_claimed'] is False
+          assert receipt['certified'] is False
+          assert receipt['error_count'] > 0
+          assert receipt['event_count'] >= receipt['error_count']
+          assert len(receipt['events_sha256']) == 64
+          assert len(receipt['deterministic_receipt_sha256']) == 64
+          assert len(receipt['fixture']['tree_sha256']) == 64
+          assert receipt['dependencies']['validator']['gav'] == 'com.okworx.ilcd.validation:ilcd-validation:3.0.0'
+          assert receipt['dependencies']['profile']['gav'] == 'com.okworx.ilcd.validation.profiles:EPD-1.2-OEKOBAUDAT:3.8.0'
+          assert len(receipt['dependencies']['validator']['sha256']) == 64
+          assert len(receipt['dependencies']['profile']['sha256']) == 64
+          print('Phase A authoritative rejection assertions: PASS')
+          print('ERROR events:', receipt['error_count'])
+          print('WARNING events:', receipt['warning_count'])
+          print('Event digest:', receipt['events_sha256'])
+          PY
+
+      - name: Retain Phase A validation receipt
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v07-phase-a-invalid-receipt
+          path: validation/ilcd-epd/target/phase-a-invalid-receipt.json
+          if-no-files-found: error
+          retention-days: 30
