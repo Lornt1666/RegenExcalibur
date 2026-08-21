@@ -1,0 +1,211 @@
+name: ProofGrid v1.0 Canonical Source Identity
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/proofgrid-v10-canonical-source-identity.yml'
+      - 'reference/environmental_source_identity.py'
+      - 'reference/environmental_admission.py'
+      - 'schemas/environmental-source-identity.schema.json'
+      - 'tests/test_environmental_source_identity.py'
+      - 'conformance/source-identity-v10/**'
+      - 'requirements-proofgrid.txt'
+      - 'requirements-proofgrid-v07.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  canonical-source-identity:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v6.1.0
+
+      - name: Setup Python 3.11.16
+        uses: actions/setup-python@v6.0.0
+        with:
+          python-version: '3.11.16'
+
+      - name: Install exact ProofGrid dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-proofgrid.txt
+          python -m pip install -r requirements-proofgrid-v07.txt
+          python -m pip check
+
+      - name: Run v1.0 fail-closed unit suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest -v tests.test_environmental_source_identity
+
+      - name: Stage admitted synthetic v1.2 and v1.3 controls
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import json
+          from tests.test_environmental_source_identity import build_source, chain
+
+          root=Path('/tmp/proofgrid-v10')
+          root.mkdir(parents=True,exist_ok=True)
+          for version in ('1.2','1.3'):
+              case=root/f'v{version.replace(".","")}'
+              case.mkdir(parents=True,exist_ok=True)
+              source,media=build_source(case,version)
+              pre,conf,final=chain(source,media,version)
+              for name,data in [('preflight.json',pre),('conformance.json',conf),('admission.json',final)]:
+                  (case/name).write_text(json.dumps(data,indent=2,sort_keys=True,ensure_ascii=False)+'\n',encoding='utf-8')
+              (case/'source-path.txt').write_text(str(source)+'\n',encoding='utf-8')
+          PY
+
+      - name: Normalize v1.2 twice and prove byte determinism
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT=/tmp/proofgrid-v10/v12
+          SOURCE=$(cat "$ROOT/source-path.txt")
+          for N in a b; do
+            python reference/environmental_source_identity.py \
+              --source "$SOURCE" \
+              --preflight "$ROOT/preflight.json" \
+              --conformance "$ROOT/conformance.json" \
+              --admission "$ROOT/admission.json" \
+              --output-dir "$ROOT/out-$N"
+          done
+          diff -u "$ROOT/out-a/canonical-source-identity.json" "$ROOT/out-b/canonical-source-identity.json"
+          diff -u "$ROOT/out-a/canonicalization-receipt.json" "$ROOT/out-b/canonicalization-receipt.json"
+          python - <<'PY'
+          import json
+          root='/tmp/proofgrid-v10/v12/out-a'
+          record=json.load(open(root+'/canonical-source-identity.json'))
+          receipt=json.load(open(root+'/canonicalization-receipt.json'))
+          assert record['verdict']=='ADMITTED_ENVIRONMENTAL_SOURCE_IDENTITY_VERIFIABLE'
+          assert record['source']['format_version']=='1.2'
+          assert record['routing']['route']=='OEKOBAUDAT_V12_PROFILE_3_8_0'
+          assert record['conformance']['profile_validation_performed'] is True
+          assert record['impact_values_normalized'] is False
+          assert record['scientific_validation_performed'] is False
+          assert record['professional_review_performed'] is False
+          assert record['certified'] is False
+          assert record['rxep_bridge']['review_state_elevation_permitted'] is False
+          assert receipt['certified'] is False
+          print('V10_V12_CANONICALIZATION=PASS')
+          PY
+
+      - name: Normalize v1.3 twice and prove byte determinism
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT=/tmp/proofgrid-v10/v13
+          SOURCE=$(cat "$ROOT/source-path.txt")
+          for N in a b; do
+            python reference/environmental_source_identity.py \
+              --source "$SOURCE" \
+              --preflight "$ROOT/preflight.json" \
+              --conformance "$ROOT/conformance.json" \
+              --admission "$ROOT/admission.json" \
+              --output-dir "$ROOT/out-$N"
+          done
+          diff -u "$ROOT/out-a/canonical-source-identity.json" "$ROOT/out-b/canonical-source-identity.json"
+          diff -u "$ROOT/out-a/canonicalization-receipt.json" "$ROOT/out-b/canonicalization-receipt.json"
+          python - <<'PY'
+          import json
+          root='/tmp/proofgrid-v10/v13/out-a'
+          record=json.load(open(root+'/canonical-source-identity.json'))
+          receipt=json.load(open(root+'/canonicalization-receipt.json'))
+          assert record['verdict']=='ADMITTED_ENVIRONMENTAL_SOURCE_IDENTITY_VERIFIABLE'
+          assert record['source']['format_version']=='1.3'
+          assert record['routing']['route']=='INDATA_V13_XSD_MASTERDATA_ONLY'
+          assert record['conformance']['profile_validation_performed'] is False
+          assert record['impact_values_normalized'] is False
+          assert record['scientific_validation_performed'] is False
+          assert record['professional_review_performed'] is False
+          assert record['certified'] is False
+          assert record['rxep_bridge']['review_state_elevation_permitted'] is False
+          assert receipt['certified'] is False
+          print('V10_V13_CANONICALIZATION=PASS')
+          PY
+
+      - name: Prove CLI rejects post-admission source tampering
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT=/tmp/proofgrid-v10/v13
+          SOURCE=$(cat "$ROOT/source-path.txt")
+          cp "$SOURCE" "$ROOT/tampered.xml"
+          printf '\n' >> "$ROOT/tampered.xml"
+          if python reference/environmental_source_identity.py \
+            --source "$ROOT/tampered.xml" \
+            --preflight "$ROOT/preflight.json" \
+            --conformance "$ROOT/conformance.json" \
+            --admission "$ROOT/admission.json" \
+            --output-dir "$ROOT/should-not-exist"; then
+            echo 'tampered source unexpectedly normalized' >&2
+            exit 1
+          fi
+          echo 'POST_ADMISSION_SOURCE_TAMPER_REJECTED=PASS'
+
+      - name: Produce v1.0 integration receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib,json
+          root=Path('/tmp/proofgrid-v10')
+          def load(path): return json.loads(path.read_text())
+          v12=load(root/'v12/out-a/canonicalization-receipt.json')
+          v13=load(root/'v13/out-a/canonicalization-receipt.json')
+          report={
+            'verdict':'ADMITTED_ENVIRONMENTAL_SOURCE_IDENTITY_VERIFIABLE',
+            'certified':False,
+            'engine':{'name':'RegenExcalibur ProofGrid v1.0 canonical source identity integration','version':'1.0.0'},
+            'v12':{
+              'record_file_sha256':v12['record_file_sha256'],
+              'record_content_sha256':v12['record_content_sha256'],
+              'canonicalization_receipt_sha256':v12['receipt_sha256'],
+              'route':v12['route'],
+              'impact_values_normalized':v12['impact_values_normalized'],
+            },
+            'v13':{
+              'record_file_sha256':v13['record_file_sha256'],
+              'record_content_sha256':v13['record_content_sha256'],
+              'canonicalization_receipt_sha256':v13['receipt_sha256'],
+              'route':v13['route'],
+              'impact_values_normalized':v13['impact_values_normalized'],
+            },
+            'deterministic_repetition':True,
+            'post_admission_source_tamper_rejected':True,
+            'scientific_validation_performed':False,
+            'professional_review_performed':False,
+            'rxep_review_state_elevation_permitted':False,
+            'limitations':[
+              'v1.0 normalizes admitted environmental source identity/provenance metadata only.',
+              'No environmental impact values, scientific validity, professional review, programme-operator/BBSR approval, or certification are produced by this gate.'
+            ]
+          }
+          raw=json.dumps(report,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()
+          report['receipt_sha256']=hashlib.sha256(raw).hexdigest()
+          (root/'v10-integration-receipt.json').write_text(json.dumps(report,indent=2,sort_keys=True,ensure_ascii=False)+'\n')
+          print(json.dumps(report,indent=2,sort_keys=True,ensure_ascii=False))
+          PY
+
+      - name: Retain canonical records and receipts only
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v10-canonical-source-identity
+          path: |
+            /tmp/proofgrid-v10/v10-integration-receipt.json
+            /tmp/proofgrid-v10/v12/out-a/canonical-source-identity.json
+            /tmp/proofgrid-v10/v12/out-a/canonicalization-receipt.json
+            /tmp/proofgrid-v10/v13/out-a/canonical-source-identity.json
+            /tmp/proofgrid-v10/v13/out-a/canonicalization-receipt.json
+          if-no-files-found: error
+          retention-days: 30
