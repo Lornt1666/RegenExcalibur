@@ -1,0 +1,173 @@
+name: ProofGrid v0.8 Profile Source Research
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/proofgrid-v08-profile-source-research.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  research-profile-source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v6.1.0
+
+      - name: Clone exact official profile source tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/proofgrid-v08-profile-source
+          URL='https://bitbucket.org/okusche/ilcdvalidation-profiles.git'
+          TAG='EPD-1.2-OEKOBAUDAT-3.8.0'
+          timeout 90s git ls-remote --tags "$URL" "$TAG" "$TAG^{}" | tee /tmp/proofgrid-v08-profile-source/tag-ls-remote.txt
+          timeout 180s git clone --depth 1 --branch "$TAG" --single-branch "$URL" /tmp/ilcdvalidation-profiles
+          git -C /tmp/ilcdvalidation-profiles rev-parse HEAD | tee /tmp/proofgrid-v08-profile-source/profile-source-commit.txt
+          git -C /tmp/ilcdvalidation-profiles log -1 --format='%H%n%aI%n%s' | tee /tmp/proofgrid-v08-profile-source/profile-source-log.txt
+          git -C /tmp/ilcdvalidation-profiles tag --points-at HEAD | tee /tmp/proofgrid-v08-profile-source/profile-source-tags.txt
+          find /tmp/ilcdvalidation-profiles -maxdepth 2 -type f -iname 'LICENSE*' -o -iname 'NOTICE*' -o -iname 'COPYING*' \
+            | sort | tee /tmp/proofgrid-v08-profile-source/license-files.txt
+          while IFS= read -r f; do
+            [ -f "$f" ] || continue
+            safe=$(basename "$f")
+            cp "$f" "/tmp/proofgrid-v08-profile-source/${safe}.txt" || true
+          done < /tmp/proofgrid-v08-profile-source/license-files.txt
+
+      - name: Locate ÖKOBAUDAT module and test fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT=/tmp/ilcdvalidation-profiles
+          OUT=/tmp/proofgrid-v08-profile-source
+          grep -RIl '<artifactId>EPD-1.2-OEKOBAUDAT</artifactId>' "$ROOT" --include='pom.xml' \
+            | sort | tee "$OUT/oekobaudat-module-poms.txt"
+          MODULE_POM=$(head -n 1 "$OUT/oekobaudat-module-poms.txt")
+          test -n "$MODULE_POM"
+          MODULE_DIR=$(dirname "$MODULE_POM")
+          printf '%s\n' "$MODULE_DIR" | sed "s#^$ROOT/##" | tee "$OUT/oekobaudat-module-path.txt"
+          cp "$MODULE_POM" "$OUT/oekobaudat-module.pom"
+
+          find "$MODULE_DIR" -type f | sed "s#^$ROOT/##" | sort > "$OUT/oekobaudat-module-files.txt"
+          find "$MODULE_DIR" -type f \( -iname '*.xml' -o -iname '*.zip' -o -iname '*.json' -o -iname '*.csv' -o -iname '*.jar' \) \
+            | sed "s#^$ROOT/##" | sort > "$OUT/oekobaudat-data-files.txt"
+          find "$MODULE_DIR" -type f \( -path '*/src/test/*' -o -path '*/test/*' \) \
+            | sed "s#^$ROOT/##" | sort > "$OUT/oekobaudat-test-files.txt"
+
+          grep -RniE 'assert|expected|validate|valid|invalid|success|error|warning|fixture|dataset|processes|processDataSet' "$MODULE_DIR" \
+            --exclude-dir=target --include='*.java' --include='*.xml' --include='*.md' --include='*.txt' --include='*.properties' \
+            | head -n 4000 > "$OUT/oekobaudat-test-semantics.txt" || true
+
+          # Hash fixture-like data files but do not upload third-party datasets unless the later license review permits it.
+          : > "$OUT/oekobaudat-data-sha256.txt"
+          while IFS= read -r rel; do
+            [ -f "$ROOT/$rel" ] || continue
+            sha256sum "$ROOT/$rel" | sed "s#  $ROOT/#  #" >> "$OUT/oekobaudat-data-sha256.txt"
+          done < "$OUT/oekobaudat-data-files.txt"
+
+      - name: Run official profile source tests if buildable
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT=/tmp/ilcdvalidation-profiles
+          OUT=/tmp/proofgrid-v08-profile-source
+          MODULE_REL=$(cat "$OUT/oekobaudat-module-path.txt")
+          set +e
+          timeout 300s mvn -B -ntp -f "$ROOT/pom.xml" -pl "$MODULE_REL" -am test \
+            > "$OUT/profile-source-maven-test.log" 2>&1
+          rc=$?
+          set -e
+          echo "$rc" | tee "$OUT/profile-source-maven-test-exit-code.txt"
+          tail -n 250 "$OUT/profile-source-maven-test.log" > "$OUT/profile-source-maven-test-tail.txt" || true
+          # Research may continue even if historical source tests need an obsolete build environment;
+          # the exit code is evidence, not a compatibility verdict.
+
+      - name: Inspect reusable fixture provenance and rule resources
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT=/tmp/ilcdvalidation-profiles
+          OUT=/tmp/proofgrid-v08-profile-source
+          MODULE_REL=$(cat "$OUT/oekobaudat-module-path.txt")
+          MODULE="$ROOT/$MODULE_REL"
+          find "$MODULE" -type f \( -iname '*.java' -o -iname '*.md' -o -iname '*.txt' \) -print0 \
+            | xargs -0 grep -nH -E 'src/test|test/resources|processes/|\.xml|\.zip|assertTrue|assertFalse|assertEquals|Severity\.|ERROR|WARNING|SUCCESS' \
+            | head -n 3500 > "$OUT/fixture-reference-grep.txt" || true
+          find "$MODULE" -type f \( -iname '*validation*.xsl' -o -iname '*Categories*.xml' -o -iname 'MANIFEST.MF' \) \
+            | sed "s#^$ROOT/##" | sort > "$OUT/profile-rule-resource-files.txt"
+          : > "$OUT/profile-rule-resource-sha256.txt"
+          while IFS= read -r rel; do
+            [ -f "$ROOT/$rel" ] || continue
+            sha256sum "$ROOT/$rel" | sed "s#  $ROOT/#  #" >> "$OUT/profile-rule-resource-sha256.txt"
+          done < "$OUT/profile-rule-resource-files.txt"
+
+      - name: Produce profile-source research receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib, json
+          out=Path('/tmp/proofgrid-v08-profile-source')
+          data=[]
+          p=out/'oekobaudat-data-sha256.txt'
+          if p.exists():
+              for line in p.read_text().splitlines():
+                  if not line.strip(): continue
+                  sha, rel=line.split(None,1)
+                  data.append({'path':rel.strip(),'sha256':sha})
+          rules=[]
+          p=out/'profile-rule-resource-sha256.txt'
+          if p.exists():
+              for line in p.read_text().splitlines():
+                  if not line.strip(): continue
+                  sha, rel=line.split(None,1)
+                  rules.append({'path':rel.strip(),'sha256':sha})
+          report={
+            'scope':'Exact official ÖKOBAUDAT profile source-tag/fixture research only; no compatibility claim.',
+            'source_repository':'https://bitbucket.org/okusche/ilcdvalidation-profiles.git',
+            'source_tag':'EPD-1.2-OEKOBAUDAT-3.8.0',
+            'source_commit':(out/'profile-source-commit.txt').read_text().strip(),
+            'module_path':(out/'oekobaudat-module-path.txt').read_text().strip(),
+            'license_files':(out/'license-files.txt').read_text().splitlines(),
+            'data_files':data,
+            'rule_resources':rules,
+            'source_test_exit_code':int((out/'profile-source-maven-test-exit-code.txt').read_text().strip()),
+          }
+          raw=json.dumps(report,sort_keys=True,separators=(',',':')).encode()
+          report['receipt_sha256']=hashlib.sha256(raw).hexdigest()
+          (out/'profile-source-research-receipt.json').write_text(json.dumps(report,indent=2,sort_keys=True)+'\n')
+          print(json.dumps(report,indent=2,sort_keys=True))
+          PY
+
+      - name: Show fixture research evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=/tmp/proofgrid-v08-profile-source
+          cat "$OUT/profile-source-research-receipt.json"
+          echo '--- license files ---'
+          cat "$OUT/license-files.txt"
+          echo '--- module files ---'
+          cat "$OUT/oekobaudat-module-files.txt"
+          echo '--- test files ---'
+          cat "$OUT/oekobaudat-test-files.txt"
+          echo '--- data files + hashes ---'
+          cat "$OUT/oekobaudat-data-sha256.txt"
+          echo '--- fixture references ---'
+          cat "$OUT/fixture-reference-grep.txt"
+          echo '--- test semantics ---'
+          cat "$OUT/oekobaudat-test-semantics.txt"
+          echo '--- source test tail ---'
+          cat "$OUT/profile-source-maven-test-tail.txt"
+
+      - name: Retain profile-source research metadata only
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v08-profile-source-research
+          path: /tmp/proofgrid-v08-profile-source
+          if-no-files-found: error
+          retention-days: 30
