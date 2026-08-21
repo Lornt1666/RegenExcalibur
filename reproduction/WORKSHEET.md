@@ -16,7 +16,9 @@ Do not report a pass unless every claimed check was actually performed. Record d
 ## Frozen target
 
 - Repository: `Lornt1666/RegenExcalibur`
-- Implementation commit: `b0f3e0b4afbc7e787d7063f4b1cfa693083dd0d4`
+- Implementation commit: `fe27d78171140832a7985e4d5157f5541c8a02aa`
+- Verifier software: `0.3.1`
+- Calculation method: `0.3.0`
 - Reproduction manifest path: `reproduction/r5-manifest.json`
 - Reproduction harness path: `reproduction/reproduce.py`
 
@@ -65,14 +67,15 @@ Record `PASS`, `FAIL`, or `NOT RUN` plus evidence/notes.
 | Check | Result | Evidence / notes |
 | --- | --- | --- |
 | Core implementation matches frozen commit | | |
-| Python/runtime matches manifest | | |
+| Python/runtime matches platform-specific manifest requirement | | |
 | Locked dependencies match | | |
 | Input SHA-256 values match | | |
 | Draft 2020-12 validation succeeds | | |
 | Known answer equals `3860.0 kgCO2e` | | |
-| Evidence-content digest matches manifest | | |
-| RXEP receipt digest matches manifest | | |
-| Environmental source-record digests match | | |
+| Evidence-content digest equals `9ce99ff076f41390c254377bd06e9897c4b203a4b778fbfd09c350624545142c` | | |
+| RXEP receipt digest equals `44955751eec438621e43e2478e672a55bd6bff3aaf3a6e27ac588ff07cee8b7d` | | |
+| Environmental source-record digests match manifest | | |
+| Canonical schema paths use `/` separators | | |
 | Result remains `VERIFIABLE`, not certified | | |
 | IFC4 structural ingestion succeeds | | |
 | IFC declared-data extraction succeeds | | |
