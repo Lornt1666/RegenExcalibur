@@ -1,0 +1,104 @@
+name: ProofGrid v0.7 ILCD Reference Closure Discovery
+
+on:
+  pull_request:
+    paths:
+      - "validation/ilcd-epd/**"
+      - ".github/workflows/proofgrid-v07-reference-closure.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  wood-panel-reference-closure:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6.1.0
+
+      - name: Checkout official InData v1.2 sample data at immutable commit
+        uses: actions/checkout@v6.1.0
+        with:
+          repository: InDataWG/ILCD-EPD-Data-Format
+          ref: b7233bd2dd5435a6b5973505ffa212cd03d23468
+          path: validation/ilcd-epd/upstream/indata-v12
+          fetch-depth: 1
+          sparse-checkout: |
+            LICENSE
+            sample_data
+
+      - uses: actions/setup-java@v5.6.0
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: validation/ilcd-epd/pom.xml
+
+      - name: Build pinned validator harness
+        working-directory: validation/ilcd-epd
+        run: |
+          mvn -B -ntp -DskipTests package
+          mvn -B -ntp dependency:copy-dependencies -DoutputDirectory=target/dependency
+          test -f target/dependency/ilcd-validation-3.0.0.jar
+          test -f target/dependency/EPD-1.2-OEKOBAUDAT-3.8.0.jar
+
+      - name: Build exact Wood panel reference closure
+        working-directory: validation/ilcd-epd
+        run: |
+          python scripts/build_reference_closure.py \
+            --source upstream/indata-v12/sample_data \
+            --root-process upstream/indata-v12/sample_data/processes/57a4ae65-d305-421e-b21f-a3f0c35b8abe.xml \
+            --output target/phase-b-wood-panel-closure \
+            --manifest target/phase-b-wood-panel-closure-manifest.json
+
+      - name: Validate exact reference closure under ÖKOBAUDAT profile 3.8.0
+        working-directory: validation/ilcd-epd
+        run: |
+          set +e
+          java -cp "target/classes:target/dependency/*" \
+            com.regenexcalibur.proofgrid.IlcdProfileValidator \
+            --input target/phase-b-wood-panel-closure \
+            --output target/phase-b-wood-panel-closure-receipt.json \
+            --profile-jar target/dependency/EPD-1.2-OEKOBAUDAT-3.8.0.jar \
+            --validator-jar target/dependency/ilcd-validation-3.0.0.jar
+          status=$?
+          set -e
+
+          if [ "$status" -eq 3 ]; then
+            echo "Validator runtime failure during closure validation"
+            cat target/phase-b-wood-panel-closure-receipt.json || true
+            exit 1
+          fi
+          if [ "$status" -ne 0 ] && [ "$status" -ne 2 ]; then
+            echo "Unexpected validator status: $status"
+            exit 1
+          fi
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          manifest = json.loads(Path('target/phase-b-wood-panel-closure-manifest.json').read_text(encoding='utf-8'))
+          receipt = json.loads(Path('target/phase-b-wood-panel-closure-receipt.json').read_text(encoding='utf-8'))
+          print('Closure selected files:', manifest['selected_file_count'])
+          print('Closure unresolved refs:', len(manifest['unresolved_reference_uuids']))
+          print('Closure manifest digest:', manifest['closure_manifest_sha256'])
+          print('Profile verdict:', receipt['verdict'])
+          print('ERROR events:', receipt['error_count'])
+          print('WARNING events:', receipt['warning_count'])
+          print('Event digest:', receipt['events_sha256'])
+          errors = [event for event in receipt['events'] if event['severity'] == 'ERROR']
+          print('ERROR DETAILS')
+          for index, event in enumerate(errors, 1):
+              print(index, event['reference'], event['message'])
+          PY
+
+      - name: Retain closure discovery evidence
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v07-wood-panel-reference-closure
+          path: |
+            validation/ilcd-epd/target/phase-b-wood-panel-closure-manifest.json
+            validation/ilcd-epd/target/phase-b-wood-panel-closure-receipt.json
+          if-no-files-found: error
+          retention-days: 30
