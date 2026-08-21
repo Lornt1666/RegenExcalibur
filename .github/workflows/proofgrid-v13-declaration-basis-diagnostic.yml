@@ -1,0 +1,86 @@
+name: ProofGrid v1.3 Declaration Basis Diagnostic
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/proofgrid-v13-declaration-basis-diagnostic.yml'
+      - 'conformance/declaration-basis-v13/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  declaration-basis-diagnostic:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v6.1.0
+
+      - name: Setup Python 3.11.16
+        uses: actions/setup-python@v6.0.0
+        with:
+          python-version: '3.11.16'
+
+      - name: Checkout pinned InData v1.2 source
+        uses: actions/checkout@v6.1.0
+        with:
+          repository: InDataWG/ILCD-EPD-Data-Format
+          ref: b7233bd2dd5435a6b5973505ffa212cd03d23468
+          path: .proofgrid-upstream/indata-v12
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Checkout pinned InData v1.3 source
+        uses: actions/checkout@v6.1.0
+        with:
+          repository: InDataWG/ILCD-EPD-Data-Format
+          ref: 7625c7dfc0d5b6bc2020eb0cf0b0503349c914aa
+          path: .proofgrid-upstream/indata-v13
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Checkout pinned InData master data
+        uses: actions/checkout@v6.1.0
+        with:
+          repository: InDataWG/ILCD-EPD-Master-Data
+          ref: 32117b6a70d6c486344247a429449755a2c7eab4
+          path: .proofgrid-upstream/indata-master
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify immutable upstream commits
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C .proofgrid-upstream/indata-v12 rev-parse HEAD)" = 'b7233bd2dd5435a6b5973505ffa212cd03d23468'
+          test "$(git -C .proofgrid-upstream/indata-v13 rev-parse HEAD)" = '7625c7dfc0d5b6bc2020eb0cf0b0503349c914aa'
+          test "$(git -C .proofgrid-upstream/indata-master rev-parse HEAD)" = '32117b6a70d6c486344247a429449755a2c7eab4'
+
+      - name: Run resolver with retained diagnostic log
+        shell: bash
+        run: |
+          set +e
+          python conformance/declaration-basis-v13/research_probe.py \
+            --v12-root .proofgrid-upstream/indata-v12 \
+            --v13-root .proofgrid-upstream/indata-v13 \
+            --master-root .proofgrid-upstream/indata-master \
+            --output /tmp/proofgrid-v13-declaration-basis-research.json \
+            > /tmp/proofgrid-v13-declaration-basis-diagnostic.log 2>&1
+          rc=$?
+          printf '%s\n' "$rc" > /tmp/proofgrid-v13-declaration-basis-exit-code.txt
+          cat /tmp/proofgrid-v13-declaration-basis-diagnostic.log
+          exit "$rc"
+
+      - name: Retain diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v13-declaration-basis-diagnostic
+          path: |
+            /tmp/proofgrid-v13-declaration-basis-diagnostic.log
+            /tmp/proofgrid-v13-declaration-basis-exit-code.txt
+            /tmp/proofgrid-v13-declaration-basis-research.json
+          if-no-files-found: warn
+          retention-days: 30
