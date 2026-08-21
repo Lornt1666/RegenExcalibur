@@ -1,0 +1,203 @@
+name: ProofGrid v1.5.1 IFC Quantity Exact Decimal
+
+on:
+  pull_request:
+    paths:
+      - "reference/ifc_quantity_decimal.py"
+      - "schemas/ifc-quantity-exact-decimal.schema.json"
+      - "tests/test_ifc_quantity_decimal.py"
+      - "conformance/ifc-quantity-decimal-v151/**"
+      - ".github/workflows/proofgrid-v151-ifc-quantity-decimal.yml"
+      - "requirements-proofgrid.txt"
+      - "requirements-proofgrid-v07.txt"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  ifc-quantity-exact-decimal:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      V15_ARTIFACT_ID: "9451317205"
+      V15_ZIP_SHA256: "a09ae65ef0d221daadbd4cc1bbe7a21e252b92a29bd3bd21c433b13151741034"
+      V15_IFC_SOURCE_SHA256: "23046f33df40fae4354fd085c2d72c6c9eaab3a45b2d46e77d8f9531041954c6"
+
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v6.1.0
+
+      - name: Setup Python 3.11.16
+        uses: actions/setup-python@v6.0.0
+        with:
+          python-version: "3.11.16"
+          check-latest: false
+
+      - name: Install exact ProofGrid dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-proofgrid.txt
+          python -m pip install -r requirements-proofgrid-v07.txt
+          python -m pip check
+
+      - name: Run v1.5.1 fail-closed unit suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest -v tests.test_ifc_quantity_decimal
+
+      - name: Download exact accepted v1.5 mapping artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/proofgrid-v151/parent
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V15_ARTIFACT_ID}/zip" > /tmp/proofgrid-v151/v15.zip
+          echo "${V15_ZIP_SHA256}  /tmp/proofgrid-v151/v15.zip" | sha256sum -c -
+          unzip -q /tmp/proofgrid-v151/v15.zip -d /tmp/proofgrid-v151/parent
+
+      - name: Rebuild exact deterministic accepted IFC4 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/proofgrid-v151/ifc
+          python - <<'PY'
+          import ifcopenshell
+          import re
+          from pathlib import Path
+
+          out=Path('/tmp/proofgrid-v151/ifc/fixture.ifc')
+          m=ifcopenshell.file(schema='IFC4')
+          mass=m.create_entity('IfcSIUnit',UnitType='MASSUNIT',Prefix='KILO',Name='GRAM')
+          units=m.create_entity('IfcUnitAssignment',Units=[mass])
+          m.create_entity('IfcProject',GlobalId='0hS$wWKLjAuhSPZ5IG0yTw',Name='ProofGrid v1.5',UnitsInContext=units)
+          wall=m.create_entity('IfcWall',GlobalId='1BXL7DJx51bvggyIPU2Xi5',Name='Mapped Wall')
+          material=m.create_entity('IfcMaterial',Name='RX-MATERIAL-UNRELATED-TO-WOOD-PANEL')
+          m.create_entity('IfcRelAssociatesMaterial',GlobalId='2BXL7DJx51bvggyIPU2Xi5',RelatedObjects=[wall],RelatingMaterial=material)
+          q=m.create_entity('IfcQuantityWeight',Name='Mass',WeightValue=1000.0)
+          qset=m.create_entity('IfcElementQuantity',GlobalId='3BXL7DJx51bvggyIPU2Xi5',Name='Qto_WallBaseQuantities',Quantities=[q])
+          m.create_entity('IfcRelDefinesByProperties',GlobalId='0BXL7DJx51bvggyIPU2Xi5',RelatedObjects=[wall],RelatingPropertyDefinition=qset)
+          m.write(str(out))
+          text=out.read_text(encoding='utf-8')
+          text,count=re.subn(r"(FILE_NAME\('[^']*',)'[^']*'",r"\1'2026-01-01T00:00:00'",text,count=1)
+          if count != 1:
+              raise SystemExit(f'expected one FILE_NAME timestamp, replaced {count}')
+          out.write_text(text,encoding='utf-8',newline='\n')
+          PY
+          echo "${V15_IFC_SOURCE_SHA256}  /tmp/proofgrid-v151/ifc/fixture.ifc" | sha256sum -c -
+
+      - name: Bind exact source token to accepted v1.5 mapping twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          for R in a b; do
+            python reference/ifc_quantity_decimal.py \
+              --ifc-source /tmp/proofgrid-v151/ifc/fixture.ifc \
+              --mapping-record /tmp/proofgrid-v151/parent/out-a/ifc-declaration-product-mapping.json \
+              --mapping-receipt /tmp/proofgrid-v151/parent/out-a/ifc-declaration-product-mapping-receipt.json \
+              --output-dir "/tmp/proofgrid-v151/out-${R}"
+          done
+          diff -u /tmp/proofgrid-v151/out-a/ifc-declared-quantity-exact-decimal.json /tmp/proofgrid-v151/out-b/ifc-declared-quantity-exact-decimal.json
+          diff -u /tmp/proofgrid-v151/out-a/ifc-declared-quantity-exact-decimal-receipt.json /tmp/proofgrid-v151/out-b/ifc-declared-quantity-exact-decimal-receipt.json
+
+      - name: Verify exact Decimal evidence and non-claims
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from decimal import Decimal
+          from pathlib import Path
+          r=json.loads(Path('/tmp/proofgrid-v151/out-a/ifc-declared-quantity-exact-decimal.json').read_text())
+          assert r['verdict']=='IFC_DECLARED_QUANTITY_EXACT_DECIMAL_VERIFIABLE'
+          assert r['ifc_source']['sha256']=='23046f33df40fae4354fd085c2d72c6c9eaab3a45b2d46e77d8f9531041954c6'
+          assert r['ifc_identity']['quantity_entity_type']=='IFCQUANTITYWEIGHT'
+          assert r['ifc_identity']['quantity_name']=='Mass'
+          assert Decimal(r['quantity']['quantity_lexical'])==Decimal('1000')
+          assert r['quantity']['quantity_decimal']=='1000'
+          assert r['quantity']['mapped_parser_numeric_string']=='1000.0'
+          assert r['quantity']['mapped_parser_consistent_with_source'] is True
+          assert r['quantity']['unit_identity']=='kg'
+          assert r['quantity']['source_token_is_authority'] is True
+          assert r['quantity']['parser_numeric_value_is_authority'] is False
+          assert r['calculation_performed'] is False
+          assert r['environmental_calculation_performed'] is False
+          assert r['building_quantity_multiplication_performed'] is False
+          assert r['unit_conversion_performed'] is False
+          assert r['certified'] is False
+          print('SOURCE_QUANTITY_LEXICAL='+r['quantity']['quantity_lexical'])
+          print('SOURCE_QUANTITY_DECIMAL='+r['quantity']['quantity_decimal'])
+          PY
+
+      - name: Require raw-source mutation to fail before quantity authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp /tmp/proofgrid-v151/ifc/fixture.ifc /tmp/proofgrid-v151/ifc/tampered.ifc
+          printf '\n' >> /tmp/proofgrid-v151/ifc/tampered.ifc
+          if python reference/ifc_quantity_decimal.py \
+            --ifc-source /tmp/proofgrid-v151/ifc/tampered.ifc \
+            --mapping-record /tmp/proofgrid-v151/parent/out-a/ifc-declaration-product-mapping.json \
+            --mapping-receipt /tmp/proofgrid-v151/parent/out-a/ifc-declaration-product-mapping-receipt.json \
+            --output-dir /tmp/proofgrid-v151/negative; then
+              echo "tampered IFC source unexpectedly accepted" >&2
+              exit 1
+          else
+              echo "RAW_SOURCE_TAMPER_REJECTED=PASS"
+          fi
+
+      - name: Produce bounded v1.5.1 integration receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          root=Path('/tmp/proofgrid-v151')
+          r=json.loads((root/'out-a/ifc-declared-quantity-exact-decimal.json').read_text())
+          report={
+            'verdict':'IFC_DECLARED_QUANTITY_EXACT_DECIMAL_VERIFIABLE',
+            'accepted_parent_head':'37f097851c4d9b66c48c4b95a9552dbc80996bb3',
+            'accepted_parent_artifact':9451317205,
+            'ifc_source_sha256':r['ifc_source']['sha256'],
+            'mapping_content_sha256':r['mapping_evidence']['mapping_content_sha256'],
+            'mapping_receipt_sha256':r['mapping_evidence']['mapping_receipt_sha256'],
+            'quantity_step_id':r['ifc_identity']['quantity_step_id'],
+            'quantity_entity_type':r['ifc_identity']['quantity_entity_type'],
+            'quantity_lexical':r['quantity']['quantity_lexical'],
+            'quantity_decimal':r['quantity']['quantity_decimal'],
+            'unit_identity':r['quantity']['unit_identity'],
+            'record_file_sha256':hashlib.sha256((root/'out-a/ifc-declared-quantity-exact-decimal.json').read_bytes()).hexdigest(),
+            'receipt_file_sha256':hashlib.sha256((root/'out-a/ifc-declared-quantity-exact-decimal-receipt.json').read_bytes()).hexdigest(),
+            'repeat_within_run_byte_identical':True,
+            'raw_source_tamper_rejected':True,
+            'source_token_is_authority':True,
+            'parser_numeric_value_is_authority':False,
+            'calculation_performed':False,
+            'environmental_calculation_performed':False,
+            'building_quantity_multiplication_performed':False,
+            'unit_conversion_performed':False,
+            'scientific_validation_performed':False,
+            'professional_review_performed':False,
+            'certified':False,
+          }
+          canonical=json.dumps(report,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()
+          report['receipt_sha256']=hashlib.sha256(canonical).hexdigest()
+          (root/'v151-integration-receipt.json').write_text(json.dumps(report,indent=2,sort_keys=True)+'\n',encoding='utf-8',newline='\n')
+          print(json.dumps(report,indent=2,sort_keys=True))
+          PY
+
+      - name: Retain exact-decimal quantity evidence only
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v151-ifc-quantity-exact-decimal
+          path: |
+            /tmp/proofgrid-v151/out-a/ifc-declared-quantity-exact-decimal.json
+            /tmp/proofgrid-v151/out-a/ifc-declared-quantity-exact-decimal-receipt.json
+            /tmp/proofgrid-v151/v151-integration-receipt.json
+          if-no-files-found: error
+          retention-days: 30
