@@ -1,0 +1,187 @@
+name: ProofGrid v2.0 Partial Set Exact Decimal Total
+
+on:
+  pull_request:
+    paths:
+      - "reference/partial_contribution_set_total_v20.py"
+      - "schemas/partial-contribution-set-total-v20.schema.json"
+      - "tests/test_partial_contribution_set_total_v20.py"
+      - "conformance/partial-set-total-v20/**"
+      - ".github/workflows/proofgrid-v20-partial-set-total.yml"
+      - "requirements-proofgrid.txt"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  reproduce-total:
+    strategy:
+      fail-fast: false
+      matrix:
+        replica: [a, b]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      V19_ARTIFACT_ID: "9464236551"
+      V19_ZIP_SHA256: "38e24b2bcfcfcc227eeee5ac6cbaf79966aa838d27c7dc6b027637aad7b3297c"
+
+    steps:
+      - uses: actions/checkout@v6.1.0
+      - uses: actions/setup-python@v6.0.0
+        with:
+          python-version: "3.11.16"
+          check-latest: false
+
+      - name: Install exact ProofGrid dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-proofgrid.txt
+          python -m pip check
+
+      - name: Run v2.0 fail-closed unit suite
+        run: |
+          set -euo pipefail
+          python -m unittest -v tests.test_partial_contribution_set_total_v20
+
+      - name: Download and SHA-verify accepted v1.9 set artifact independently
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ROOT="/tmp/proofgrid-v20-${{ matrix.replica }}"
+          mkdir -p "${ROOT}"/{v19,out}
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V19_ARTIFACT_ID}/zip" > "${ROOT}/v19.zip"
+          echo "${V19_ZIP_SHA256}  ${ROOT}/v19.zip" | sha256sum -c -
+          unzip -q "${ROOT}/v19.zip" -d "${ROOT}/v19"
+
+      - name: Calculate exact two-member PARTIAL total
+        run: |
+          set -euo pipefail
+          ROOT="/tmp/proofgrid-v20-${{ matrix.replica }}"
+          python reference/partial_contribution_set_total_v20.py \
+            --set-record "${ROOT}/v19/set/out-a/environmental-contribution-set.json" \
+            --set-receipt "${ROOT}/v19/set/out-a/environmental-contribution-set-receipt.json" \
+            --output-dir "${ROOT}/out"
+
+      - name: Assert exact bounded total and non-claims
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path('/tmp/proofgrid-v20-${{ matrix.replica }}/out')
+          r=json.loads((root/'partial-contribution-set-exact-decimal-total.json').read_text())
+          assert r['verdict']=='PARTIAL_CONTRIBUTION_SET_EXACT_DECIMAL_TOTAL_VERIFIABLE'
+          assert r['aggregation']['total_value_decimal']=='23339.2195157455485'
+          assert r['aggregation']['unit']=='kg CO2 eqv.'
+          assert r['member_count']==2
+          assert r['completeness_status']=='PARTIAL'
+          assert r['aggregation_performed'] is True
+          assert r['sum_performed'] is True
+          assert r['whole_building_lca_claimed'] is False
+          assert r['declared_scope_complete_claimed'] is False
+          assert r['missing_contributions_are_zero'] is False
+          assert r['missing_modules_are_zero'] is False
+          assert r['unit_conversion_performed'] is False
+          assert r['scenario_inference_performed'] is False
+          assert r['certified'] is False
+          print('PARTIAL_SET_TOTAL='+r['aggregation']['total_value_decimal'])
+          PY
+
+      - name: Upload replica total evidence
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v20-total-replica-${{ matrix.replica }}
+          path: |
+            /tmp/proofgrid-v20-${{ matrix.replica }}/out/partial-contribution-set-exact-decimal-total.json
+            /tmp/proofgrid-v20-${{ matrix.replica }}/out/partial-contribution-set-exact-decimal-total-receipt.json
+          if-no-files-found: error
+          retention-days: 30
+
+  compare:
+    needs: reproduce-total
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      V19_ARTIFACT_ID: "9464236551"
+      V19_ZIP_SHA256: "38e24b2bcfcfcc227eeee5ac6cbaf79966aa838d27c7dc6b027637aad7b3297c"
+
+    steps:
+      - uses: actions/checkout@v6.1.0
+      - uses: actions/setup-python@v6.0.0
+        with:
+          python-version: "3.11.16"
+          check-latest: false
+      - name: Install exact ProofGrid dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-proofgrid.txt
+          python -m pip check
+
+      - name: Download replica A
+        uses: actions/download-artifact@v4.3.0
+        with:
+          name: proofgrid-v20-total-replica-a
+          path: /tmp/v20/a
+      - name: Download replica B
+        uses: actions/download-artifact@v4.3.0
+        with:
+          name: proofgrid-v20-total-replica-b
+          path: /tmp/v20/b
+
+      - name: Require total/receipt byte identity
+        run: |
+          set -euo pipefail
+          diff -u /tmp/v20/a/partial-contribution-set-exact-decimal-total.json /tmp/v20/b/partial-contribution-set-exact-decimal-total.json
+          diff -u /tmp/v20/a/partial-contribution-set-exact-decimal-total-receipt.json /tmp/v20/b/partial-contribution-set-exact-decimal-total-receipt.json
+
+      - name: Require tampered accepted set to fail closed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/v20/{v19,negative}
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V19_ARTIFACT_ID}/zip" > /tmp/v20/v19.zip
+          echo "${V19_ZIP_SHA256}  /tmp/v20/v19.zip" | sha256sum -c -
+          unzip -q /tmp/v20/v19.zip -d /tmp/v20/v19
+          cp /tmp/v20/v19/set/out-a/environmental-contribution-set.json /tmp/v20/tampered-set.json
+          printf ' ' >> /tmp/v20/tampered-set.json
+          if python reference/partial_contribution_set_total_v20.py \
+            --set-record /tmp/v20/tampered-set.json \
+            --set-receipt /tmp/v20/v19/set/out-a/environmental-contribution-set-receipt.json \
+            --output-dir /tmp/v20/negative; then
+            echo 'tampered accepted set unexpectedly aggregated' >&2
+            exit 1
+          else
+            echo 'TAMPERED_SET_REJECTED=PASS'
+          fi
+
+      - name: Produce independent v2.0 comparison receipt
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          root=Path('/tmp/v20')
+          r=json.loads((root/'a/partial-contribution-set-exact-decimal-total.json').read_text())
+          receipt=json.loads((root/'a/partial-contribution-set-exact-decimal-total-receipt.json').read_text())
+          sha=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
+          report={'verdict':'PARTIAL_CONTRIBUTION_SET_EXACT_DECIMAL_TOTAL_INDEPENDENTLY_REPRODUCED','replicas':['a','b'],'independent_runner_count':2,'byte_identical':True,'accepted_v19_head':'e8f9cfc29b1e172cafd88d8f31ce3b3068b2e574','source_set_content_sha256':r['source_set']['record_content_sha256'],'record_content_sha256':r['integrity']['content_sha256'],'record_file_sha256':sha(root/'a/partial-contribution-set-exact-decimal-total.json'),'receipt_sha256':receipt['receipt_sha256'],'receipt_file_sha256':sha(root/'a/partial-contribution-set-exact-decimal-total-receipt.json'),'member_count':2,'member_semantic_identity_sha256':r['aggregation']['member_order'],'total_value_decimal':'23339.2195157455485','unit':'kg CO2 eqv.','completeness_status':'PARTIAL','aggregation_performed':True,'sum_performed':True,'whole_building_lca_claimed':False,'declared_scope_complete_claimed':False,'tampered_set_rejected':True,'scientific_validation_performed':False,'professional_review_performed':False,'certified':False}
+          report['comparison_receipt_sha256']=hashlib.sha256(json.dumps(report,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()
+          out=root/'v20-independent-comparison-receipt.json'; out.write_text(json.dumps(report,indent=2,sort_keys=True)+'\n',encoding='utf-8',newline='\n')
+          print(json.dumps(report,indent=2,sort_keys=True))
+          PY
+
+      - name: Retain bounded v2.0 evidence only
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v20-partial-set-total
+          path: |
+            /tmp/v20/a/partial-contribution-set-exact-decimal-total.json
+            /tmp/v20/a/partial-contribution-set-exact-decimal-total-receipt.json
+            /tmp/v20/v20-independent-comparison-receipt.json
+          if-no-files-found: error
+          retention-days: 30
