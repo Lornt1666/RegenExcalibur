@@ -1,0 +1,178 @@
+name: ProofGrid v0.8 ÖKOBAUDAT Profile Research
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/proofgrid-v08-profile-research.yml"
+      - "conformance/oekobaudat-v12/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  research-official-profile:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v6.1.0
+
+      - name: Record hosted Java and Maven runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/proofgrid-v08-research
+          java -version 2>&1 | tee /tmp/proofgrid-v08-research/java-version.txt
+          mvn -version 2>&1 | tee /tmp/proofgrid-v08-research/maven-version.txt
+
+      - name: Retrieve and hash official ÖKOBAUDAT v1.2 profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          COORD='com.okworx.ilcd.validation.profiles:EPD-1.2-OEKOBAUDAT:3.8.0'
+          mvn -B -ntp dependency:get -Dartifact="$COORD" -Dtransitive=true
+          PROFILE_DIR="$HOME/.m2/repository/com/okworx/ilcd/validation/profiles/EPD-1.2-OEKOBAUDAT/3.8.0"
+          JAR="$PROFILE_DIR/EPD-1.2-OEKOBAUDAT-3.8.0.jar"
+          POM="$PROFILE_DIR/EPD-1.2-OEKOBAUDAT-3.8.0.pom"
+          test -f "$JAR"
+          test -f "$POM"
+          sha256sum "$JAR" | tee /tmp/proofgrid-v08-research/profile-jar.sha256
+          sha256sum "$POM" | tee /tmp/proofgrid-v08-research/profile-pom.sha256
+          cp "$POM" /tmp/proofgrid-v08-research/profile.pom
+          jar tf "$JAR" | sort > /tmp/proofgrid-v08-research/profile-jar-list.txt
+          (unzip -p "$JAR" META-INF/MANIFEST.MF || true) > /tmp/proofgrid-v08-research/profile-manifest.txt
+          {
+            echo "coordinate=$COORD"
+            echo "jar_size=$(stat -c %s "$JAR")"
+            echo "pom_size=$(stat -c %s "$POM")"
+            echo "jar_path=$JAR"
+            echo "pom_path=$POM"
+          } | tee /tmp/proofgrid-v08-research/profile-coordinate.txt
+
+          # Inspect license/notice/profile resources without copying the profile JAR itself.
+          jar tf "$JAR" | grep -Ei '(^|/)(LICENSE|NOTICE|COPYING|.*profile.*|.*validation.*|.*rule.*|.*xml$|.*xsd$|.*properties$|.*json$)' \
+            > /tmp/proofgrid-v08-research/profile-interesting-resources.txt || true
+          while IFS= read -r entry; do
+            case "$entry" in
+              META-INF/MANIFEST.MF|*LICENSE*|*NOTICE*|*COPYING*)
+                safe=$(printf '%s' "$entry" | tr '/ ' '__')
+                unzip -p "$JAR" "$entry" > "/tmp/proofgrid-v08-research/profile-resource-${safe}.txt" || true
+                ;;
+            esac
+          done < /tmp/proofgrid-v08-research/profile-interesting-resources.txt
+
+      - name: Inspect official Validation Tool Bitbucket source
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOOL_URL='https://bitbucket.org/okusche/ilcdvalidationtool.git'
+          git ls-remote --heads "$TOOL_URL" | tee /tmp/proofgrid-v08-research/tool-heads.txt
+          git ls-remote --tags "$TOOL_URL" | tee /tmp/proofgrid-v08-research/tool-tags.txt
+          git clone "$TOOL_URL" /tmp/ilcdvalidationtool
+          git -C /tmp/ilcdvalidationtool rev-parse HEAD | tee /tmp/proofgrid-v08-research/tool-head-commit.txt
+          git -C /tmp/ilcdvalidationtool log -1 --format='%H%n%aI%n%s' | tee /tmp/proofgrid-v08-research/tool-head-log.txt
+          git -C /tmp/ilcdvalidationtool remote -v | tee /tmp/proofgrid-v08-research/tool-remotes.txt
+          find /tmp/ilcdvalidationtool -maxdepth 3 -type f \
+            | sed 's#^/tmp/ilcdvalidationtool/##' \
+            | sort > /tmp/proofgrid-v08-research/tool-file-list.txt
+
+          # Preserve the build/configuration evidence needed to identify versions,
+          # Java requirements, dependencies, main classes and CLI/API surfaces.
+          for f in pom.xml build.gradle build.gradle.kts settings.gradle settings.gradle.kts gradle.properties README README.md LICENSE LICENSE.txt NOTICE NOTICE.txt; do
+            if [ -f "/tmp/ilcdvalidationtool/$f" ]; then
+              cp "/tmp/ilcdvalidationtool/$f" "/tmp/proofgrid-v08-research/tool-${f//\//_}"
+            fi
+          done
+          grep -RniE 'Main-Class|mainClass|public static void main|picocli|commons-cli|args4j|java.version|maven.compiler|sourceCompatibility|targetCompatibility|validation|profile' \
+            /tmp/ilcdvalidationtool \
+            --exclude-dir=.git \
+            --include='*.xml' --include='*.gradle' --include='*.kts' --include='*.java' --include='*.kt' --include='*.properties' --include='README*' \
+            | head -n 2500 > /tmp/proofgrid-v08-research/tool-surface-grep.txt || true
+
+      - name: Inspect Maven profile dependencies and packaged classes
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROFILE_DIR="$HOME/.m2/repository/com/okworx/ilcd/validation/profiles/EPD-1.2-OEKOBAUDAT/3.8.0"
+          JAR="$PROFILE_DIR/EPD-1.2-OEKOBAUDAT-3.8.0.jar"
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib, json, os, re, subprocess, xml.etree.ElementTree as ET
+
+          out = Path('/tmp/proofgrid-v08-research')
+          pom = out / 'profile.pom'
+          ns = {'m': 'http://maven.apache.org/POM/4.0.0'}
+          root = ET.parse(pom).getroot()
+          def txt(path):
+              n = root.find(path, ns)
+              return n.text.strip() if n is not None and n.text else None
+          deps = []
+          for d in root.findall('.//m:dependencies/m:dependency', ns):
+              def dt(name):
+                  n = d.find(f'm:{name}', ns)
+                  return n.text.strip() if n is not None and n.text else None
+              deps.append({k: dt(k) for k in ('groupId','artifactId','version','scope','classifier','type')})
+          jar_hash = (out / 'profile-jar.sha256').read_text().split()[0]
+          pom_hash = (out / 'profile-pom.sha256').read_text().split()[0]
+          tool_commit = (out / 'tool-head-commit.txt').read_text().strip()
+          tags = (out / 'tool-tags.txt').read_text().splitlines()
+          heads = (out / 'tool-heads.txt').read_text().splitlines()
+          jar_entries = (out / 'profile-jar-list.txt').read_text().splitlines()
+          report = {
+              'official_publication': {
+                  'publisher': 'ÖKOBAUDAT / BBSR download page',
+                  'format_version': 'ILCD+EPD v1.2',
+                  'profile_name': 'ÖKOBAUDAT Profile',
+                  'profile_version': '3.8.0',
+                  'publication_date': '2026-04-17',
+              },
+              'profile': {
+                  'coordinate': 'com.okworx.ilcd.validation.profiles:EPD-1.2-OEKOBAUDAT:3.8.0',
+                  'jar_sha256': jar_hash,
+                  'pom_sha256': pom_hash,
+                  'pom_group_id': txt('m:groupId') or txt('m:parent/m:groupId'),
+                  'pom_artifact_id': txt('m:artifactId'),
+                  'pom_version': txt('m:version') or txt('m:parent/m:version'),
+                  'pom_packaging': txt('m:packaging'),
+                  'dependencies': deps,
+                  'jar_entries': len(jar_entries),
+              },
+              'validation_tool': {
+                  'repository': 'https://bitbucket.org/okusche/ilcdvalidationtool.git',
+                  'head_commit_at_research_time': tool_commit,
+                  'remote_heads': heads,
+                  'remote_tags': tags,
+              },
+              'research_scope': 'Artifact/source discovery only; no profile compatibility claim is made by this receipt.',
+          }
+          raw = json.dumps(report, sort_keys=True, separators=(',', ':')).encode()
+          report['receipt_sha256'] = hashlib.sha256(raw).hexdigest()
+          (out / 'research-receipt.json').write_text(json.dumps(report, indent=2, sort_keys=True) + '\n')
+          print(json.dumps(report, indent=2, sort_keys=True))
+          PY
+
+      - name: Show research evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat /tmp/proofgrid-v08-research/research-receipt.json
+          echo '--- profile POM ---'
+          cat /tmp/proofgrid-v08-research/profile.pom
+          echo '--- profile manifest ---'
+          cat /tmp/proofgrid-v08-research/profile-manifest.txt
+          echo '--- profile interesting resources ---'
+          cat /tmp/proofgrid-v08-research/profile-interesting-resources.txt
+          echo '--- tool head ---'
+          cat /tmp/proofgrid-v08-research/tool-head-log.txt
+          echo '--- tool tags (tail) ---'
+          tail -n 80 /tmp/proofgrid-v08-research/tool-tags.txt || true
+          echo '--- tool validation/CLI surface ---'
+          cat /tmp/proofgrid-v08-research/tool-surface-grep.txt
+
+      - name: Retain research receipt and metadata only
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v08-oekobaudat-profile-research
+          path: /tmp/proofgrid-v08-research
+          if-no-files-found: error
+          retention-days: 30
