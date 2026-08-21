@@ -50,10 +50,13 @@ def process_xml(
           </epd:scenarios>
         </common:other>'''
     version_attr = f' version="{indicator_version}"' if indicator_version else ""
-    amount_xml = "\n".join(
-        f'<epd:amount module="{module}"{f" scenario=\"{scenario}\"" if scenario else ""}>{value}</epd:amount>'
-        for module, scenario, value in modules
-    )
+    amount_rows = []
+    for module, scenario, value in modules:
+        scenario_attr = f' scenario="{scenario}"' if scenario else ""
+        amount_rows.append(
+            f'<epd:amount module="{module}"{scenario_attr}>{value}</epd:amount>'
+        )
+    amount_xml = "\n".join(amount_rows)
     return f'''<?xml version="1.0" encoding="UTF-8"?>
 <processDataSet xmlns="{PROCESS_NS}" xmlns:common="{COMMON_NS}" xmlns:epd2="{EPD_2019_NS}" xmlns:epd="{EPD_2013_NS}" epd2:epd-version="{version}" version="1.1">
   <processInformation>
