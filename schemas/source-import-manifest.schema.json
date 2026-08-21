@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://regenexcalibur.example/schemas/source-import-manifest.schema.json",
+  "title": "ProofGrid v0.6 environmental source import manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "import_id", "manifest_version", "provider", "acquisition", "authorization", "source", "parser", "normalized_record_id"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "import_id": {"type": "string", "minLength": 1},
+    "manifest_version": {"type": "string", "minLength": 1},
+    "provider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "program", "source_locator"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "program": {"type": "string", "minLength": 1},
+        "source_locator": {"type": "string", "minLength": 1}
+      }
+    },
+    "acquisition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method", "synthetic", "intended_use"],
+      "properties": {
+        "method": {"enum": ["TEST_FIXTURE", "USER_SUPPLIED", "PUBLIC_DOWNLOAD", "AUTHORIZED_API"]},
+        "synthetic": {"type": "boolean"},
+        "intended_use": {"enum": ["INTERNAL_TEST", "INTERNAL_ANALYSIS", "COMMERCIAL_TOOL"]}
+      }
+    },
+    "authorization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "commercial_use", "storage", "transformation", "redistribution", "terms_reference", "terms_snapshot", "approval_reference", "valid_until"],
+      "properties": {
+        "status": {"enum": ["TEST_ONLY", "EXPLICITLY_AUTHORIZED", "PUBLIC_ACCESS_ONLY", "UNKNOWN"]},
+        "commercial_use": {"enum": ["ALLOWED", "PROHIBITED", "UNKNOWN"]},
+        "storage": {"enum": ["ALLOWED", "PROHIBITED", "UNKNOWN"]},
+        "transformation": {"enum": ["ALLOWED", "PROHIBITED", "UNKNOWN"]},
+        "redistribution": {"enum": ["ALLOWED", "PROHIBITED", "UNKNOWN"]},
+        "terms_reference": {"type": "string", "minLength": 1},
+        "terms_snapshot": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "sha256"],
+          "properties": {
+            "path": {"type": "string", "minLength": 1},
+            "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+          }
+        },
+        "approval_reference": {"type": ["string", "null"]},
+        "valid_until": {
+          "oneOf": [
+            {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$"},
+            {"type": "null"}
+          ]
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "media_type", "declared_format"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "media_type": {"type": "string", "minLength": 1},
+        "declared_format": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "version"],
+          "properties": {
+            "name": {"type": "string", "minLength": 1},
+            "version": {"type": "string", "minLength": 1}
+          }
+        }
+      }
+    },
+    "parser": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "profile"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "version": {"type": "string", "minLength": 1},
+        "profile": {"type": "string", "minLength": 1}
+      }
+    },
+    "normalized_record_id": {"type": "string", "minLength": 1}
+  }
+}
