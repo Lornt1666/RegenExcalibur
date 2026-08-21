@@ -1,0 +1,4 @@
+# ProofGrid v0.2 runtime/test dependencies.
+# Pinned for reproducible hosted CI; review upgrades deliberately.
+jsonschema==4.26.0
+ifcopenshell==0.8.5
