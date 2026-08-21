@@ -1,0 +1,264 @@
+name: ProofGrid v1.3 Declared Reference Basis
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/proofgrid-v13-reference-basis.yml'
+      - 'reference/declared_reference_basis.py'
+      - 'schemas/declared-reference-basis.schema.json'
+      - 'tests/test_declared_reference_basis.py'
+      - 'conformance/reference-basis-v13/**'
+      - 'conformance/reference_basis_v13/**'
+      - 'requirements-proofgrid.txt'
+      - 'requirements-proofgrid-v07.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  declared-reference-basis:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v6.1.0
+
+      - name: Setup Python 3.11.16
+        uses: actions/setup-python@v6.0.0
+        with:
+          python-version: '3.11.16'
+
+      - name: Install exact ProofGrid dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-proofgrid.txt
+          python -m pip install -r requirements-proofgrid-v07.txt
+          python -m pip check
+
+      - name: Run v1.3 fail-closed unit suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest -v tests.test_declared_reference_basis
+
+      - name: Checkout pinned InData v1.2 source
+        uses: actions/checkout@v6.1.0
+        with:
+          repository: InDataWG/ILCD-EPD-Data-Format
+          ref: b7233bd2dd5435a6b5973505ffa212cd03d23468
+          path: .proofgrid-upstream/indata-v12
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Checkout pinned InData v1.3 source
+        uses: actions/checkout@v6.1.0
+        with:
+          repository: InDataWG/ILCD-EPD-Data-Format
+          ref: 7625c7dfc0d5b6bc2020eb0cf0b0503349c914aa
+          path: .proofgrid-upstream/indata-v13
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Checkout pinned InData master data
+        uses: actions/checkout@v6.1.0
+        with:
+          repository: InDataWG/ILCD-EPD-Master-Data
+          ref: 32117b6a70d6c486344247a429449755a2c7eab4
+          path: .proofgrid-upstream/indata-master
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Reproduce frozen v1.3 research receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=/tmp/proofgrid-v13
+          mkdir -p "$OUT"
+          python conformance/reference-basis-v13/research_probe.py \
+            --v12-root .proofgrid-upstream/indata-v12 \
+            --v13-root .proofgrid-upstream/indata-v13 \
+            --master-root .proofgrid-upstream/indata-master \
+            --output "$OUT/research.json"
+          python - <<'PY'
+          import json
+          d=json.load(open('/tmp/proofgrid-v13/research.json'))
+          assert d['receipt_sha256']=='e118ccd9d8eec14008c589cd44e3640e74a640fd1cc3231c4526e644abe2ab40'
+          assert d['initial_known_answer']['bounded_basis_text']=='1 kg of the referenced wood-panel product flow'
+          print('V13_RESEARCH_FREEZE=PASS')
+          PY
+
+      - name: Stage accepted RXEP v0.2 parents from pinned public process structures
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import json,zipfile
+          from tests import test_declared_environmental_indicators as fixtures
+          from reference import declared_environmental_indicators as v11
+          from reference import rxep_declared_indicator_binding as rxep
+
+          root=Path('/tmp/proofgrid-v13')
+          configs={
+            'v12':('1.2',Path('.proofgrid-upstream/indata-v12/sample_data/processes/57a4ae65-d305-421e-b21f-a3f0c35b8abe.xml')),
+            'v13':('1.3',Path('.proofgrid-upstream/indata-v13/sample_data/processes/EPDv1.3_example_57a4ae65-d305-421e-b21f-a3f0c35b8abe.xml')),
+          }
+          for key,(version,src_process) in configs.items():
+            case=root/key; case.mkdir(parents=True,exist_ok=True)
+            raw=src_process.read_bytes()
+            if version=='1.2':
+              source=case/'source.zip'; media='application/zip'
+              with zipfile.ZipFile(source,'w',compression=zipfile.ZIP_STORED) as zf:
+                fixtures.write_zip_entry(zf,'ILCD/processes/57a4ae65-d305-421e-b21f-a3f0c35b8abe.xml',raw)
+            else:
+              source=case/'source.xml'; media='application/xml'; source.write_bytes(raw)
+            canonical=fixtures.canonical_record(source,media,version)
+            record=v11.extract_record(source,canonical)
+            record_bytes=(json.dumps(record,indent=2,sort_keys=True,ensure_ascii=False)+'\n').encode()
+            receipt=v11.build_receipt(record,record_bytes)
+            bundle=rxep.build_bundle(record,record_bytes,receipt)
+            bundle_path=case/'rxep-bundle.json'
+            bundle_bytes=(json.dumps(bundle,indent=2,sort_keys=True,ensure_ascii=False)+'\n').encode()
+            bundle_path.write_bytes(bundle_bytes)
+            rxep_receipt=rxep.build_receipt(bundle,bundle_bytes)
+            (case/'rxep-receipt.json').write_text(json.dumps(rxep_receipt,indent=2,sort_keys=True,ensure_ascii=False)+'\n')
+            print(key,'bundle_content_sha256=',bundle['integrity']['content_sha256'])
+          PY
+
+      - name: Extract v1.2 declared reference basis twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          CASE=/tmp/proofgrid-v13/v12
+          for N in a b; do
+            python reference/declared_reference_basis.py \
+              --rxep-bundle "$CASE/rxep-bundle.json" \
+              --rxep-receipt "$CASE/rxep-receipt.json" \
+              --source "$CASE/source.zip" \
+              --product-flow .proofgrid-upstream/indata-v12/sample_data/flows/a7432abd-0881-4977-a817-f8aaf627fb91.xml \
+              --flow-property-master .proofgrid-upstream/indata-master/master_data/units/flowproperties/Mass_93a60a56-a3c8-11da-a746-0800200b9a66.xml \
+              --unit-group-master .proofgrid-upstream/indata-master/master_data/units/unitgroups/Masseneinheit_ad38d542-3fe9-439d-9b95-2f5f7752acaf.xml \
+              --research-receipt /tmp/proofgrid-v13/research.json \
+              --output-dir "$CASE/out-$N"
+          done
+          diff -u "$CASE/out-a/declared-reference-basis.json" "$CASE/out-b/declared-reference-basis.json"
+          diff -u "$CASE/out-a/declared-reference-basis-receipt.json" "$CASE/out-b/declared-reference-basis-receipt.json"
+
+      - name: Extract v1.3 declared reference basis twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          CASE=/tmp/proofgrid-v13/v13
+          for N in a b; do
+            python reference/declared_reference_basis.py \
+              --rxep-bundle "$CASE/rxep-bundle.json" \
+              --rxep-receipt "$CASE/rxep-receipt.json" \
+              --source "$CASE/source.xml" \
+              --product-flow .proofgrid-upstream/indata-v13/sample_data/flows/a7432abd-0881-4977-a817-f8aaf627fb91.xml \
+              --flow-property-master .proofgrid-upstream/indata-master/master_data/units/flowproperties/Mass_93a60a56-a3c8-11da-a746-0800200b9a66.xml \
+              --unit-group-master .proofgrid-upstream/indata-master/master_data/units/unitgroups/Masseneinheit_ad38d542-3fe9-439d-9b95-2f5f7752acaf.xml \
+              --research-receipt /tmp/proofgrid-v13/research.json \
+              --output-dir "$CASE/out-$N"
+          done
+          diff -u "$CASE/out-a/declared-reference-basis.json" "$CASE/out-b/declared-reference-basis.json"
+          diff -u "$CASE/out-a/declared-reference-basis-receipt.json" "$CASE/out-b/declared-reference-basis-receipt.json"
+
+      - name: Require bounded 1 kg identity-chain semantics
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          for key in ('v12','v13'):
+            d=json.load(open(f'/tmp/proofgrid-v13/{key}/out-a/declared-reference-basis.json'))
+            assert d['verdict']=='DECLARED_REFERENCE_BASIS_EXTRACTED_VERIFIABLE'
+            assert d['declared_reference_basis']['basis_status']=='IDENTITY_CHAIN_VERIFIED'
+            assert d['declared_reference_basis']['quantity_decimal']=='1'
+            assert d['declared_reference_basis']['unit']=='kg'
+            assert d['process_reference']['reference_exchange_internal_id']=='42'
+            assert d['process_reference']['exchange_amount_lexical']=='1.0'
+            assert d['product_flow']['uuid']=='a7432abd-0881-4977-a817-f8aaf627fb91'
+            assert d['flow_property']['uuid']=='93a60a56-a3c8-11da-a746-0800200b9a66'
+            assert d['flow_property']['flow_mean_lexical']=='1.0'
+            assert d['reference_unit']['unit_group_uuid']=='ad38d542-3fe9-439d-9b95-2f5f7752acaf'
+            assert d['reference_unit']['name']=='kg'
+            assert d['reference_unit']['factor_lexical']=='1'
+            assert d['calculated'] is False
+            assert d['environmental_values_transformed'] is False
+            assert d['unit_conversion_performed'] is False
+            assert d['scientific_validation_performed'] is False
+            assert d['professional_review_performed'] is False
+            assert d['certified'] is False
+          print('DECLARED_REFERENCE_BASIS=PASS')
+          PY
+
+      - name: Prove post-research reference-closure tamper fails closed
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp .proofgrid-upstream/indata-v13/sample_data/flows/a7432abd-0881-4977-a817-f8aaf627fb91.xml /tmp/proofgrid-v13/tampered-flow.xml
+          printf 'x' >> /tmp/proofgrid-v13/tampered-flow.xml
+          if python reference/declared_reference_basis.py \
+            --rxep-bundle /tmp/proofgrid-v13/v13/rxep-bundle.json \
+            --rxep-receipt /tmp/proofgrid-v13/v13/rxep-receipt.json \
+            --source /tmp/proofgrid-v13/v13/source.xml \
+            --product-flow /tmp/proofgrid-v13/tampered-flow.xml \
+            --flow-property-master .proofgrid-upstream/indata-master/master_data/units/flowproperties/Mass_93a60a56-a3c8-11da-a746-0800200b9a66.xml \
+            --unit-group-master .proofgrid-upstream/indata-master/master_data/units/unitgroups/Masseneinheit_ad38d542-3fe9-439d-9b95-2f5f7752acaf.xml \
+            --research-receipt /tmp/proofgrid-v13/research.json \
+            --output-dir /tmp/proofgrid-v13/should-not-exist; then
+            echo 'tampered reference closure unexpectedly succeeded' >&2
+            exit 1
+          fi
+          echo 'REFERENCE_CLOSURE_TAMPER_REJECTED=PASS'
+
+      - name: Produce v1.3 integration receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib,json
+          root=Path('/tmp/proofgrid-v13')
+          research=json.load(open(root/'research.json'))
+          report={
+            'verdict':'DECLARED_REFERENCE_BASIS_EXTRACTED_VERIFIABLE',
+            'certified':False,
+            'parent_v12_head':'9fbfa4f65863abcdc7be6becc4c5d0520f6d8d60',
+            'research_receipt_sha256':research['receipt_sha256'],
+            'v12':json.load(open(root/'v12/out-a/declared-reference-basis-receipt.json')),
+            'v13':json.load(open(root/'v13/out-a/declared-reference-basis-receipt.json')),
+            'deterministic_repeat_within_run':True,
+            'reference_closure_tamper_rejected':True,
+            'calculated':False,
+            'environmental_values_transformed':False,
+            'unit_conversion_performed':False,
+            'scientific_validation_performed':False,
+            'professional_review_performed':False,
+            'limitations':[
+              'The 1 kg conclusion applies only to the pinned public wood-panel fixtures whose complete reference chain is an identity chain.',
+              'No environmental indicator value is transformed and no non-identity scaling/conversion is accepted in v1.3.'
+            ]
+          }
+          raw=json.dumps(report,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()
+          report['receipt_sha256']=hashlib.sha256(raw).hexdigest()
+          (root/'v13-reference-basis-integration-receipt.json').write_text(json.dumps(report,indent=2,sort_keys=True,ensure_ascii=False)+'\n')
+          print(json.dumps(report,indent=2,sort_keys=True,ensure_ascii=False))
+          PY
+
+      - name: Retain reference-basis records and receipts only
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v13-declared-reference-basis
+          path: |
+            /tmp/proofgrid-v13/research.json
+            /tmp/proofgrid-v13/v13-reference-basis-integration-receipt.json
+            /tmp/proofgrid-v13/v12/out-a/declared-reference-basis.json
+            /tmp/proofgrid-v13/v12/out-a/declared-reference-basis-receipt.json
+            /tmp/proofgrid-v13/v13/out-a/declared-reference-basis.json
+            /tmp/proofgrid-v13/v13/out-a/declared-reference-basis-receipt.json
+          if-no-files-found: error
+          retention-days: 30
