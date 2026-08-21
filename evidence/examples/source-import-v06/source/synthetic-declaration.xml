@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<environmentalDeclaration xmlns="urn:regenexcalibur:synthetic-epd-carrier:1.0" format="RX-SYNTHETIC-EPD-CARRIER" version="1.0">
+  <identity datasetUuid="11111111-2222-3333-4444-555555555555" documentId="RX-SYNTH-EPD-CONCRETE-001" documentVersion="1.0"/>
+  <publisher>RegenExcalibur Synthetic Test Publisher</publisher>
+  <material id="synthetic-import-concrete" name="Synthetic Imported Concrete"/>
+  <declaredUnit unit="kg" referenceQuantity="1"/>
+  <indicator name="GWP-total" unit="kgCO2e" value="0.15"/>
+  <systemBoundary>
+    <module>A1</module>
+    <module>A2</module>
+    <module>A3</module>
+  </systemBoundary>
+  <sourceMetadata publicationDate="2026-01-15" geography="CA-AB"/>
+  <limitations>
+    <item>Synthetic parser and rights-control fixture only; not a real EPD.</item>
+    <item>Carrier is not claimed to conform to ILCD+EPD or any programme-operator profile.</item>
+  </limitations>
+</environmentalDeclaration>
