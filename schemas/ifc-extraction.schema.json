@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://regenexcalibur.example/schemas/ifc-extraction.schema.json",
+  "title": "ProofGrid IFC Declared Quantity/Material Extraction v0.4",
+  "type": "object",
+  "required": ["adapter", "adapter_version", "source", "source_sha256", "schema", "units", "spatial", "elements", "warnings", "limitations"],
+  "properties": {
+    "adapter": {"const": "ifcopenshell"},
+    "adapter_version": {"type": "string", "minLength": 1},
+    "source": {"type": "string", "minLength": 1},
+    "source_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "schema": {"type": "string", "minLength": 1},
+    "units": {"type": "array", "items": {"$ref": "#/$defs/unit"}},
+    "spatial": {
+      "type": "object",
+      "required": ["projects", "sites", "buildings", "storeys", "spaces"],
+      "properties": {
+        "projects": {"type": "array", "items": {"$ref": "#/$defs/spatial"}},
+        "sites": {"type": "array", "items": {"$ref": "#/$defs/spatial"}},
+        "buildings": {"type": "array", "items": {"$ref": "#/$defs/spatial"}},
+        "storeys": {"type": "array", "items": {"$ref": "#/$defs/spatial"}},
+        "spaces": {"type": "array", "items": {"$ref": "#/$defs/spatial"}}
+      },
+      "additionalProperties": false
+    },
+    "elements": {"type": "array", "items": {"$ref": "#/$defs/element"}},
+    "warnings": {"type": "array", "items": {"type": "string"}},
+    "limitations": {"type": "array", "minItems": 1, "items": {"type": "string"}}
+  },
+  "$defs": {
+    "unit": {
+      "type": "object",
+      "required": ["step_id", "ifc_type", "unit_type", "name", "prefix"],
+      "properties": {
+        "step_id": {"type": "integer", "minimum": 1},
+        "ifc_type": {"type": "string", "minLength": 1},
+        "unit_type": {"type": ["string", "null"]},
+        "name": {"type": ["string", "null"]},
+        "prefix": {"type": ["string", "null"]},
+        "source": {"enum": ["explicit_quantity_unit", "project_unit_context"]}
+      },
+      "additionalProperties": false
+    },
+    "spatial": {
+      "type": "object",
+      "required": ["step_id", "global_id", "name", "ifc_type", "parent_step_id", "parent_global_id"],
+      "properties": {
+        "step_id": {"type": "integer", "minimum": 1},
+        "global_id": {"type": ["string", "null"]},
+        "name": {"type": ["string", "null"]},
+        "ifc_type": {"type": "string", "minLength": 1},
+        "parent_step_id": {"type": ["integer", "null"], "minimum": 1},
+        "parent_global_id": {"type": ["string", "null"]}
+      },
+      "additionalProperties": false
+    },
+    "material": {
+      "type": "object",
+      "required": ["name", "material_step_id", "association_step_id", "source_type"],
+      "properties": {
+        "name": {"type": ["string", "null"]},
+        "material_step_id": {"type": ["integer", "null"]},
+        "association_step_id": {"type": "integer", "minimum": 1},
+        "source_type": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    },
+    "quantity": {
+      "type": "object",
+      "required": ["set_name", "set_step_id", "name", "quantity_step_id", "ifc_quantity_type", "value", "unit", "value_source"],
+      "properties": {
+        "set_name": {"type": ["string", "null"]},
+        "set_step_id": {"type": "integer", "minimum": 1},
+        "name": {"type": ["string", "null"]},
+        "quantity_step_id": {"type": "integer", "minimum": 1},
+        "ifc_quantity_type": {"type": "string", "minLength": 1},
+        "value": {"type": "number"},
+        "unit": {"anyOf": [{"$ref": "#/$defs/unit"}, {"type": "null"}]},
+        "value_source": {"const": "declared_ifc_element_quantity"}
+      },
+      "additionalProperties": false
+    },
+    "element": {
+      "type": "object",
+      "required": ["step_id", "global_id", "name", "ifc_type", "materials", "quantities", "warnings"],
+      "properties": {
+        "step_id": {"type": "integer", "minimum": 1},
+        "global_id": {"type": ["string", "null"]},
+        "name": {"type": ["string", "null"]},
+        "ifc_type": {"type": "string", "minLength": 1},
+        "materials": {"type": "array", "items": {"$ref": "#/$defs/material"}},
+        "quantities": {"type": "array", "items": {"$ref": "#/$defs/quantity"}},
+        "warnings": {"type": "array", "items": {"type": "string"}}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,30 +1,59 @@
 # IFC Adapter
 
-Status: **read-only structural ingestion implemented in v0.2**.
+Status: **v0.4 declared quantity/material extraction implemented under conformance testing**.
 
-ProofGrid uses IfcOpenShell behind an explicit adapter boundary. The current adapter opens real `.ifc` STEP files and reports bounded project/building structure while preserving source metadata. It does **not** yet transform IFC quantities or materials into environmental claims.
+ProofGrid uses IfcOpenShell behind an explicit adapter boundary. The structural inspection path from v0.2 remains available, and v0.4 adds a separate extraction path for IFC-declared quantities, project unit context, spatial hierarchy, and material associations.
 
-## Current command
+## Commands
+
+Structural inspection:
 
 ```bash
 python reference/rx_cli.py ifc-inspect path/to/model.ifc --output ifc-summary.json
 ```
 
-Current responsibilities:
+Declared-data extraction:
 
-- parse real IFC files with pinned IfcOpenShell;
-- report IFC schema and bounded entity counts;
-- preserve STEP IDs, GlobalIds, names, and IFC entity types for projects/buildings;
-- fail closed on missing, unsupported, or unparseable files;
-- state explicit limitations in generated summaries.
+```bash
+python reference/ifc_extract.py path/to/model.ifc --output ifc-extraction.json
+```
 
-## Deliberately not implemented yet
+## v0.4 extraction responsibilities
 
-- material quantity takeoff;
-- unit normalization across IFC quantity/property sets;
-- EPD/LCA factor matching;
+- parse real `.ifc` STEP files with pinned IfcOpenShell;
+- preserve source-file SHA-256 and IFC schema;
+- preserve project/site/building/storey/space STEP IDs, GlobalIds, names, types, and aggregation-parent identifiers;
+- retain the project unit assignment and explicit quantity units where declared;
+- extract supported values only when they are explicitly present in `IfcElementQuantity`;
+- support declared length, area, volume, weight, count, and time quantity types;
+- preserve `IfcMaterial`, material-layer-set, material-constituent-set, material-profile-set, and material-list associations where supported;
+- preserve ambiguous/blank material names and emit warnings rather than inventing identities;
+- retain duplicate/conflicting declared quantities and emit deterministic warnings rather than silently choosing one;
+- validate the extraction artifact against `schemas/ifc-extraction.schema.json`.
+
+## Unit rule
+
+v0.4 reports values and unit context as declared. It does **not** convert units. For example, a declared value of `3500` with `MILLI` + `METRE` remains `3500` millimetres; it is not silently rewritten as `3.5` metres.
+
+Any future conversion engine requires a separately versioned deterministic method, conversion provenance, known-answer fixtures, and its own evidence gate.
+
+## Quantity rule
+
+Only IFC-declared `IfcElementQuantity` values are treated as declared quantities in this slice. ProofGrid v0.4 does **not** calculate geometry-derived quantity takeoffs.
+
+## Material rule
+
+Material relationships are extracted from IFC associations. Material names are **not** fuzzy-matched to EPD/LCA/environmental source records. Missing or ambiguous names are warnings, not permission to infer an identity.
+
+## Deliberately not implemented in v0.4
+
+- geometry-derived takeoff;
+- unit normalization or conversion;
+- IFC material-name to environmental-factor matching;
+- automatic IFC-to-LCA calculation;
 - code-compliance inference;
 - engineering or architectural conclusions;
+- procurement approval;
 - certification.
 
-Those require separate conformance fixtures, unit/system-boundary rules, provenance, and evidence gates. Structural IFC ingestion is therefore **input capability**, not proof of environmental or regulatory correctness.
+The v0.4 extractor therefore produces **evidence-controlled IFC input data**, not environmental or professional conclusions.
