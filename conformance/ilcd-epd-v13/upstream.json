@@ -1,0 +1,38 @@
+{
+  "schema_version": "1.0",
+  "gate": "ProofGrid v0.7 authoritative ILCD+EPD v1.3 XSD/master-data conformance",
+  "format": {
+    "repository": "InDataWG/ILCD-EPD-Data-Format",
+    "branch_observed": "release/v1.3",
+    "commit": "7625c7dfc0d5b6bc2020eb0cf0b0503349c914aa",
+    "license": "Apache-2.0",
+    "xsd": {
+      "path": "schemas/EPD_DataSet.xsd",
+      "git_blob_sha": "d2b213528adfc2baa82e37c20eef109a9084d04a"
+    },
+    "official_example": {
+      "path": "sample_data/processes/EPDv1.3_example_57a4ae65-d305-421e-b21f-a3f0c35b8abe.xml",
+      "git_blob_sha": "f6bf1a4bddc7800c5c7e69e6268d0b778c6e4969"
+    }
+  },
+  "master_data": {
+    "repository": "InDataWG/ILCD-EPD-Master-Data",
+    "commit": "32117b6a70d6c486344247a429449755a2c7eab4",
+    "license": "Apache-2.0",
+    "required_identity": {
+      "uuid": "c0016b33-8cf7-415c-ac6e-deba0d21440d",
+      "path": "master_data/standards/sources/EN_15804+A2_EF_3.0_c0016b33-8cf7-415c-ac6e-deba0d21440d.xml"
+    }
+  },
+  "profile_policy": {
+    "format_version": "1.3",
+    "profile_validation_performed": false,
+    "reason": "InData states that validation profiles for ILCD+EPD v1.3 are under development. XSD/master-data conformance must not be represented as validation-profile compliance."
+  },
+  "synthetic_fixture": {
+    "derivation": "Deterministic Apache-2.0-compatible derivative of the pinned official InData v1.3 example with only dataset identity/name fields changed for ProofGrid conformance testing.",
+    "uuid": "7f94a337-6ae6-4e34-8658-17d48d7f3d36",
+    "english_name": "ProofGrid Synthetic ILCD+EPD v1.3 Conformance Fixture",
+    "german_name": "ProofGrid Synthetischer ILCD+EPD v1.3 Konformitaetstest"
+  }
+}

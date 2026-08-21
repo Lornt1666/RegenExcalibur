@@ -1,290 +1,237 @@
-# RegenExcalibur ProofGrid / RX Evidence Fabric — Architecture v0.6
+# RegenExcalibur ProofGrid / RX Evidence Fabric — Architecture v0.7
 
 ## Mission
 
-Make built-environment claims independently inspectable without pretending that software integrity, data access, or workflow review equals scientific validity, legal authority, professional approval, regulatory approval, or certification.
+Make built-environment claims independently inspectable without pretending that software integrity, source access, format conformance, workflow review, or deterministic calculation equals scientific validity, legal authority, professional approval, regulatory approval, or certification.
 
-## v0.6 execution kernel
+## v0.7 execution model
 
-```text
-AUTHORIZED SOURCE-IMPORT PATH
-
-source-import manifest
-    │
-    ├─ provider / source locator
-    ├─ acquisition method + intended use
-    ├─ synthetic/test state
-    ├─ authorization status
-    ├─ commercial/storage/transformation/redistribution permissions
-    ├─ terms reference + terms snapshot SHA-256
-    ├─ approval reference + expiry when applicable
-    ├─ source path/media type/format/version/SHA-256
-    ├─ parser name/version/profile
-    └─ target normalized source-record ID
-    ↓
-Draft 2020-12 manifest validation
-    ↓
-fail-closed rights/use decision
-    ↓
-terms snapshot SHA-256 verification
-    ↓
-source-content SHA-256 verification
-    ↓
-versioned parser/profile gate
-    ↓
-normalized ProofGrid environmental source record
-    ↓
-existing v0.3 source-record schema + source-content provenance gate
-    ↓
-authorization/import receipt + normalized registry artifact
-
-ENVIRONMENTAL SOURCE PATH
-
-lca-sources.json + referenced source bytes
-    ↓
-Draft 2020-12 validation
-    ↓
-source identity/conflict checks
-    ↓
-source-content SHA-256 verification
-    ↓
-provenance-controlled source-record index
-
-IFC DECLARED-DATA PATH
-
-IFC (.ifc)
-    ↓
-pinned IfcOpenShell parser
-    ↓
-source IFC SHA-256 + IFC schema + project unit context
-    ↓
-project/site/building/storey/space hierarchy
-    ↓
-IfcMaterial associations + supported IfcElementQuantity values
-    ↓
-conflict / ambiguity / missing-data warnings
-    ↓
-Draft 2020-12 IFC extraction artifact
-
-EXPLICIT v0.5 MAPPING PATH
-
-reviewer-authored mapping artifact
-    │
-    ├─ source IFC SHA-256 + schema
-    ├─ element/material/quantity exact identities
-    ├─ exact extracted unit declaration
-    ├─ explicit target material_identity_id
-    ├─ explicit target source_record_id
-    └─ mapping state + author + rationale
-    ↓
-Draft 2020-12 mapping validation
-    ↓
-exact resolution against IFC extraction
-    ↓
-REVIEWED mapping-state gate
-    ↓
-exact environmental source-record validation
-    ↓
-v0.5 unit-identity gate
-    ↓
-compatible indicator + lifecycle boundary
-    ↓
-deterministic mapped subtotal / total
-    ↓
-provenance-bearing mapping receipt
-
-NO PUBLIC-ACCESS ⇒ AUTHORIZATION ASSUMPTION
-NO AUTHENTICATION OR TERMS BYPASS
-NO FUZZY IFC MATERIAL → ENVIRONMENTAL SOURCE SELECTION
-NO GENERAL UNIT CONVERSION
-NO GEOMETRY-DERIVED QUANTITY TAKEOFF
-```
-
-The v0.6 architectural change is that **environmental source acquisition itself becomes an evidence-gated operation**. A parser being able to read bytes is not permission to acquire, store, transform, use commercially, or redistribute those bytes.
-
-## Architectural layers
-
-1. **Constitution** — safety, truth, authority, privacy, reversibility, accountability.
-2. **Schema / Protocol** — RXEP and canonical building/material/environmental-source/IFC-extraction/mapping/import structures.
-3. **Rights and acquisition evidence** — explicit authorization state, intended use, terms snapshots, approval references, expiry, and permission dimensions.
-4. **Source provenance** — exact environmental source records, source-content hashes, units, boundaries, versions, verification state, and redistribution state.
-5. **IFC evidence extraction** — source hash, hierarchy, units, declared quantities, material associations, and warnings.
-6. **Explicit mapping evidence** — reviewed mapping records binding exact IFC identities to exact environmental source records.
-7. **Adapters/parsers** — pinned IfcOpenShell plus versioned, provider/format-specific environmental parsers only when authorized.
-8. **Deterministic engines** — auditable validation and calculations independent of generative AI.
-9. **Evidence graph / receipts** — provenance-bearing machine-readable artifacts.
-10. **Reproduction** — clean-environment known-answer reproduction with retained receipts.
-11. **Orchestration** — cloud/agent systems may automate workflows without changing evidence semantics or permission boundaries.
-12. **Commercial applications** — permitted only when the relevant source/use rights explicitly allow the intended use.
-
-## Cloud-neutral rule
-
-The protocol and reference verifier must run locally without requiring a paid cloud service. External dependencies may be pinned and audited; cloud providers remain optional adapters/deployment targets rather than protocol requirements.
-
-## Deterministic-core rule
-
-Numeric evidence used for verification must be produced by deterministic code or an explicitly declared numerical method. AI may assist with preparation, explanation, proposed mappings, or source research, but inferred outputs and guessed permissions must not be silently presented as deterministic facts or authorized actions.
-
-## v0.6 authorization-before-parsing rule
-
-The importer evaluates declared authorization and use rights **before** source normalization.
-
-The current policy fails closed when:
-
-- authorization is `UNKNOWN`;
-- authorization is only `PUBLIC_ACCESS_ONLY`;
-- `TEST_ONLY` authority is applied to non-synthetic data or outside `TEST_FIXTURE / INTERNAL_TEST` use;
-- `EXPLICITLY_AUTHORIZED` lacks a non-empty approval reference;
-- declared authorization is expired at the policy-evaluation date;
-- source storage is not explicitly `ALLOWED`;
-- transformation is not explicitly `ALLOWED`;
-- `COMMERCIAL_TOOL` use is requested without `commercial_use = ALLOWED`;
-- raw-source export is requested without `redistribution = ALLOWED`.
-
-Public visibility is therefore treated as a discovery/access fact, not a rights grant.
-
-## Terms/source integrity rule
-
-The import manifest binds both:
-
-- a terms/reference snapshot with SHA-256; and
-- the exact source bytes with SHA-256.
-
-Either mismatch fails before normalization. Paths are resolved inside the import package and may not escape it.
-
-A terms hash proves which terms bytes were evaluated; it does not prove that the manifest's legal interpretation is correct. Provider-specific production adapters require their own reviewed authorization evidence.
-
-## Parser/profile rule
-
-The initial v0.6 parser accepts only:
+ProofGrid separates five evidence questions that must remain independent:
 
 ```text
-media type: application/xml
-format: RX-SYNTHETIC-EPD-CARRIER / 1.0
-parser: rx-synthetic-epd-carrier / 0.6.0
-profile: rx-synthetic-epd-carrier-1.0
+1. SOURCE AUTHORITY
+   Can these exact bytes be acquired/stored/transformed/used/redistributed
+   for the declared purpose?
+                ↓
+   v0.6 authorization-aware import gate
+
+2. FORMAT CONFORMANCE
+   Do the exact XML bytes conform to the pinned authoritative interchange
+   schema/master-data identities?
+                ↓
+   v0.7 ILCD+EPD v1.3 XSD/master-data gate
+
+3. NORMALIZED SOURCE PROVENANCE
+   Does the ProofGrid environmental source record preserve exact source,
+   unit, boundary, indicator, verification, and content-hash provenance?
+                ↓
+   v0.3 source-registry gate
+
+4. BUILDING EVIDENCE + EXPLICIT MAPPING
+   Which exact IFC-declared material/quantity identities are mapped to which
+   exact environmental source record, through an explicit reviewed decision?
+                ↓
+   v0.4 extraction + v0.5 mapping gates
+
+5. DETERMINISTIC RESULT / RECEIPT
+   Can the declared calculation be reproduced and integrity-checked without
+   promoting it to certification or professional judgment?
+                ↓
+   RXEP / ProofGrid receipts + clean-environment reproduction
 ```
 
-This is a RegenExcalibur synthetic conformance carrier. It is **not claimed to conform to ILCD+EPD, ECO Platform, ÖKOBAUDAT, EPD International, openEPD, or any programme-operator profile**.
+A later gate may depend on an earlier one, but **success in one dimension never supplies missing evidence in another**. XSD validity does not grant source rights. Authorization does not prove scientific suitability. A reviewed mapping does not establish professional licensure. A deterministic number does not establish certification.
 
-Unsupported format/parser/profile declarations fail closed. DTD/entity declarations are rejected by the synthetic XML parser.
+## v0.7 authoritative format-conformance layer
 
-## Normalization rule
+### Immutable upstream pins
 
-A parsed source may enter a ProofGrid normalized registry only after the generated record passes the existing environmental-source schema and source-content provenance validator.
+The v0.7 gate uses local checkouts of exact upstream commits:
 
-The initial synthetic record normalizes to:
+- `InDataWG/ILCD-EPD-Data-Format` @ `7625c7dfc0d5b6bc2020eb0cf0b0503349c914aa`;
+- `InDataWG/ILCD-EPD-Master-Data` @ `32117b6a70d6c486344247a429449755a2c7eab4`.
 
-- record ID `RX-IMPORTED-SYNTH-CONCRETE-A1A3`;
-- material identity `synthetic-import-concrete`;
-- declared unit `kg`;
-- reference quantity `1.0`;
-- `GWP-total = 0.15 kgCO2e`;
-- lifecycle modules `A1/A2/A3`;
-- verification state `UNVERIFIED`;
-- synthetic state `true`;
-- source-content SHA-256 `1326aa51e0d62444209e78a39cef62046c5683c85609eaf7aea675839ec1a338`;
-- redistribution status `RESTRICTED` under the current test authorization.
+The gate does not trust a moving branch name as sufficient evidence. Before XSD validation it checks `git rev-parse HEAD` against the expected commit.
 
-The record carries `FORMAT_NOT_CLAIMED_ILCD_EPD_COMPLIANT` as an explicit data-quality flag.
+The selected authoritative format objects include:
 
-## Raw-source redistribution rule
+- `schemas/EPD_DataSet.xsd` — expected git blob `d2b213528adfc2baa82e37c20eef109a9084d04a`;
+- InData official v1.3 example `sample_data/processes/EPDv1.3_example_57a4ae65-d305-421e-b21f-a3f0c35b8abe.xml` — expected git blob `f6bf1a4bddc7800c5c7e69e6268d0b778c6e4969`;
+- selected EN 15804+A2 master-data UUID `c0016b33-8cf7-415c-ac6e-deba0d21440d`.
 
-Normalization and redistribution are separate permissions.
+The upstream repositories are consumed in place. ProofGrid does not vendor the authoritative schema graph into the repository or rewrite inherited file notices.
 
-The v0.6 positive fixture permits local storage/transformation for the synthetic test but prohibits raw-source redistribution. Therefore the normal successful run produces a normalized registry and receipt while recording:
+### Version/profile boundary
+
+The v0.7 result is deliberately:
 
 ```text
-raw_export.requested = false
-raw_export.exported  = false
-redistribution_status = RESTRICTED
+ILCD_EPD_V13_XSD_MASTERDATA_CONFORMANT
+profile_validation_performed = false
+certified = false
 ```
 
-A requested raw export fails unless redistribution is explicitly allowed.
+This gate proves the declared XML Schema and selected master-data identity checks against pinned InData v1.3 upstreams. It does **not** claim validation-profile compliance.
 
-This design prevents a successful parser/import from silently converting restricted source bytes into a redistributable package.
+The published ILCD+EPD v1.2/ÖKOBAUDAT validation-profile lane is a separate future compatibility gate. It must not be used to retroactively label a v1.3 dataset profile-compliant.
 
-## Environmental source-selection rule
+## XML security boundary
 
-Environmental factors may enter a calculation only through an exact source-record ID and matching environmental material identity. v0.6 changes how an authorized source record may be created; it does not weaken v0.3/v0.5 source-selection rules.
+Authoritative schema composition uses:
 
-## IFC quantity and mapping rules
+- `xmlschema==4.3.1`;
+- `elementpath==5.1.2`;
+- `allow = sandbox`;
+- `defuse = always`;
+- a base URL rooted in the pinned local schema checkout;
+- instance location hints disabled for validation.
+
+Unpinned remote schema imports are therefore not permitted to silently expand the validation graph.
+
+Adversarial local XML fixtures are each wrapped in a sandboxed `XMLResource` rooted in their local test directory. This permits malformed/schema-invalid local instances to be tested without granting them authority to fetch remote resources or weakening the authoritative schema sandbox.
+
+## Dependency isolation rule
+
+`requirements-proofgrid.txt` remains frozen for the earlier reproduction evidence.
+
+v0.7 uses a separate exact lock in `requirements-proofgrid-v07.txt`.
+
+The first candidate pair—`xmlschema 4.3.2` plus `elementpath 5.1.2`—was impossible to resolve because xmlschema 4.3.2 required elementpath 5.1.3 or later while the runner package index did not provide a compatible release. The corrected exact pair is:
+
+```text
+xmlschema==4.3.1
+elementpath==5.1.2
+```
+
+The failure is retained as evidence of dependency-resolution behavior; the acceptance rule was not weakened to make the build green.
+
+## Positive v0.7 control path
+
+The validator performs the following sequence:
+
+1. load `conformance/ilcd-epd-v13/upstream.json`;
+2. reject any attempt to set `profile_validation_performed = true` in the current v1.3 gate;
+3. verify exact format and master-data checkout commits;
+4. verify expected upstream license evidence;
+5. verify the selected authoritative XSD and official-example git blobs;
+6. resolve the selected EN 15804+A2 master-data UUID from the pinned master-data checkout;
+7. compose the XSD graph locally under sandbox controls;
+8. validate the official InData v1.3 example as the upstream positive control;
+9. derive a deterministic synthetic fixture by changing only dataset UUID/name fields in the pinned example;
+10. validate the synthetic derivative against the same XSD graph;
+11. emit a machine-readable receipt with exact hashes, versions, security state, limitations, and `certified = false`.
+
+## Fail-closed v0.7 checks
+
+The hosted and unit-test layers reject or test:
+
+- format commit mismatch;
+- master-data commit mismatch;
+- authoritative XSD git-object mismatch/tampering;
+- official-example git-object mismatch;
+- selected master-data UUID mismatch;
+- malformed XML;
+- missing required process information;
+- invalid process namespace;
+- unpinned remote schema import;
+- false v1.3 validation-profile assertion.
+
+The official InData example itself is a required positive control. If it fails under the pinned schema graph, the gate stops instead of changing the fixture or schema silently.
+
+## v0.7 receipt semantics
+
+A successful conformance receipt retains:
+
+- validator name/version;
+- Python/xmlschema/elementpath versions;
+- exact upstream repository commits;
+- exact authoritative XSD git blob and SHA-256;
+- official-example git blob, SHA-256, dataset identity, and XSD result;
+- selected authoritative master-data UUID/path/SHA-256;
+- synthetic derivative identity/SHA-256/XSD result;
+- security controls;
+- `profile_validation_performed = false`;
+- limitations;
+- canonical receipt SHA-256;
+- `certified = false`.
+
+The first green implementation receipt established:
+
+- 51 tests passed;
+- XSD SHA-256 `2cf30de74b6a9607503aa99d791b196a88c709b9975546d837789bf1bdb93d0a`;
+- official example SHA-256 `78476ee519b243088a226b013beb2d7b810d824a177070fcedb43011daa21a50`;
+- selected EN 15804+A2 master-data SHA-256 `56527da732b221c30cba7b1314c4ce6bae90b8804ba157927299c0193af2990f`;
+- synthetic derivative SHA-256 `7db95464214c68d6cf3cd9e3164e62d414d34b55e16c9a8133ee925947f04f16`;
+- receipt SHA-256 `094f96b2ff3659a9b8fdb320dcf6bc91ad0e64ebfc5c0d474b3ea0ab860d338e`.
+
+These values describe the proven implementation lane. A documentation-complete exact-head run is still required before issue #14 is completed.
+
+## Inherited v0.6 authorization gate
+
+v0.7 does not replace v0.6. Real source acquisition remains independently rights-gated.
+
+The importer fails closed for, among other cases:
+
+- `UNKNOWN` or `PUBLIC_ACCESS_ONLY` authority;
+- invalid test-only use;
+- missing/expired explicit approval;
+- storage/transformation permission not explicitly allowed;
+- commercial-tool use without commercial permission;
+- raw export without redistribution permission;
+- terms/source hash mismatch;
+- path escape;
+- unsupported parser profile.
+
+A real EPD can be perfectly XSD-valid and still be prohibited from the intended ProofGrid operation. Conversely, authorization to access bytes does not establish XSD validity or scientific suitability.
+
+## Inherited environmental source-registry gate
+
+Environmental factors enter deterministic calculations only through exact environmental source-record IDs with preserved units, reference quantities, indicators, lifecycle boundaries, verification state, source metadata, and content hashes.
+
+No fuzzy source selection or implicit environmental unit conversion is authorized.
+
+## Inherited IFC/mapping gates
 
 The v0.4/v0.5 rules remain unchanged:
 
-- only supported explicitly declared `IfcElementQuantity` values are extracted;
-- geometry-derived takeoff is outside the gate;
-- a v0.5 mapping must resolve exact IFC source/element/material/quantity identities;
-- a material string does not choose an environmental factor;
-- only `REVIEWED` mapping records enter the v0.5 calculation gate;
-- `REVIEWED` remains a workflow state, not professional/scientific authority;
-- duplicate/conflicting mappings fail closed;
-- the only v0.5 unit identity bridge is IFC `MASSUNIT + KILO + GRAM → kg`, with no numerical conversion.
+- only supported explicitly declared `IfcElementQuantity` values are treated as declared quantities;
+- no geometry-derived quantity is silently substituted;
+- IFC source hash/schema and element/material/quantity identities remain exact evidence inputs;
+- material strings do not choose environmental records;
+- mapping targets are explicit;
+- mapping state `REVIEWED` is a workflow gate, not professional/scientific authority;
+- duplicate/conflicting mappings fail;
+- the narrow mass unit identity remains `MASSUNIT + KILO + GRAM → kg` with no numerical conversion.
 
-## v0.6 import receipt rule
+## Architectural layers
 
-A successful `AUTHORIZED_SOURCE_IMPORT_VERIFIABLE` receipt retains:
+1. **Constitution** — truth, safety, authority, privacy, reversibility, accountability.
+2. **Rights/acquisition evidence** — provider, intended use, terms, approvals, permission dimensions.
+3. **Format-conformance evidence** — immutable upstream format/master-data identity, parser/security state, schema result.
+4. **Source provenance** — normalized environmental source records and exact source-content hashes.
+5. **IFC evidence extraction** — source IFC identity, hierarchy, units, declared quantities/materials.
+6. **Explicit mapping evidence** — reviewed exact IFC→environmental source decisions.
+7. **Deterministic engines** — calculations and validators independent of generative AI.
+8. **Evidence receipts** — integrity-checkable artifacts with bounded semantics.
+9. **Reproduction** — clean-environment known-answer runs.
+10. **Orchestration** — automation may coordinate gates but cannot manufacture missing authority/evidence.
+11. **Commercial applications** — permitted only when all relevant evidence and source-use rights support the intended use.
 
-- importer name/version;
-- import ID;
-- manifest file SHA-256 and canonical-content SHA-256;
-- evaluated authorization decision and evaluation date;
-- declared intended use and permission dimensions;
-- terms reference, snapshot path/hash, approval reference, and expiry;
-- provider/program/source locator;
-- source path/hash/media type/declared format;
-- redistribution state and raw-export state;
-- parser name/version/profile;
-- parsed source identity;
-- normalized record ID and canonical digest;
-- normalized registry file SHA-256;
-- verified source-content hash list;
-- receipt SHA-256;
-- explicit limitations and `certified = false`.
+## Non-equivalence invariants
 
-## v0.6 hosted known-answer evidence
-
-Genesis #29 on the initial implementation proved:
-
-- `45` hosted tests passed;
-- rights decision `AUTHORIZED_FOR_DECLARED_IMPORT_ONLY`;
-- authorization status `TEST_ONLY`;
-- intended use `INTERNAL_TEST`;
-- commercial use `PROHIBITED`;
-- storage/transformation `ALLOWED`;
-- redistribution `PROHIBITED`;
-- terms SHA-256 `18437a5c104ffe5b26a83004300d0b47c240bcc96e09b1119b9992da819fc601`;
-- source SHA-256 `1326aa51e0d62444209e78a39cef62046c5683c85609eaf7aea675839ec1a338`;
-- normalized record digest `c155b0c66c8372688b97abb3288c9a9ed8d4906c8793f13f2aa9dce36b1a03fc`;
-- normalized registry file SHA-256 `b8c1fdc87d4e788eff5b7fc3c6c66f31e0f6264f9c3c767c8bf8fd269d018b0b`;
-- import receipt SHA-256 `fe5d8e838f0b9f8ec84eb56c49c6fde219a94b4c7556016c30f95be475cc858b`;
-- no raw source export.
-
-All inherited v0.3-v0.5 gates remained green.
-
-## v0.6 acceptance gates
-
-All inherited gates remain required, plus:
-
-- strict Draft 2020-12 import-manifest validation;
-- authorization/use decision occurs before normalization;
-- `UNKNOWN` and `PUBLIC_ACCESS_ONLY` fail;
-- test-only authority cannot be reused for non-synthetic/general use;
-- explicit authorization requires approval evidence;
-- expired authorization fails;
-- storage/transformation/commercial/redistribution dimensions are separately enforced;
-- terms/source hashes are exact;
-- package path escape fails;
-- unsupported parser/profile fails;
-- malformed/invalid normalized records fail the existing source-registry gate;
-- raw-source export is independently rights-gated;
-- importer receipt retains rights, source, parser, and normalized-record provenance;
-- positive and adversarial tests pass in hosted CI;
-- `AUTHORIZED_SOURCE_IMPORT_VERIFIABLE` remains distinct from legal advice, scientific validation, professional LCA review, provider/programme verification, or certification.
+```text
+ACCESS != AUTHORIZATION
+AUTHORIZATION != FORMAT CONFORMANCE
+FORMAT CONFORMANCE != SCIENTIFIC VALIDITY
+SCIENTIFIC RELEVANCE != LEGAL USE RIGHTS
+WORKFLOW REVIEW != PROFESSIONAL APPROVAL
+HASH INTEGRITY != TRUTH
+DETERMINISTIC RESULT != CERTIFICATION
+```
 
 ## Next evidence gates
 
-1. Official-format conformance against openly redistributable validation fixtures and authoritative schemas/profiles, without importing restricted provider datasets.
+1. A separate published-profile compatibility lane for ILCD+EPD v1.2 / ÖKOBAUDAT profile 3.8.0, without mislabeling v1.3.
 2. Provider-specific authorization records and adapters only after access/storage/transformation/commercial/redistribution terms are explicitly evidenced.
 3. Externally reviewed mapping artifacts using properly authorized non-production source data.
 4. A separately versioned deterministic unit-conversion subsystem if broader cross-unit mappings are required.

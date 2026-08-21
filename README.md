@@ -2,47 +2,89 @@
 
 ## ProofGrid / RX Evidence Fabric
 
-RegenExcalibur's current flagship reference implementation is **ProofGrid**: a cloud-neutral, machine-verifiable evidence kernel for built-environment data. It keeps claims, calculations, mapping decisions, source-use authority, provenance, integrity, IFC-declared data, environmental-source boundaries, and certification boundaries explicit.
+ProofGrid is RegenExcalibur's cloud-neutral, machine-verifiable evidence kernel for built-environment data. It keeps source-use authority, format conformance, provenance, IFC-declared data, mapping decisions, deterministic calculations, review state, and certification boundaries explicit.
 
-### ProofGrid v0.6 quick start
+## ProofGrid v0.7 quick start
 
-Install the locked open-source dependencies:
+Install the frozen inherited ProofGrid dependency lock and the isolated v0.7 XML-schema lock:
 
 ```bash
 python -m pip install -r requirements-proofgrid.txt
+python -m pip install -r requirements-proofgrid-v07.txt
 python -m pip check
 ```
 
-Validate the fictional Alberta environmental-source registry:
+The proven v0.7 XML validation pair is:
+
+- `xmlschema==4.3.1`
+- `elementpath==5.1.2`
+
+The earlier `xmlschema==4.3.2` candidate was rejected by hosted CI because it required `elementpath>=5.1.3`, which was not available from the runner's package index. The gate was repaired by using the compatible 4.3.1 patch release; no validation or security rule was weakened.
+
+### Authoritative ILCD+EPD v1.3 conformance
+
+v0.7 validates against immutable InData upstream commits rather than vendoring or silently following moving branches:
+
+- `InDataWG/ILCD-EPD-Data-Format` @ `7625c7dfc0d5b6bc2020eb0cf0b0503349c914aa`;
+- `InDataWG/ILCD-EPD-Master-Data` @ `32117b6a70d6c486344247a429449755a2c7eab4`.
+
+With those repositories checked out locally, run:
 
 ```bash
-python reference/rx_cli.py lca-registry-validate evidence/examples/alberta-house
+python reference/ilcd_epd_v13_conformance.py \
+  --format-root .proofgrid-upstream/ilcd-epd-format \
+  --master-root .proofgrid-upstream/ilcd-epd-master-data \
+  --output-dir ilcd-v13-output
 ```
 
-Verify the fictional Alberta environmental fixture:
+A successful run reports:
 
-```bash
-python reference/rx_cli.py verify evidence/examples/alberta-house
+```text
+RESULT: ILCD_EPD_V13_XSD_MASTERDATA_CONFORMANT
+PROFILE VALIDATION: NOT PERFORMED
+NOT CERTIFIED
 ```
 
-Inspect and extract real IFC-declared data:
+The v0.7 gate proves:
 
-```bash
-python reference/rx_cli.py ifc-inspect path/to/model.ifc --output ifc-summary.json
-python reference/ifc_extract.py path/to/model.ifc --output ifc-extraction.json
-```
+- exact upstream commit identity;
+- exact authoritative `schemas/EPD_DataSet.xsd` git-object identity;
+- XSD validation of InData's official v1.3 example;
+- XSD validation of a deterministic ProofGrid synthetic derivative;
+- selected authoritative EN 15804+A2 master-data identity resolution;
+- local/sandbox-only schema composition;
+- defused XML parsing;
+- rejection of malformed/schema-invalid inputs, tampered XSD bytes, wrong upstream commits, and unpinned remote schema resolution.
 
-Validate an explicit reviewed IFC-to-environmental mapping:
+It **does not** claim v1.3 validation-profile compliance. InData currently identifies v1.3 as the current format while v1.3 validation profiles remain a separate developing layer. Published v1.2 profile validation is therefore a different compatibility gate.
 
-```bash
-python reference/ifc_lca_map.py \
-  --extraction ifc-extraction.json \
-  --mapping ifc-environmental-mapping.json \
-  --registry evidence/examples/alberta-house/lca-sources.json \
-  --output ifc-environmental-mapping-receipt.json
-```
+### v0.7 hosted known answer
 
-Run the v0.6 authorization-aware source-import conformance fixture:
+The first green dedicated v0.7 run established:
+
+- 51/51 tests with the v0.7 lock installed;
+- Python `3.11.16`;
+- `xmlschema 4.3.1`;
+- `elementpath 5.1.2`;
+- authoritative XSD SHA-256 `2cf30de74b6a9607503aa99d791b196a88c709b9975546d837789bf1bdb93d0a`;
+- official InData v1.3 example SHA-256 `78476ee519b243088a226b013beb2d7b810d824a177070fcedb43011daa21a50`;
+- selected EN 15804+A2 master-data file SHA-256 `56527da732b221c30cba7b1314c4ce6bae90b8804ba157927299c0193af2990f`;
+- synthetic derivative SHA-256 `7db95464214c68d6cf3cd9e3164e62d414d34b55e16c9a8133ee925947f04f16`;
+- conformance receipt SHA-256 `094f96b2ff3659a9b8fdb320dcf6bc91ad0e64ebfc5c0d474b3ea0ab860d338e`.
+
+The retained workflow artifact is evidence of that run; the documentation-complete branch must still receive its own exact-head receipt before issue #14 is closed.
+
+## Inherited evidence gates
+
+v0.7 sits on top of, and does not weaken, the existing gates:
+
+- **v0.3** — provenance-controlled environmental source registry;
+- **v0.4** — real IFC declared-data extraction;
+- **R5 reproduction** — clean-environment Linux/Windows known-answer reproduction;
+- **v0.5** — explicit reviewed IFC→environmental source mapping, including the `1000 kg → 120.0 kgCO2e` synthetic known answer with no numerical conversion;
+- **v0.6** — authorization-aware source import, where access/use rights are evaluated before normalization.
+
+Run the v0.6 synthetic authorization fixture with:
 
 ```bash
 python reference/source_import.py \
@@ -51,118 +93,37 @@ python reference/source_import.py \
   --as-of 2026-08-20
 ```
 
-A successful synthetic import reports:
-
-```text
-RESULT: AUTHORIZED_SOURCE_IMPORT_VERIFIABLE
-NOT CERTIFIED
-```
-
-and writes:
-
-- `normalized-registry.json` — a normalized ProofGrid environmental source record;
-- `import-receipt.json` — rights, terms, source-byte, parser, normalized-record, and output provenance.
-
-## v0.6: authorization before normalization
-
-v0.6 treats source-use authority as executable policy input. A source being publicly visible or technically parseable does **not** authorize ProofGrid to store, transform, use commercially, or redistribute it.
-
-The import manifest separately records:
-
-- acquisition method and intended use;
-- synthetic/test state;
-- authorization status;
-- commercial-use permission;
-- storage permission;
-- transformation permission;
-- redistribution permission;
-- terms reference and hashed terms snapshot;
-- approval reference and expiry where applicable;
-- source path/media type/declared format and SHA-256;
-- parser name/version/profile;
-- normalized ProofGrid record ID.
-
-The importer fails closed for unknown/public-only authority, invalid test-only use, missing or expired explicit approval, insufficient storage/transformation/commercial/redistribution rights, terms/source tampering, path escape, unsupported parser profiles, and normalized source-record schema/provenance failure.
-
-### Synthetic v0.6 known answer
-
-The checked-in fixture is deliberately not a real EPD and is not claimed to conform to ILCD+EPD or a programme-operator profile.
-
-Its policy state is:
-
-- authorization: `TEST_ONLY`;
-- intended use: `INTERNAL_TEST`;
-- storage: `ALLOWED`;
-- transformation: `ALLOWED`;
-- commercial use: `PROHIBITED`;
-- redistribution: `PROHIBITED`;
-- raw source export: not requested and not performed.
-
-The source normalizes to exactly one ProofGrid record:
-
-- ID `RX-IMPORTED-SYNTH-CONCRETE-A1A3`;
-- material `synthetic-import-concrete`;
-- `1.0 kg` reference quantity;
-- `GWP-total = 0.15 kgCO2e`;
-- `A1/A2/A3` lifecycle boundary;
-- synthetic + unverified state;
-- redistribution status `RESTRICTED`.
-
-Genesis #29 proved the initial v0.6 implementation with **45/45 hosted tests**.
-
-Authoritative initial hashes from that run:
-
-- manifest content SHA-256: `78fea8f1c85bb15fd4471a5fa29644f65ea69d88104e4c69b222e85f28712c21`;
-- manifest file SHA-256: `b6b6634569d5b14131041c400bb8fd560d7ddde9bdb8015b85cfdd02e04f9ab5`;
-- terms SHA-256: `18437a5c104ffe5b26a83004300d0b47c240bcc96e09b1119b9992da819fc601`;
-- source SHA-256: `1326aa51e0d62444209e78a39cef62046c5683c85609eaf7aea675839ec1a338`;
-- normalized record canonical SHA-256: `c155b0c66c8372688b97abb3288c9a9ed8d4906c8793f13f2aa9dce36b1a03fc`;
-- normalized registry file SHA-256: `b8c1fdc87d4e788eff5b7fc3c6c66f31e0f6264f9c3c767c8bf8fd269d018b0b`;
-- import receipt SHA-256: `fe5d8e838f0b9f8ec84eb56c49c6fde219a94b4c7556016c30f95be475cc858b`.
-
-## v0.5 mapping known answer remains intact
-
-The hosted v0.5 conformance path still proves one explicit `IfcQuantityWeight / Mass = 1000.0` mapped to exact source record `RX-FICT-CONCRETE-A1A3`, producing:
-
-```text
-120.0 kgCO2e
-```
-
-The only v0.5 unit identity bridge remains IFC `MASSUNIT`, `KILO` + `GRAM` → identity `kg`, with no numerical conversion.
+Its successful state remains `AUTHORIZED_SOURCE_IMPORT_VERIFIABLE`, not certification or permission to use a real provider dataset.
 
 ## Hard boundaries
 
 - `VERIFIABLE` is **not** `CERTIFIED`.
-- `AUTHORIZED_SOURCE_IMPORT_VERIFIABLE` does not prove legal interpretation, scientific validity, provider verification, or professional approval.
-- Public/basic web access does not automatically authorize API/tool/commercial/redistribution use.
-- The v0.6 positive fixture grants no rights to any real provider dataset.
-- The initial v0.6 parser accepts only the RegenExcalibur synthetic carrier and makes no ILCD+EPD compliance claim.
-- Raw-source redistribution is a separate permission from normalization.
-- `EXPLICIT_IFC_ENVIRONMENTAL_MAPPING_VERIFIABLE` is not an LCA conclusion or professional approval.
-- Source integrity is not scientific validation.
+- `ILCD_EPD_V13_XSD_MASTERDATA_CONFORMANT` means the declared format/master-data checks passed against pinned upstreams; it is not validation-profile compliance, scientific validation, provider approval, or professional LCA review.
+- A format being parseable or XSD-valid does not establish permission to acquire, store, transform, commercially use, or redistribute source data.
+- v0.6 authorization evidence remains required independently of v0.7 format conformance.
+- Real provider EPD ingestion remains blocked until provider-specific access/use authority and an appropriate provider/format adapter are separately evidenced.
 - IFC extraction is not geometry-derived takeoff.
-- IFC material strings do not choose environmental records.
+- IFC material strings do not select environmental records.
 - Mapping `REVIEWED` is a workflow state, not independent professional/scientific review.
-- No code-compliance, engineering, architectural, procurement, regulatory, or certification conclusion is produced by these gates.
+- No code-compliance, engineering, architectural, procurement, regulatory, environmental-certification, or product-representativeness conclusion is produced by these software gates.
 
-Key files:
+## Key files
 
-- `CONSTITUTION.md`: truth, authority, privacy, evidence, and safety invariants.
-- `ARCHITECTURE.md`: ProofGrid/RX Evidence Fabric architecture and gates.
-- `specs/rxep/`: RX Evidence Protocol semantics.
-- `schemas/lca-source-records.schema.json`: normalized environmental-source registry schema.
-- `schemas/ifc-extraction.schema.json`: IFC declared-data extraction schema.
-- `schemas/ifc-lca-mapping.schema.json`: explicit IFC-to-environmental mapping schema.
-- `schemas/source-import-manifest.schema.json`: v0.6 acquisition/use-rights/source/parser manifest schema.
-- `reference/rx_cli.py`: environmental verifier and registry validator.
-- `reference/ifc_extract.py`: IFC declared-data extractor.
-- `reference/ifc_lca_map.py`: explicit mapping validator/calculator.
-- `reference/source_import.py`: authorization-aware source importer.
-- `adapters/ifc/`: IFC adapter documentation and implementation.
-- `adapters/lca/`: environmental source/import/mapping boundaries.
-- `reproduction/`: clean-environment reproduction package.
-- `evidence/examples/source-import-v06/`: synthetic authorization/import fixture.
-- `tests/`: fail-closed schema, provenance, IFC, mapping, rights, and import tests.
+- `CONSTITUTION.md` — truth, authority, privacy, evidence, and safety invariants.
+- `ARCHITECTURE.md` — ProofGrid architecture and evidence gates.
+- `specs/rxep/README.md` — RXEP and supporting-receipt semantics.
+- `requirements-proofgrid.txt` — frozen inherited ProofGrid lock.
+- `requirements-proofgrid-v07.txt` — isolated v0.7 XML validation lock.
+- `schemas/lca-source-records.schema.json` — normalized environmental source records.
+- `schemas/source-import-manifest.schema.json` — v0.6 source-use/rights manifest.
+- `schemas/ifc-extraction.schema.json` — IFC declared-data extraction.
+- `schemas/ifc-lca-mapping.schema.json` — explicit IFC→environmental mapping.
+- `reference/source_import.py` — v0.6 authorization-aware importer.
+- `reference/ilcd_epd_v13_conformance.py` — v0.7 authoritative XSD/master-data conformance validator.
+- `conformance/ilcd-epd-v13/upstream.json` — immutable upstream pins and profile boundary.
+- `.github/workflows/proofgrid-v07-ilcd-epd.yml` — dedicated v0.7 hosted gate.
+- `reproduction/` — clean-environment reproduction package.
+- `tests/` — fail-closed schema, provenance, IFC, mapping, rights, import, and official-format conformance tests.
 
 ---
 
@@ -185,4 +146,4 @@ The repository retains the earlier GCP-oriented deployment/orchestration scaffol
 
 ## Status
 
-ProofGrid v0.6 is a **reference implementation under evidence-gated development**. Proven stacked gates now include provenance-controlled environmental source records, real IFC declared-data extraction, clean-environment reproduction, explicit IFC→environmental mapping, and a synthetic authorization-aware source-import boundary. Real provider adapters, real EPD/database credentials, official ILCD+EPD/profile conformance, scientific source suitability, real-product identity, professional review, real-building LCA validity, and production deployment remain separate future gates.
+ProofGrid v0.7 is a **reference implementation under evidence-gated development**. The authoritative v1.3 XSD/master-data lane has a green implementation receipt on the current development stack; the documentation-complete head must receive a final exact-head receipt before the v0.7 issue is completed. Real provider ingestion, v1.3 validation-profile compliance, v1.2 published-profile compatibility, real-product identity, scientific source suitability, professional review, real-building LCA validity, and production deployment remain separate gates.
