@@ -1,0 +1,68 @@
+[
+  {
+    "id": "RX-FICT-WOOD-A1A3",
+    "material": {"id": "dimensional-lumber", "name": "Fictional dimensional lumber"},
+    "declared_unit": "kg",
+    "reference_quantity": 1,
+    "indicator": {"name": "GWP-total", "value": 0.08, "unit": "kgCO2e"},
+    "system_boundary": {"modules": ["A1", "A2", "A3"]},
+    "source": {
+      "publisher": "RegenExcalibur Test Fixtures",
+      "document_id": "RX-FICTIONAL-DEMO-FACTORS",
+      "version": "0.3.0",
+      "publication_date": "2026-08-20",
+      "geography": "Synthetic / non-geographic",
+      "verification": {"state": "UNVERIFIED", "evidence_reference": null},
+      "reference": "sources/fictional-demo-factors.txt",
+      "source_content_sha256": "ce14d023031cabc4e3e677a9d58696e8a938e696d0ef516b657a73515252b54e",
+      "redistribution_status": "SYNTHETIC_OPEN"
+    },
+    "synthetic": true,
+    "limitations": ["Synthetic test factor; prohibited for real project environmental claims."],
+    "data_quality_flags": ["SYNTHETIC_TEST_DATA"]
+  },
+  {
+    "id": "RX-FICT-CONCRETE-A1A3",
+    "material": {"id": "concrete", "name": "Fictional concrete"},
+    "declared_unit": "kg",
+    "reference_quantity": 1,
+    "indicator": {"name": "GWP-total", "value": 0.12, "unit": "kgCO2e"},
+    "system_boundary": {"modules": ["A1", "A2", "A3"]},
+    "source": {
+      "publisher": "RegenExcalibur Test Fixtures",
+      "document_id": "RX-FICTIONAL-DEMO-FACTORS",
+      "version": "0.3.0",
+      "publication_date": "2026-08-20",
+      "geography": "Synthetic / non-geographic",
+      "verification": {"state": "UNVERIFIED", "evidence_reference": null},
+      "reference": "sources/fictional-demo-factors.txt",
+      "source_content_sha256": "ce14d023031cabc4e3e677a9d58696e8a938e696d0ef516b657a73515252b54e",
+      "redistribution_status": "SYNTHETIC_OPEN"
+    },
+    "synthetic": true,
+    "limitations": ["Synthetic test factor; prohibited for real project environmental claims."],
+    "data_quality_flags": ["SYNTHETIC_TEST_DATA"]
+  },
+  {
+    "id": "RX-FICT-STEEL-A1A3",
+    "material": {"id": "reinforcing-steel", "name": "Fictional reinforcing steel"},
+    "declared_unit": "kg",
+    "reference_quantity": 1,
+    "indicator": {"name": "GWP-total", "value": 1.4, "unit": "kgCO2e"},
+    "system_boundary": {"modules": ["A1", "A2", "A3"]},
+    "source": {
+      "publisher": "RegenExcalibur Test Fixtures",
+      "document_id": "RX-FICTIONAL-DEMO-FACTORS",
+      "version": "0.3.0",
+      "publication_date": "2026-08-20",
+      "geography": "Synthetic / non-geographic",
+      "verification": {"state": "UNVERIFIED", "evidence_reference": null},
+      "reference": "sources/fictional-demo-factors.txt",
+      "source_content_sha256": "ce14d023031cabc4e3e677a9d58696e8a938e696d0ef516b657a73515252b54e",
+      "redistribution_status": "SYNTHETIC_OPEN"
+    },
+    "synthetic": true,
+    "limitations": ["Synthetic test factor; prohibited for real project environmental claims."],
+    "data_quality_flags": ["SYNTHETIC_TEST_DATA"]
+  }
+]

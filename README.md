@@ -2,14 +2,21 @@
 
 ## ProofGrid / RX Evidence Fabric
 
-RegenExcalibur's current flagship reference implementation is **ProofGrid**: a cloud-neutral, machine-verifiable evidence kernel for built-environment data. It is designed to keep claims, calculations, review states, provenance, integrity, and certification boundaries explicit.
+RegenExcalibur's current flagship reference implementation is **ProofGrid**: a cloud-neutral, machine-verifiable evidence kernel for built-environment data. It is designed to keep claims, calculations, review states, provenance, integrity, environmental-source boundaries, and certification boundaries explicit.
 
-### ProofGrid v0.2 quick start
+### ProofGrid v0.3 quick start
 
-Install the pinned open-source dependencies:
+Install the locked open-source dependencies:
 
 ```bash
 python -m pip install -r requirements-proofgrid.txt
+python -m pip check
+```
+
+Validate the fictional Alberta environmental-source registry and its source-content hashes:
+
+```bash
+python reference/rx_cli.py lca-registry-validate evidence/examples/alberta-house
 ```
 
 Verify the fictional Alberta fixture:
@@ -24,18 +31,23 @@ Inspect a real IFC STEP file through the read-only IfcOpenShell adapter:
 python reference/rx_cli.py ifc-inspect path/to/model.ifc --output ifc-summary.json
 ```
 
-ProofGrid v0.2 validates canonical project/material inputs and generated evidence with JSON Schema Draft 2020-12 before issuing a `VERIFIABLE` receipt. `VERIFIABLE` is **not** `CERTIFIED`. IFC ingestion is structural only and does not establish quantity takeoff, LCA, code compliance, engineering adequacy, or professional certification.
+ProofGrid v0.3 validates canonical project/material/environmental-source inputs and generated evidence with JSON Schema Draft 2020-12 before issuing a `VERIFIABLE` receipt. Environmental quantities reference exact source-record IDs rather than embedding free-floating GWP factors. Source-content SHA-256, exact unit matching, material identity, lifecycle/system boundary compatibility, and source-record digests are checked before the deterministic calculation proceeds.
+
+`VERIFIABLE` is **not** `CERTIFIED`. Source integrity is not scientific validation. IFC ingestion remains structural only and does not establish quantity takeoff, LCA, code compliance, engineering adequacy, or professional certification.
 
 Key files:
 
 - `CONSTITUTION.md`: evidence, safety, authority, privacy, interoperability, and truth-before-promotion invariants.
-- `ARCHITECTURE.md`: ProofGrid/RX Evidence Fabric genesis architecture.
+- `ARCHITECTURE.md`: ProofGrid/RX Evidence Fabric architecture and evidence gates.
 - `specs/rxep/`: RX Evidence Protocol specification and evidence-envelope schema.
-- `schemas/`: canonical project and material schemas.
-- `reference/rx_cli.py`: deterministic verifier and IFC inspection CLI.
+- `schemas/building.schema.json`: canonical project/building fixture schema.
+- `schemas/materials.schema.json`: v0.3 material quantities with exact source-record references.
+- `schemas/lca-source-records.schema.json`: v0.3 environmental-source registry schema.
+- `reference/rx_cli.py`: deterministic verifier, registry validator, and IFC inspection CLI.
 - `adapters/ifc/`: read-only IFC ingestion adapter.
-- `evidence/examples/`: fictional test fixtures.
-- `tests/`: fail-closed conformance and determinism tests.
+- `adapters/lca/`: environmental-source provenance rules and future connector boundary.
+- `evidence/examples/`: fictional test fixtures and hashed synthetic source content.
+- `tests/`: fail-closed provenance, schema, determinism, and IFC tests.
 
 ---
 
@@ -56,7 +68,7 @@ The service profile separates demonstrated capability from learnable adjacent wo
 
 The repository also retains the earlier GCP-oriented autonomous deployment and orchestration scaffold. It coordinates infrastructure-as-code, Cloud Run, Cloud Functions, Pub/Sub, Vertex AI pipeline scaffolding, multi-agent MRV workflows, security controls, observability, and operational runbooks.
 
-This is now treated as an **optional deployment/orchestration layer**, not the identity of the ProofGrid core.
+This is treated as an **optional deployment/orchestration layer**, not the identity of the ProofGrid core.
 
 ### Existing scaffold contents
 
@@ -88,4 +100,4 @@ python RegenExcalibur_Project/master_autonomous_execution_script.py \
 
 ## Status
 
-ProofGrid v0.2 is a **reference implementation under evidence-gated development**. The JSON evidence kernel and hosted genesis CI are implemented; runtime Draft 2020-12 schema validation and read-only real IFC ingestion are now included on the active draft PR branch. Production LCA/EPD ingestion, professional code/compliance conclusions, independent domain validation, and production deployment remain separate future gates.
+ProofGrid v0.3 is a **reference implementation under evidence-gated development**. Runtime Draft 2020-12 schema validation, deterministic evidence generation, source-content hashing, exact environmental source-record resolution, no-implicit-conversion policy, lifecycle-boundary compatibility checks, and read-only real IFC ingestion are implemented on the stacked v0.3 development branch. Production EPD/database ingestion, IFC quantity/material extraction, professional code/compliance conclusions, independent domain reproduction, and production deployment remain separate future gates.

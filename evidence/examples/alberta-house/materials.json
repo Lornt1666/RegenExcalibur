@@ -1,26 +1,26 @@
 [
   {
     "id": "wood-001",
+    "material_identity_id": "dimensional-lumber",
     "name": "Fictional dimensional lumber",
     "quantity": 5500,
     "unit": "kg",
-    "gwp_kgco2e_per_unit": 0.08,
-    "factor_source": "FICTIONAL-DEMO-FACTOR-DO-NOT-USE"
+    "source_record_id": "RX-FICT-WOOD-A1A3"
   },
   {
     "id": "concrete-001",
+    "material_identity_id": "concrete",
     "name": "Fictional concrete",
     "quantity": 18000,
     "unit": "kg",
-    "gwp_kgco2e_per_unit": 0.12,
-    "factor_source": "FICTIONAL-DEMO-FACTOR-DO-NOT-USE"
+    "source_record_id": "RX-FICT-CONCRETE-A1A3"
   },
   {
     "id": "steel-001",
+    "material_identity_id": "reinforcing-steel",
     "name": "Fictional reinforcing steel",
     "quantity": 900,
     "unit": "kg",
-    "gwp_kgco2e_per_unit": 1.4,
-    "factor_source": "FICTIONAL-DEMO-FACTOR-DO-NOT-USE"
+    "source_record_id": "RX-FICT-STEEL-A1A3"
   }
 ]
