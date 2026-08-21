@@ -16,8 +16,8 @@ Do not report a pass unless every claimed check was actually performed. Record d
 ## Frozen target
 
 - Repository: `Lornt1666/RegenExcalibur`
-- Implementation commit: `fe27d78171140832a7985e4d5157f5541c8a02aa`
-- Verifier software: `0.3.1`
+- Implementation commit: `7a563256e2b1c035fef5779dd2c81be6ac8b84a9`
+- Verifier software: `0.3.2`
 - Calculation method: `0.3.0`
 - Reproduction manifest path: `reproduction/r5-manifest.json`
 - Reproduction harness path: `reproduction/reproduce.py`
@@ -71,9 +71,15 @@ Record `PASS`, `FAIL`, or `NOT RUN` plus evidence/notes.
 | Locked dependencies match | | |
 | Input SHA-256 values match | | |
 | Draft 2020-12 validation succeeds | | |
+| Verifier software equals `0.3.2` | | |
+| Calculation method equals `0.3.0` | | |
 | Known answer equals `3860.0 kgCO2e` | | |
-| Evidence-content digest equals `9ce99ff076f41390c254377bd06e9897c4b203a4b778fbfd09c350624545142c` | | |
-| RXEP receipt digest equals `44955751eec438621e43e2478e672a55bd6bff3aaf3a6e27ac588ff07cee8b7d` | | |
+| Evidence-content digest equals `be07217cfeed805d737637d7b760ae987f403a6d3b121b202889790bbdf5c001` | | |
+| RXEP receipt digest equals `9fb074795aae8f5020a04fdd00b0b8730ddaac2a5294a98b3d409910976e7280` | | |
+| `evidence.json` byte hash equals `72e396ef5c16ad4ef95c16f73b9134a964cb0ab923f8e26a8d44a9c4a993e212` | | |
+| `graph.jsonld` byte hash equals `909a41748afc9cc4b458ce2da5c03cb8310719f8cd3c35fc617bca9d3aa63ffe` | | |
+| `receipt.json` byte hash equals `91645c1fb22d7f92adb7c7acfa332b34c139029a0ad26bbdf5929fa34d521eda` | | |
+| `report.html` byte hash equals `85cf90ad6565772e5251bfd324475048e12934d425b90d09c621de4b35432fe3` | | |
 | Environmental source-record digests match manifest | | |
 | Canonical schema paths use `/` separators | | |
 | Result remains `VERIFIABLE`, not certified | | |
@@ -89,6 +95,10 @@ Record `PASS`, `FAIL`, or `NOT RUN` plus evidence/notes.
 - Environmental known answer:
 - Evidence-content SHA-256:
 - RXEP receipt SHA-256:
+- `evidence.json` SHA-256:
+- `graph.jsonld` SHA-256:
+- `receipt.json` SHA-256:
+- `report.html` SHA-256:
 - Reproduction receipt SHA-256:
 - IFC source SHA-256:
 - IFC declared quantity/value/unit:
