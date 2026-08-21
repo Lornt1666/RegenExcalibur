@@ -1,0 +1,251 @@
+name: ProofGrid v0.8 Validation Library Research
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/proofgrid-v08-library-research.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  research-validation-library:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v6.1.0
+
+      - name: Record Java and Maven runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/proofgrid-v08-library
+          java -version 2>&1 | tee /tmp/proofgrid-v08-library/java-version.txt
+          javac -version 2>&1 | tee /tmp/proofgrid-v08-library/javac-version.txt
+          mvn -version 2>&1 | tee /tmp/proofgrid-v08-library/maven-version.txt
+
+      - name: Retrieve exact official validation library and profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          LIB='com.okworx.ilcd.validation:ilcd-validation:2.12.2'
+          PROFILE='com.okworx.ilcd.validation.profiles:EPD-1.2-OEKOBAUDAT:3.8.0'
+          mvn -B -ntp dependency:get -Dartifact="$LIB" -Dtransitive=true
+          mvn -B -ntp dependency:get -Dartifact="$PROFILE" -Dtransitive=true
+          if mvn -B -ntp dependency:get -Dartifact='com.okworx.ilcd.validation:ilcd-validation:2.12.2:jar:sources'; then
+            echo 'sources_available=true' > /tmp/proofgrid-v08-library/sources-status.txt
+          else
+            echo 'sources_available=false' > /tmp/proofgrid-v08-library/sources-status.txt
+          fi
+
+          LIB_DIR="$HOME/.m2/repository/com/okworx/ilcd/validation/ilcd-validation/2.12.2"
+          PROFILE_DIR="$HOME/.m2/repository/com/okworx/ilcd/validation/profiles/EPD-1.2-OEKOBAUDAT/3.8.0"
+          LIB_JAR="$LIB_DIR/ilcd-validation-2.12.2.jar"
+          LIB_POM="$LIB_DIR/ilcd-validation-2.12.2.pom"
+          PROFILE_JAR="$PROFILE_DIR/EPD-1.2-OEKOBAUDAT-3.8.0.jar"
+          test -f "$LIB_JAR"
+          test -f "$LIB_POM"
+          test -f "$PROFILE_JAR"
+          sha256sum "$LIB_JAR" | tee /tmp/proofgrid-v08-library/library-jar.sha256
+          sha256sum "$LIB_POM" | tee /tmp/proofgrid-v08-library/library-pom.sha256
+          cp "$LIB_POM" /tmp/proofgrid-v08-library/library.pom
+          jar tf "$LIB_JAR" | sort > /tmp/proofgrid-v08-library/library-jar-list.txt
+          (unzip -p "$LIB_JAR" META-INF/MANIFEST.MF || true) > /tmp/proofgrid-v08-library/library-manifest.txt
+
+          SOURCES_JAR="$LIB_DIR/ilcd-validation-2.12.2-sources.jar"
+          if [ -f "$SOURCES_JAR" ]; then
+            sha256sum "$SOURCES_JAR" | tee /tmp/proofgrid-v08-library/library-sources.sha256
+            jar tf "$SOURCES_JAR" | sort > /tmp/proofgrid-v08-library/library-sources-list.txt
+          fi
+
+          # Hash nested profile includes that the official ProfileManager loads.
+          for entry in includes/EPD-1.2-Generic.jar includes/EPD-1.2-EN15804.jar; do
+            if jar tf "$PROFILE_JAR" | grep -Fxq "$entry"; then
+              safe=$(basename "$entry" .jar)
+              unzip -p "$PROFILE_JAR" "$entry" | sha256sum | awk -v n="$entry" '{print $1"  "n}' | tee -a /tmp/proofgrid-v08-library/profile-includes.sha256
+            fi
+          done
+
+      - name: Build exact transitive classpath
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/proofgrid-v08-library/pom.xml <<'POM'
+          <project xmlns="http://maven.apache.org/POM/4.0.0">
+            <modelVersion>4.0.0</modelVersion>
+            <groupId>proofgrid.research</groupId>
+            <artifactId>v08-library-probe</artifactId>
+            <version>1.0.0</version>
+            <dependencies>
+              <dependency>
+                <groupId>com.okworx.ilcd.validation</groupId>
+                <artifactId>ilcd-validation</artifactId>
+                <version>2.12.2</version>
+              </dependency>
+              <dependency>
+                <groupId>com.okworx.ilcd.validation.profiles</groupId>
+                <artifactId>EPD-1.2-OEKOBAUDAT</artifactId>
+                <version>3.8.0</version>
+              </dependency>
+            </dependencies>
+          </project>
+          POM
+          mvn -B -ntp -f /tmp/proofgrid-v08-library/pom.xml dependency:build-classpath \
+            -Dmdep.outputFile=/tmp/proofgrid-v08-library/classpath.txt \
+            -Dmdep.pathSeparator=:
+          tr ':' '\n' < /tmp/proofgrid-v08-library/classpath.txt \
+            | sed "s#${HOME}#~#" > /tmp/proofgrid-v08-library/classpath-entries.txt
+          while IFS= read -r entry; do
+            [ -f "$entry" ] || continue
+            sha256sum "$entry"
+          done < <(tr ':' '\n' < /tmp/proofgrid-v08-library/classpath.txt) \
+            > /tmp/proofgrid-v08-library/classpath-sha256.txt
+
+      - name: Freeze public API signatures
+        shell: bash
+        run: |
+          set -euo pipefail
+          CP=$(cat /tmp/proofgrid-v08-library/classpath.txt)
+          LIB_JAR="$HOME/.m2/repository/com/okworx/ilcd/validation/ilcd-validation/2.12.2/ilcd-validation-2.12.2.jar"
+          jar tf "$LIB_JAR" | grep '\.class$' | sed 's#/#.#g;s#\.class$##' \
+            | grep -E '(^com\.okworx\.ilcd\.validation\.(Validator|ValidatorChain|SchemaValidator|XSLTStylesheetValidator|LinkValidator|OrphansValidator)$|profile\.(Profile|ProfileManager)$|event|Event|Result|Validation)' \
+            | sort > /tmp/proofgrid-v08-library/key-classes.txt || true
+
+          : > /tmp/proofgrid-v08-library/javap-public.txt
+          for cls in \
+            com.okworx.ilcd.validation.Validator \
+            com.okworx.ilcd.validation.ValidatorChain \
+            com.okworx.ilcd.validation.SchemaValidator \
+            com.okworx.ilcd.validation.XSLTStylesheetValidator \
+            com.okworx.ilcd.validation.LinkValidator \
+            com.okworx.ilcd.validation.OrphansValidator \
+            com.okworx.ilcd.validation.profile.Profile \
+            com.okworx.ilcd.validation.profile.ProfileManager
+          do
+            echo "===== $cls =====" >> /tmp/proofgrid-v08-library/javap-public.txt
+            javap -classpath "$CP" -public "$cls" >> /tmp/proofgrid-v08-library/javap-public.txt 2>&1 || true
+            echo >> /tmp/proofgrid-v08-library/javap-public.txt
+          done
+
+          # Also inspect candidate event/result types discovered in the JAR.
+          head -n 80 /tmp/proofgrid-v08-library/key-classes.txt | while IFS= read -r cls; do
+            case "$cls" in
+              *Event*|*Result*|*Validation*)
+                echo "===== $cls =====" >> /tmp/proofgrid-v08-library/javap-events-results.txt
+                javap -classpath "$CP" -public "$cls" >> /tmp/proofgrid-v08-library/javap-events-results.txt 2>&1 || true
+                echo >> /tmp/proofgrid-v08-library/javap-events-results.txt
+                ;;
+            esac
+          done
+
+      - name: Inspect available official source code
+        shell: bash
+        run: |
+          set -euo pipefail
+          LIB_DIR="$HOME/.m2/repository/com/okworx/ilcd/validation/ilcd-validation/2.12.2"
+          SOURCES_JAR="$LIB_DIR/ilcd-validation-2.12.2-sources.jar"
+          if [ -f "$SOURCES_JAR" ]; then
+            mkdir -p /tmp/proofgrid-v08-library/sources
+            cd /tmp/proofgrid-v08-library/sources
+            for src in \
+              com/okworx/ilcd/validation/Validator.java \
+              com/okworx/ilcd/validation/ValidatorChain.java \
+              com/okworx/ilcd/validation/SchemaValidator.java \
+              com/okworx/ilcd/validation/XSLTStylesheetValidator.java \
+              com/okworx/ilcd/validation/profile/Profile.java \
+              com/okworx/ilcd/validation/profile/ProfileManager.java
+            do
+              unzip -p "$SOURCES_JAR" "$src" > "$(basename "$src")" || true
+            done
+            grep -RniE 'public |validate\(|setProfile|registerProfile|getProfile|getDefaultProfile|ValidatorChain|ValidationEvent|EventListener|add.*Listener' . \
+              > /tmp/proofgrid-v08-library/source-api-grep.txt || true
+          else
+            echo 'No Maven sources JAR available; public API frozen through javap.' > /tmp/proofgrid-v08-library/source-api-grep.txt
+          fi
+
+      - name: Produce library research receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib, json, re, xml.etree.ElementTree as ET
+
+          out = Path('/tmp/proofgrid-v08-library')
+          pom = out / 'library.pom'
+          ns = {'m': 'http://maven.apache.org/POM/4.0.0'}
+          root = ET.parse(pom).getroot()
+          def text(path):
+              node = root.find(path, ns)
+              return node.text.strip() if node is not None and node.text else None
+          deps=[]
+          for d in root.findall('.//m:dependencies/m:dependency', ns):
+              def dt(name):
+                  n=d.find(f'm:{name}', ns)
+                  return n.text.strip() if n is not None and n.text else None
+              deps.append({k:dt(k) for k in ('groupId','artifactId','version','scope','classifier','type')})
+          includes=[]
+          p=out/'profile-includes.sha256'
+          if p.exists():
+              for line in p.read_text().splitlines():
+                  sha, path = line.split(None,1)
+                  includes.append({'path':path.strip(),'sha256':sha})
+          report={
+            'scope':'Official ilcd-validation 2.12.2 binary/source/API research; no ÖKOBAUDAT compatibility claim.',
+            'library':{
+              'coordinate':'com.okworx.ilcd.validation:ilcd-validation:2.12.2',
+              'jar_sha256':(out/'library-jar.sha256').read_text().split()[0],
+              'pom_sha256':(out/'library-pom.sha256').read_text().split()[0],
+              'sources_available':(out/'sources-status.txt').read_text().strip().endswith('true'),
+              'sources_sha256':((out/'library-sources.sha256').read_text().split()[0] if (out/'library-sources.sha256').exists() else None),
+              'pom_group_id':text('m:groupId') or text('m:parent/m:groupId'),
+              'pom_artifact_id':text('m:artifactId'),
+              'pom_version':text('m:version') or text('m:parent/m:version'),
+              'dependencies':deps,
+            },
+            'profile':{
+              'coordinate':'com.okworx.ilcd.validation.profiles:EPD-1.2-OEKOBAUDAT:3.8.0',
+              'included_profile_jars':includes,
+            },
+            'runtime':{
+              'java':(out/'java-version.txt').read_text().splitlines()[0],
+              'javac':(out/'javac-version.txt').read_text().strip(),
+              'maven':(out/'maven-version.txt').read_text().splitlines()[0],
+            },
+          }
+          payload=json.dumps(report,sort_keys=True,separators=(',',':')).encode()
+          report['receipt_sha256']=hashlib.sha256(payload).hexdigest()
+          (out/'library-research-receipt.json').write_text(json.dumps(report,indent=2,sort_keys=True)+'\n')
+          print(json.dumps(report,indent=2,sort_keys=True))
+          PY
+
+      - name: Show API evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat /tmp/proofgrid-v08-library/library-research-receipt.json
+          echo '--- library POM ---'
+          cat /tmp/proofgrid-v08-library/library.pom
+          echo '--- classpath ---'
+          cat /tmp/proofgrid-v08-library/classpath-entries.txt
+          echo '--- public API ---'
+          cat /tmp/proofgrid-v08-library/javap-public.txt
+          echo '--- event/result API ---'
+          cat /tmp/proofgrid-v08-library/javap-events-results.txt || true
+          echo '--- source API grep ---'
+          cat /tmp/proofgrid-v08-library/source-api-grep.txt
+
+      - name: Retain library research metadata only
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v08-validation-library-research
+          path: |
+            /tmp/proofgrid-v08-library/*.txt
+            /tmp/proofgrid-v08-library/*.sha256
+            /tmp/proofgrid-v08-library/*.json
+            /tmp/proofgrid-v08-library/*.pom
+            /tmp/proofgrid-v08-library/sources/*.java
+          if-no-files-found: error
+          retention-days: 30
