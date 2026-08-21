@@ -1,0 +1,189 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://regenexcalibur.example/schemas/rxep/v0.2/evidence-envelope.schema.json",
+  "title": "RX Evidence Envelope v0.2 — Exact Decimal",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "protocol_version",
+    "id",
+    "subject",
+    "claim",
+    "measurement",
+    "methodology",
+    "sources",
+    "provenance",
+    "software",
+    "jurisdiction",
+    "review",
+    "evidence_dimensions",
+    "limitations",
+    "integrity"
+  ],
+  "properties": {
+    "protocol_version": {"const": "0.2"},
+    "id": {"type": "string", "pattern": "^rxep:0\\.2:declared:[a-f0-9]{64}$"},
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "source_format_version"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "type": {"const": "ILCD_PROCESS_DATASET"},
+        "source_format_version": {"enum": ["1.2", "1.3"]}
+      }
+    },
+    "claim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "statement", "indicator_uuid", "indicator_code", "module", "scenario"],
+      "properties": {
+        "type": {"const": "SOURCE_DECLARED_ENVIRONMENTAL_INDICATOR"},
+        "statement": {"type": "string", "minLength": 1},
+        "indicator_uuid": {"type": "string", "minLength": 1},
+        "indicator_code": {"type": "string", "minLength": 1},
+        "module": {"type": "string", "minLength": 1},
+        "scenario": {"type": ["string", "null"]}
+      }
+    },
+    "measurement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "value_lexical",
+        "value_decimal",
+        "unit",
+        "unit_group_uuid",
+        "value_origin",
+        "calculated",
+        "unit_conversion_performed"
+      ],
+      "properties": {
+        "value_lexical": {"type": "string", "minLength": 1},
+        "value_decimal": {"type": "string", "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$"},
+        "unit": {"type": "string", "minLength": 1},
+        "unit_group_uuid": {"type": "string", "minLength": 1},
+        "value_origin": {"const": "DECLARED_IN_SOURCE"},
+        "calculated": {"const": false},
+        "unit_conversion_performed": {"const": false}
+      }
+    },
+    "methodology": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "operation", "formula", "aggregation_performed"],
+      "properties": {
+        "name": {"const": "ProofGrid Declared Environmental Indicator Extraction"},
+        "version": {"const": "1.1.0"},
+        "operation": {"const": "EXTRACTION_ONLY"},
+        "formula": {"type": "null"},
+        "aggregation_performed": {"const": false}
+      }
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["role", "reference", "sha256"],
+        "properties": {
+          "role": {"enum": ["V1_1_EXTRACTION_RECORD", "ADMITTED_SOURCE_BYTES", "ILCD_PROCESS_XML"]},
+          "reference": {"type": "string", "minLength": 1},
+          "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v1_1_extraction_receipt_sha256",
+        "v1_1_record_content_sha256",
+        "v1_1_record_file_sha256",
+        "canonical_source_content_sha256",
+        "admission_receipt_sha256",
+        "research_freeze_receipt_sha256",
+        "frozen_map_sha256",
+        "source_location"
+      ],
+      "properties": {
+        "v1_1_extraction_receipt_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "v1_1_record_content_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "v1_1_record_file_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "canonical_source_content_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "admission_receipt_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "research_freeze_receipt_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "frozen_map_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "source_location": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["lcia_result_ordinal", "amount_ordinal", "path"],
+          "properties": {
+            "lcia_result_ordinal": {"type": "integer", "minimum": 1},
+            "amount_ordinal": {"type": "integer", "minimum": 1},
+            "path": {"type": "string", "minLength": 1}
+          }
+        }
+      }
+    },
+    "software": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": {"const": "RegenExcalibur ProofGrid RXEP Declared Indicator Binder"},
+        "version": {"const": "1.2.0"}
+      }
+    },
+    "jurisdiction": {"const": "SOURCE_DECLARATION_ONLY_NO_REGULATORY_APPLICABILITY_INFERRED"},
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "reviewer"],
+      "properties": {
+        "state": {"const": "CLAIMED"},
+        "reviewer": {"type": "null"}
+      }
+    },
+    "evidence_dimensions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_authority",
+        "source_integrity",
+        "format_or_profile_conformance",
+        "identity_normalization",
+        "declared_value_extraction",
+        "scientific_validity",
+        "professional_review",
+        "certification"
+      ],
+      "properties": {
+        "source_authority": {"const": "BOUND_FROM_PARENT"},
+        "source_integrity": {"const": "BOUND_FROM_PARENT"},
+        "format_or_profile_conformance": {"const": "BOUND_FROM_PARENT"},
+        "identity_normalization": {"const": "BOUND_FROM_PARENT"},
+        "declared_value_extraction": {"const": "OBSERVED_IN_SOURCE"},
+        "scientific_validity": {"const": "NOT_EVALUATED"},
+        "professional_review": {"const": "NOT_EVALUATED"},
+        "certification": {"const": "NOT_EVALUATED"}
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["content_sha256", "canonicalization", "signature"],
+      "properties": {
+        "content_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "canonicalization": {"const": "UTF-8 JSON; sorted keys; compact separators; ensure_ascii=false"},
+        "signature": {"type": "null"}
+      }
+    }
+  }
+}
