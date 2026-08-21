@@ -11,7 +11,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -108,7 +107,7 @@ public final class IlcdProfileValidator {
 
     var builder = new ReferenceBuilder();
     builder.build(args.input.toFile());
-    Map<String, IDatasetReference> references = new HashMap<>(builder.getReferences());
+    HashMap<String, IDatasetReference> references = new HashMap<>(builder.getReferences());
     if (references.isEmpty()) {
       throw new IllegalStateException("ReferenceBuilder found no ILCD dataset references under: " + args.input);
     }
