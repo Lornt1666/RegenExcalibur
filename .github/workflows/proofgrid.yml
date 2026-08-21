@@ -46,6 +46,8 @@ jobs:
           python -m pip check
       - name: Unit tests
         run: python -m unittest discover -s tests -v
+      - name: Validate LCA source registry provenance
+        run: python reference/rx_cli.py lca-registry-validate evidence/examples/alberta-house --output /tmp/proofgrid-lca-registry.json
       - name: Verify fictional Alberta fixture
         run: python reference/rx_cli.py verify evidence/examples/alberta-house --output /tmp/proofgrid-output
       - name: Build real IFC smoke fixture
@@ -62,5 +64,6 @@ jobs:
         run: python reference/rx_cli.py ifc-inspect /tmp/proofgrid-smoke.ifc --output /tmp/proofgrid-ifc-summary.json
       - name: Show receipts
         run: |
+          cat /tmp/proofgrid-lca-registry.json
           cat /tmp/proofgrid-output/receipt.json
           cat /tmp/proofgrid-ifc-summary.json
