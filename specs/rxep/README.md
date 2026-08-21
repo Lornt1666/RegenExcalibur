@@ -1,4 +1,4 @@
-# RX Evidence Protocol (RXEP) v0.1
+# RX Evidence Protocol (RXEP) v0.2
 
 RXEP is a minimal evidence envelope for RegenExcalibur systems.
 
@@ -15,6 +15,18 @@ A third party should be able to answer:
 - What is the review state?
 - What are the limitations?
 - Can the artifact's integrity be checked?
+
+## Runtime structural conformance
+
+ProofGrid v0.2 validates canonical inputs and generated evidence with JSON Schema Draft 2020-12 before issuing a `VERIFIABLE` receipt. The reference implementation currently validates:
+
+- `project.json` against `schemas/building.schema.json`;
+- `materials.json` against `schemas/materials.schema.json`;
+- generated evidence against `specs/rxep/evidence-envelope.schema.json`.
+
+Unknown project/material properties and invalid quantities fail closed under the current schemas.
+
+Structural conformance does **not** establish source authority, scientific validity, code compliance, engineering adequacy, or professional certification.
 
 ## Minimal envelope
 
