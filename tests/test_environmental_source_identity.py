@@ -7,8 +7,8 @@ import tempfile
 import unittest
 import zipfile
 
-from reference import environmental_admission as admission
-from reference import environmental_source_identity as canonical
+from reference import environmental_admission_v091 as admission
+from reference import environmental_source_identity_v101 as canonical
 
 PROCESS_NS = admission.PROCESS_NS
 COMMON_NS = canonical.COMMON_NS
@@ -95,10 +95,9 @@ def chain(source: Path, media_type: str, version: str) -> tuple[dict, dict, dict
             "certified": False,
             "authority_inference_allowed": False,
             "package_manifest_sha256": detected["package_manifest_sha256"],
-            "official_profile": {
-                "coordinate": "com.okworx.ilcd.validation.profiles:EPD-1.2-OEKOBAUDAT:3.8.0",
-                "jar_sha256": "9" * 64,
-            },
+            "official_stack": copy.deepcopy(admission.EXPECTED_V12_STACK),
+            "official_stack_sha256": admission.EXPECTED_V12_STACK_SHA256,
+            "official_profile": copy.deepcopy(admission.EXPECTED_LEGACY_PROFILE),
             "positive_control": {"error_count": 0, "warning_count": 26, "is_positive": True},
         })
     else:
@@ -130,6 +129,7 @@ class EnvironmentalSourceIdentityTests(unittest.TestCase):
             self.assertEqual(record["source"]["format_version"], "1.2")
             self.assertEqual(record["routing"]["route"], admission.V12_ROUTE)
             self.assertTrue(record["conformance"]["profile_validation_performed"])
+            self.assertEqual(record["conformance"]["official_stack"], admission.EXPECTED_V12_STACK)
             self.assertFalse(record["impact_values_normalized"])
             self.assertFalse(record["scientific_validation_performed"])
             self.assertFalse(record["professional_review_performed"])
@@ -157,6 +157,16 @@ class EnvironmentalSourceIdentityTests(unittest.TestCase):
             b = canonical.build_record(source, pre, conf, final)
             self.assertEqual(canonical.canonical_json_bytes(a), canonical.canonical_json_bytes(b))
             self.assertEqual(a["integrity"]["content_sha256"], b["integrity"]["content_sha256"])
+
+    def test_v12_forged_stack_fails_before_canonicalization(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            source, media = build_source(Path(td), "1.2")
+            pre, conf, final = chain(source, media, "1.2")
+            forged = copy.deepcopy(conf)
+            forged["official_stack"]["profile"]["jar_sha256"] = "9" * 64
+            forged = seal(forged)
+            with self.assertRaises(canonical.CanonicalizationError):
+                canonical.build_record(source, pre, forged, final)
 
     def test_admission_receipt_digest_tamper_fails(self) -> None:
         with tempfile.TemporaryDirectory() as td:
