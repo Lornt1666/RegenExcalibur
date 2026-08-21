@@ -3,6 +3,7 @@ name: ProofGrid Genesis
 on:
   pull_request:
     paths:
+      - "README.md"
       - "reference/**"
       - "adapters/**"
       - "specs/rxep/**"
@@ -15,6 +16,7 @@ on:
     branches:
       - main
     paths:
+      - "README.md"
       - "reference/**"
       - "adapters/**"
       - "specs/rxep/**"
