@@ -61,8 +61,8 @@ jobs:
           set -euo pipefail
           for R in a b; do
             python reference/rxep_calculated_contribution.py \
-              --v16-record /tmp/proofgrid-v17/v16/mapped-declared-result-calculation.json \
-              --v16-receipt /tmp/proofgrid-v17/v16/mapped-declared-result-calculation-receipt.json \
+              --v16-record /tmp/proofgrid-v17/v16/out-a/mapped-declared-result-calculation.json \
+              --v16-receipt /tmp/proofgrid-v17/v16/out-a/mapped-declared-result-calculation-receipt.json \
               --v161-comparison /tmp/proofgrid-v17/v161/v161-independent-comparison-receipt.json \
               --output-dir "/tmp/proofgrid-v17/out-${R}"
           done
@@ -98,9 +98,9 @@ jobs:
       - name: Reject parent tamper and review-state promotion
         run: |
           set -euo pipefail
-          cp /tmp/proofgrid-v17/v16/mapped-declared-result-calculation.json /tmp/proofgrid-v17/tampered-v16.json
+          cp /tmp/proofgrid-v17/v16/out-a/mapped-declared-result-calculation.json /tmp/proofgrid-v17/tampered-v16.json
           printf ' ' >> /tmp/proofgrid-v17/tampered-v16.json
-          if python reference/rxep_calculated_contribution.py --v16-record /tmp/proofgrid-v17/tampered-v16.json --v16-receipt /tmp/proofgrid-v17/v16/mapped-declared-result-calculation-receipt.json --v161-comparison /tmp/proofgrid-v17/v161/v161-independent-comparison-receipt.json --output-dir /tmp/proofgrid-v17/negative-parent; then
+          if python reference/rxep_calculated_contribution.py --v16-record /tmp/proofgrid-v17/tampered-v16.json --v16-receipt /tmp/proofgrid-v17/v16/out-a/mapped-declared-result-calculation-receipt.json --v161-comparison /tmp/proofgrid-v17/v161/v161-independent-comparison-receipt.json --output-dir /tmp/proofgrid-v17/negative-parent; then
             echo 'tampered v1.6 parent unexpectedly accepted' >&2; exit 1
           else
             echo 'V16_PARENT_TAMPER_REJECTED=PASS'
