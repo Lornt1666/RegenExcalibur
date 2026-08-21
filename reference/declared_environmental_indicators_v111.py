@@ -29,7 +29,6 @@ ENGINE_NAME = base.ENGINE_NAME
 ENGINE_VERSION = "1.1.1"
 VERDICT = base.VERDICT
 
-# Preserve the proven parser/research constants and helpers.
 PROCESS_NS = base.PROCESS_NS
 COMMON_NS = base.COMMON_NS
 EPD_2019_NS = base.EPD_2019_NS
@@ -56,7 +55,9 @@ _original_extract_record = base.extract_record
 _original_verify_canonical_source_record = base.verify_canonical_source_record
 
 # Rebind parser support operations to the hardened parent modules while keeping
-# the historical extraction algorithm unchanged.
+# the historical extraction algorithm unchanged. ENGINE_VERSION is consumed by
+# build_receipt(), which is the correct place for extraction-software identity;
+# the declared-value record schema intentionally carries no software field.
 base.admission = hardened_admission
 base.source_identity = hardened_source_identity
 base.ENGINE_VERSION = ENGINE_VERSION
@@ -68,7 +69,7 @@ def require(condition: bool, message: str) -> None:
 
 
 def verify_hardened_canonical_source_record(record: dict[str, Any]) -> None:
-    """Verify v1.0 structure/integrity plus the superseding parent trust state."""
+    """Verify canonical structure/integrity plus the superseding parent trust state."""
 
     _original_verify_canonical_source_record(record)
     version = record.get("source", {}).get("format_version")
@@ -108,19 +109,16 @@ def extract_record(
     frozen_map_path: Path = FROZEN_MAP_PATH,
 ) -> dict[str, Any]:
     verify_hardened_canonical_source_record(canonical_source)
-    record = _original_extract_record(
+    return _original_extract_record(
         source_path,
         canonical_source,
         indicator_uuid=indicator_uuid,
         frozen_map_path=frozen_map_path,
     )
-    # The base implementation reads its module-global version at execution time;
-    # assert the hardened version is actually recorded rather than assumed.
-    require(record.get("software", {}).get("version") == ENGINE_VERSION, "v1.1.1 extraction software version was not recorded")
-    return record
 
 
-# Make the inherited CLI use the hardened precheck too.
+# Make the inherited CLI use the hardened precheck too. Its build_receipt()
+# reads the rebound base.ENGINE_VERSION and records `1.1.1` in the receipt.
 base.extract_record = extract_record
 
 
