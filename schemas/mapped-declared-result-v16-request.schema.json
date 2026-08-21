@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://regenexcalibur.example/schemas/mapped-declared-result-v16-request.schema.json",
+  "title": "ProofGrid v1.6 exact-decimal mapped declared-result request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "request_version", "bindings", "selection"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "request_version": {"const": "1.6.0"},
+    "bindings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "quantity_record_content_sha256", "quantity_record_file_sha256", "quantity_receipt_sha256",
+        "mapping_record_content_sha256", "mapping_record_file_sha256", "mapping_receipt_sha256",
+        "closure_record_content_sha256", "closure_record_file_sha256", "closure_receipt_sha256",
+        "declaration_bundle_content_sha256", "declaration_bundle_file_sha256", "declaration_bundle_receipt_sha256"
+      ],
+      "properties": {
+        "quantity_record_content_sha256": {"$ref": "#/$defs/sha"},
+        "quantity_record_file_sha256": {"$ref": "#/$defs/sha"},
+        "quantity_receipt_sha256": {"$ref": "#/$defs/sha"},
+        "mapping_record_content_sha256": {"$ref": "#/$defs/sha"},
+        "mapping_record_file_sha256": {"$ref": "#/$defs/sha"},
+        "mapping_receipt_sha256": {"$ref": "#/$defs/sha"},
+        "closure_record_content_sha256": {"$ref": "#/$defs/sha"},
+        "closure_record_file_sha256": {"$ref": "#/$defs/sha"},
+        "closure_receipt_sha256": {"$ref": "#/$defs/sha"},
+        "declaration_bundle_content_sha256": {"$ref": "#/$defs/sha"},
+        "declaration_bundle_file_sha256": {"$ref": "#/$defs/sha"},
+        "declaration_bundle_receipt_sha256": {"$ref": "#/$defs/sha"}
+      }
+    },
+    "selection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["indicator_code", "indicator_uuid", "module", "scenario", "expected_unit"],
+      "properties": {
+        "indicator_code": {"type": "string", "minLength": 1},
+        "indicator_uuid": {"type": "string", "minLength": 1},
+        "module": {"type": "string", "minLength": 1},
+        "scenario": {
+          "oneOf": [
+            {"type": "null"},
+            {"type": "object", "additionalProperties": false, "required": ["name", "group", "default"], "properties": {"name": {"type": "string", "minLength": 1}, "group": {"type": "string", "minLength": 1}, "default": {"type": "boolean"}}}
+          ]
+        },
+        "expected_unit": {"type": "string", "minLength": 1}
+      }
+    }
+  },
+  "$defs": {"sha": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+}

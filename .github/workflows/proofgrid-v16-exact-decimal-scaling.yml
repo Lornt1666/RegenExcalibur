@@ -1,0 +1,193 @@
+name: ProofGrid v1.6 Exact Decimal Scaling
+
+on:
+  pull_request:
+    paths:
+      - "reference/mapped_declared_result_scale.py"
+      - "schemas/mapped-declared-result-v16-request.schema.json"
+      - "schemas/mapped-declared-result-v16.schema.json"
+      - "tests/test_mapped_declared_result_scale_v16.py"
+      - "conformance/mapped-declared-result-v16/**"
+      - ".github/workflows/proofgrid-v16-exact-decimal-scaling.yml"
+      - "requirements-proofgrid.txt"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  exact-decimal-scaling:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      V151_ARTIFACT_ID: "9451972654"
+      V151_ZIP_SHA256: "c09d136d1d720032b51b3337d3ade6b7318008d032c5e6115564e436bb24ef76"
+      V15_ARTIFACT_ID: "9451317205"
+      V15_ZIP_SHA256: "a09ae65ef0d221daadbd4cc1bbe7a21e252b92a29bd3bd21c433b13151741034"
+      V141_ARTIFACT_ID: "9450726883"
+      V141_ZIP_SHA256: "ab104603beb2e8643360ac45935ba82a189028a3c9e7319788153fa261fdb262"
+      V14_ARTIFACT_ID: "9450293777"
+      V14_ZIP_SHA256: "6bbc8efb8d762ce8171e94d27d5cffc42d34ab439bf5006cf6f79235cc7df4d2"
+
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v6.1.0
+
+      - name: Setup Python 3.11.16
+        uses: actions/setup-python@v6.0.0
+        with:
+          python-version: "3.11.16"
+          check-latest: false
+
+      - name: Install exact ProofGrid dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-proofgrid.txt
+          python -m pip check
+
+      - name: Run v1.6 fail-closed unit suite
+        run: |
+          set -euo pipefail
+          python -m unittest -v tests.test_mapped_declared_result_scale_v16
+
+      - name: Download and SHA-verify accepted parent artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/proofgrid-v16/{v151,v15,v141,v14}
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V151_ARTIFACT_ID}/zip" > /tmp/proofgrid-v16/v151.zip
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V15_ARTIFACT_ID}/zip" > /tmp/proofgrid-v16/v15.zip
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V141_ARTIFACT_ID}/zip" > /tmp/proofgrid-v16/v141.zip
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V14_ARTIFACT_ID}/zip" > /tmp/proofgrid-v16/v14.zip
+          echo "${V151_ZIP_SHA256}  /tmp/proofgrid-v16/v151.zip" | sha256sum -c -
+          echo "${V15_ZIP_SHA256}  /tmp/proofgrid-v16/v15.zip" | sha256sum -c -
+          echo "${V141_ZIP_SHA256}  /tmp/proofgrid-v16/v141.zip" | sha256sum -c -
+          echo "${V14_ZIP_SHA256}  /tmp/proofgrid-v16/v14.zip" | sha256sum -c -
+          unzip -q /tmp/proofgrid-v16/v151.zip -d /tmp/proofgrid-v16/v151
+          unzip -q /tmp/proofgrid-v16/v15.zip -d /tmp/proofgrid-v16/v15
+          unzip -q /tmp/proofgrid-v16/v141.zip -d /tmp/proofgrid-v16/v141
+          unzip -q /tmp/proofgrid-v16/v14.zip -d /tmp/proofgrid-v16/v14
+
+      - name: Build exact v1.3-lineage request
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          root=Path('/tmp/proofgrid-v16')
+          p={
+            'q':root/'v151/out-a/ifc-declared-quantity-exact-decimal.json',
+            'qr':root/'v151/out-a/ifc-declared-quantity-exact-decimal-receipt.json',
+            'm':root/'v15/out-a/ifc-declaration-product-mapping.json',
+            'mr':root/'v15/out-a/ifc-declaration-product-mapping-receipt.json',
+            'c':root/'v141/v13/a/declaration-product-identity-closure.json',
+            'cr':root/'v141/v13/a/declaration-product-identity-closure-receipt.json',
+            'b':root/'v14/v13/a/declaration-evidence-bundle.json',
+            'br':root/'v14/v13/a/declaration-evidence-bundle-receipt.json'}
+          d={k:json.loads(v.read_text()) for k,v in p.items()}; sha=lambda x:hashlib.sha256(x.read_bytes()).hexdigest()
+          req={'schema_version':'1.0','request_version':'1.6.0','bindings':{
+            'quantity_record_content_sha256':d['q']['integrity']['content_sha256'],'quantity_record_file_sha256':sha(p['q']),'quantity_receipt_sha256':d['qr']['receipt_sha256'],
+            'mapping_record_content_sha256':d['m']['integrity']['content_sha256'],'mapping_record_file_sha256':sha(p['m']),'mapping_receipt_sha256':d['mr']['receipt_sha256'],
+            'closure_record_content_sha256':d['c']['integrity']['content_sha256'],'closure_record_file_sha256':sha(p['c']),'closure_receipt_sha256':d['cr']['receipt_sha256'],
+            'declaration_bundle_content_sha256':d['b']['integrity']['content_sha256'],'declaration_bundle_file_sha256':sha(p['b']),'declaration_bundle_receipt_sha256':d['br']['receipt_sha256']},
+            'selection':{'indicator_code':'GWP-total','indicator_uuid':'6a37f984-a4b3-458a-a20a-64418c145fa2','module':'A1-A3','scenario':None,'expected_unit':'kg CO2 eqv.'}}
+          (root/'request.json').write_text(json.dumps(req,indent=2,sort_keys=True)+'\n',encoding='utf-8',newline='\n')
+          PY
+
+      - name: Calculate exact contribution twice
+        run: |
+          set -euo pipefail
+          for R in a b; do
+            python reference/mapped_declared_result_scale.py \
+              --quantity-record /tmp/proofgrid-v16/v151/out-a/ifc-declared-quantity-exact-decimal.json \
+              --quantity-receipt /tmp/proofgrid-v16/v151/out-a/ifc-declared-quantity-exact-decimal-receipt.json \
+              --mapping-record /tmp/proofgrid-v16/v15/out-a/ifc-declaration-product-mapping.json \
+              --mapping-receipt /tmp/proofgrid-v16/v15/out-a/ifc-declaration-product-mapping-receipt.json \
+              --closure-record /tmp/proofgrid-v16/v141/v13/a/declaration-product-identity-closure.json \
+              --closure-receipt /tmp/proofgrid-v16/v141/v13/a/declaration-product-identity-closure-receipt.json \
+              --bundle /tmp/proofgrid-v16/v14/v13/a/declaration-evidence-bundle.json \
+              --bundle-receipt /tmp/proofgrid-v16/v14/v13/a/declaration-evidence-bundle-receipt.json \
+              --request /tmp/proofgrid-v16/request.json \
+              --output-dir "/tmp/proofgrid-v16/out-${R}"
+          done
+          diff -u /tmp/proofgrid-v16/out-a/mapped-declared-result-calculation.json /tmp/proofgrid-v16/out-b/mapped-declared-result-calculation.json
+          diff -u /tmp/proofgrid-v16/out-a/mapped-declared-result-calculation-receipt.json /tmp/proofgrid-v16/out-b/mapped-declared-result-calculation-receipt.json
+
+      - name: Assert bounded exact result
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.loads(Path('/tmp/proofgrid-v16/out-a/mapped-declared-result-calculation.json').read_text())
+          assert r['verdict']=='MAPPED_DECLARED_RESULT_SCALED_VERIFIABLE'
+          assert r['inputs']['format_version']=='1.3'
+          assert r['calculation']['mapped_quantity']['value_lexical']=='1000.'
+          assert r['calculation']['mapped_quantity']['value_decimal']=='1000'
+          assert r['calculation']['mapped_quantity']['source_token_is_authority'] is True
+          assert r['calculation']['mapped_quantity']['parser_numeric_value_is_authority'] is False
+          assert r['calculation']['reference_quantity']['value_decimal']=='1'
+          assert r['calculation']['declared_result']['value_decimal']=='15.559479677163699'
+          assert r['calculation']['scale_factor_decimal']=='1000'
+          assert r['calculation']['scaled_result_decimal']=='15559.479677163699'
+          assert r['calculation']['scaled_result_unit']=='kg CO2 eqv.'
+          for k in ('aggregation_performed','missing_modules_are_zero','unit_conversion_performed','scenario_inference_performed','fuzzy_mapping_performed','scientific_validation_performed','professional_review_performed','certified'):
+            assert r[k] is False,(k,r[k])
+          print('EXACT_SCALED_RESULT='+r['calculation']['scaled_result_decimal'])
+          PY
+
+      - name: Reject v1.2 cross-version parent substitution
+        run: |
+          set -euo pipefail
+          if python reference/mapped_declared_result_scale.py \
+            --quantity-record /tmp/proofgrid-v16/v151/out-a/ifc-declared-quantity-exact-decimal.json \
+            --quantity-receipt /tmp/proofgrid-v16/v151/out-a/ifc-declared-quantity-exact-decimal-receipt.json \
+            --mapping-record /tmp/proofgrid-v16/v15/out-a/ifc-declaration-product-mapping.json \
+            --mapping-receipt /tmp/proofgrid-v16/v15/out-a/ifc-declaration-product-mapping-receipt.json \
+            --closure-record /tmp/proofgrid-v16/v141/v12/a/declaration-product-identity-closure.json \
+            --closure-receipt /tmp/proofgrid-v16/v141/v12/a/declaration-product-identity-closure-receipt.json \
+            --bundle /tmp/proofgrid-v16/v14/v12/a/declaration-evidence-bundle.json \
+            --bundle-receipt /tmp/proofgrid-v16/v14/v12/a/declaration-evidence-bundle-receipt.json \
+            --request /tmp/proofgrid-v16/request.json --output-dir /tmp/proofgrid-v16/negative-v12; then
+              echo 'cross-version substitution unexpectedly accepted' >&2; exit 1
+          else
+              echo 'CROSS_VERSION_SUBSTITUTION_REJECTED=PASS'
+          fi
+
+      - name: Reject quantity-evidence tamper and wrong scenario
+        run: |
+          set -euo pipefail
+          cp /tmp/proofgrid-v16/v151/out-a/ifc-declared-quantity-exact-decimal.json /tmp/proofgrid-v16/tampered-q.json
+          printf ' ' >> /tmp/proofgrid-v16/tampered-q.json
+          if python reference/mapped_declared_result_scale.py --quantity-record /tmp/proofgrid-v16/tampered-q.json --quantity-receipt /tmp/proofgrid-v16/v151/out-a/ifc-declared-quantity-exact-decimal-receipt.json --mapping-record /tmp/proofgrid-v16/v15/out-a/ifc-declaration-product-mapping.json --mapping-receipt /tmp/proofgrid-v16/v15/out-a/ifc-declaration-product-mapping-receipt.json --closure-record /tmp/proofgrid-v16/v141/v13/a/declaration-product-identity-closure.json --closure-receipt /tmp/proofgrid-v16/v141/v13/a/declaration-product-identity-closure-receipt.json --bundle /tmp/proofgrid-v16/v14/v13/a/declaration-evidence-bundle.json --bundle-receipt /tmp/proofgrid-v16/v14/v13/a/declaration-evidence-bundle-receipt.json --request /tmp/proofgrid-v16/request.json --output-dir /tmp/proofgrid-v16/negative-q; then exit 1; else echo 'QUANTITY_TAMPER_REJECTED=PASS'; fi
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('/tmp/proofgrid-v16/request.json'); r=json.loads(p.read_text()); r['selection']['scenario']={'name':'100% recycling','group':'EoL','default':True}; Path('/tmp/proofgrid-v16/wrong-scenario.json').write_text(json.dumps(r,indent=2,sort_keys=True)+'\n')
+          PY
+          if python reference/mapped_declared_result_scale.py --quantity-record /tmp/proofgrid-v16/v151/out-a/ifc-declared-quantity-exact-decimal.json --quantity-receipt /tmp/proofgrid-v16/v151/out-a/ifc-declared-quantity-exact-decimal-receipt.json --mapping-record /tmp/proofgrid-v16/v15/out-a/ifc-declaration-product-mapping.json --mapping-receipt /tmp/proofgrid-v16/v15/out-a/ifc-declaration-product-mapping-receipt.json --closure-record /tmp/proofgrid-v16/v141/v13/a/declaration-product-identity-closure.json --closure-receipt /tmp/proofgrid-v16/v141/v13/a/declaration-product-identity-closure-receipt.json --bundle /tmp/proofgrid-v16/v14/v13/a/declaration-evidence-bundle.json --bundle-receipt /tmp/proofgrid-v16/v14/v13/a/declaration-evidence-bundle-receipt.json --request /tmp/proofgrid-v16/wrong-scenario.json --output-dir /tmp/proofgrid-v16/negative-scenario; then exit 1; else echo 'WRONG_SCENARIO_REJECTED=PASS'; fi
+
+      - name: Produce bounded v1.6 integration receipt
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          root=Path('/tmp/proofgrid-v16'); r=json.loads((root/'out-a/mapped-declared-result-calculation.json').read_text()); rc=json.loads((root/'out-a/mapped-declared-result-calculation-receipt.json').read_text())
+          out={'verdict':'MAPPED_DECLARED_RESULT_SCALED_VERIFIABLE','accepted_v151_head':'2f27d60e986d8f24bf1a30ea3a5a623943e26dfc','quantity_lexical':r['calculation']['mapped_quantity']['value_lexical'],'quantity_decimal':r['calculation']['mapped_quantity']['value_decimal'],'reference_quantity_decimal':r['calculation']['reference_quantity']['value_decimal'],'declared_result_decimal':r['calculation']['declared_result']['value_decimal'],'scale_factor_decimal':r['calculation']['scale_factor_decimal'],'scaled_result_decimal':r['calculation']['scaled_result_decimal'],'scaled_result_unit':r['calculation']['scaled_result_unit'],'record_content_sha256':r['integrity']['content_sha256'],'record_file_sha256':hashlib.sha256((root/'out-a/mapped-declared-result-calculation.json').read_bytes()).hexdigest(),'calculation_receipt_sha256':rc['receipt_sha256'],'repeat_within_run_byte_identical':True,'cross_version_substitution_rejected':True,'quantity_tamper_rejected':True,'wrong_scenario_rejected':True,'source_token_is_authority':True,'parser_numeric_value_is_authority':False,'calculation_performed':True,'aggregation_performed':False,'missing_modules_are_zero':False,'unit_conversion_performed':False,'scenario_inference_performed':False,'fuzzy_mapping_performed':False,'scientific_validation_performed':False,'professional_review_performed':False,'certified':False}
+          out['receipt_sha256']=hashlib.sha256(json.dumps(out,sort_keys=True,separators=(',',':')).encode()).hexdigest(); (root/'v16-integration-receipt.json').write_text(json.dumps(out,indent=2,sort_keys=True)+'\n'); print(json.dumps(out,indent=2,sort_keys=True))
+          PY
+
+      - name: Retain bounded v1.6 evidence only
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v16-exact-decimal-scaling
+          path: |
+            /tmp/proofgrid-v16/request.json
+            /tmp/proofgrid-v16/out-a/mapped-declared-result-calculation.json
+            /tmp/proofgrid-v16/out-a/mapped-declared-result-calculation-receipt.json
+            /tmp/proofgrid-v16/v16-integration-receipt.json
+          if-no-files-found: error
+          retention-days: 30
