@@ -1,0 +1,162 @@
+name: ProofGrid v0.7 ILCD+EPD v1.3 Conformance
+
+on:
+  pull_request:
+    paths:
+      - "reference/ilcd_epd_v13_conformance.py"
+      - "conformance/ilcd-epd-v13/**"
+      - "requirements-proofgrid-v07.txt"
+      - "tests/test_ilcd_epd_v13_conformance.py"
+      - ".github/workflows/proofgrid-v07-ilcd-epd.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ilcd-epd-v13-conformance:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout RegenExcalibur candidate
+        uses: actions/checkout@v6.1.0
+
+      - name: Setup Python 3.11.16
+        uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Install inherited ProofGrid lock
+        run: |
+          python -m pip install --disable-pip-version-check -r requirements-proofgrid.txt
+          python -m pip check
+
+      - name: Install isolated v0.7 XML validation lock
+        run: |
+          python -m pip install --disable-pip-version-check -r requirements-proofgrid-v07.txt
+          python -m pip check
+          python - <<'PY'
+          import elementpath, xmlschema
+          assert xmlschema.__version__ == '4.3.2'
+          assert elementpath.__version__ == '5.1.2'
+          print('xmlschema', xmlschema.__version__)
+          print('elementpath', elementpath.__version__)
+          PY
+
+      - name: Run full unit suite with v0.7 dependencies
+        run: python -m unittest discover -s tests -v
+
+      - name: Checkout pinned InData ILCD+EPD v1.3 format
+        uses: actions/checkout@v6.1.0
+        with:
+          repository: InDataWG/ILCD-EPD-Data-Format
+          ref: 7625c7dfc0d5b6bc2020eb0cf0b0503349c914aa
+          path: .proofgrid-upstream/ilcd-epd-format
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Checkout pinned InData ILCD+EPD master data
+        uses: actions/checkout@v6.1.0
+        with:
+          repository: InDataWG/ILCD-EPD-Master-Data
+          ref: 32117b6a70d6c486344247a429449755a2c7eab4
+          path: .proofgrid-upstream/ilcd-epd-master-data
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify authoritative v1.3 XSD and master-data conformance
+        run: |
+          python reference/ilcd_epd_v13_conformance.py \
+            --format-root .proofgrid-upstream/ilcd-epd-format \
+            --master-root .proofgrid-upstream/ilcd-epd-master-data \
+            --output-dir /tmp/proofgrid-v07
+          cat /tmp/proofgrid-v07/ilcd-epd-v13-conformance-receipt.json
+
+      - name: Reject schema-invalid v1.3 derivatives
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          import xmlschema
+
+          schema_root = Path('.proofgrid-upstream/ilcd-epd-format/schemas').resolve()
+          schema = xmlschema.XMLSchema(
+              str(schema_root / 'EPD_DataSet.xsd'),
+              allow='sandbox',
+              defuse='always',
+              base_url=str(schema_root),
+          )
+          source = Path('/tmp/proofgrid-v07/proofgrid-synthetic-ilcd-epd-v1.3.xml')
+
+          malformed = Path('/tmp/proofgrid-v07/malformed.xml')
+          malformed.write_text('<processDataSet>', encoding='utf-8')
+          try:
+              schema.validate(str(malformed), use_location_hints=False)
+          except Exception:
+              pass
+          else:
+              raise SystemExit('malformed XML unexpectedly validated')
+
+          tree = ET.parse(source)
+          root = tree.getroot()
+          process_info = root.find('{http://lca.jrc.it/ILCD/Process}processInformation')
+          if process_info is None:
+              raise SystemExit('positive fixture unexpectedly lacks processInformation')
+          root.remove(process_info)
+          missing_required = Path('/tmp/proofgrid-v07/missing-required.xml')
+          tree.write(missing_required, encoding='utf-8', xml_declaration=True)
+          if schema.is_valid(str(missing_required), use_location_hints=False):
+              raise SystemExit('missing required processInformation unexpectedly validated')
+
+          bad_ns = Path('/tmp/proofgrid-v07/bad-namespace.xml')
+          text = source.read_text(encoding='utf-8').replace(
+              'http://lca.jrc.it/ILCD/Process',
+              'urn:proofgrid:invalid-process-namespace',
+              1,
+          )
+          bad_ns.write_text(text, encoding='utf-8')
+          if schema.is_valid(str(bad_ns), use_location_hints=False):
+              raise SystemExit('invalid process namespace unexpectedly validated')
+
+          print('authoritative negative XSD cases: PASS')
+          PY
+
+      - name: Reject tampered authoritative XSD checkout
+        run: |
+          cp -a .proofgrid-upstream/ilcd-epd-format /tmp/proofgrid-v07-format-tampered
+          printf '\n<!-- ProofGrid tamper fixture -->\n' >> /tmp/proofgrid-v07-format-tampered/schemas/EPD_DataSet.xsd
+          if python reference/ilcd_epd_v13_conformance.py \
+            --format-root /tmp/proofgrid-v07-format-tampered \
+            --master-root .proofgrid-upstream/ilcd-epd-master-data \
+            --output-dir /tmp/proofgrid-v07/tamper-should-fail; then
+            echo "tampered upstream XSD unexpectedly passed" >&2
+            exit 1
+          fi
+          echo "tampered authoritative XSD: correctly rejected"
+
+      - name: Reject wrong upstream commit identities
+        run: |
+          if python reference/ilcd_epd_v13_conformance.py \
+            --format-root .proofgrid-upstream/ilcd-epd-master-data \
+            --master-root .proofgrid-upstream/ilcd-epd-master-data \
+            --output-dir /tmp/proofgrid-v07/wrong-format-commit; then
+            echo "wrong format commit unexpectedly passed" >&2
+            exit 1
+          fi
+          if python reference/ilcd_epd_v13_conformance.py \
+            --format-root .proofgrid-upstream/ilcd-epd-format \
+            --master-root .proofgrid-upstream/ilcd-epd-format \
+            --output-dir /tmp/proofgrid-v07/wrong-master-commit; then
+            echo "wrong master-data commit unexpectedly passed" >&2
+            exit 1
+          fi
+          echo "wrong upstream commits: correctly rejected"
+
+      - name: Retain v0.7 conformance receipt
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v07-ilcd-epd-v13-conformance
+          path: |
+            /tmp/proofgrid-v07/ilcd-epd-v13-conformance-receipt.json
+            /tmp/proofgrid-v07/proofgrid-synthetic-ilcd-epd-v1.3.xml
+          if-no-files-found: error
+          retention-days: 30
