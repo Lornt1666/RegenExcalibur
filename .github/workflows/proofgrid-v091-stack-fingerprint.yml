@@ -1,0 +1,159 @@
+name: ProofGrid v0.9.1 Exact Stack Fingerprint
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/proofgrid-v091-stack-fingerprint.yml'
+      - 'reference/environmental_admission_v091.py'
+      - 'tests/test_environmental_admission_v091.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  exact-stack-fingerprint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v6.1.0
+
+      - name: Setup Python 3.11.16
+        uses: actions/setup-python@v6.0.0
+        with:
+          python-version: '3.11.16'
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v5.0.0
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install ProofGrid dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -r requirements-proofgrid.txt
+          python -m pip check
+
+      - name: Run historical and hardened admission tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest -v tests.test_environmental_admission tests.test_environmental_admission_v091
+
+      - name: Resolve and hash exact official v1.2 stack
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=/tmp/proofgrid-v091
+          mkdir -p "$OUT"
+          cat > "$OUT/pom.xml" <<'POM'
+          <project xmlns="http://maven.apache.org/POM/4.0.0">
+            <modelVersion>4.0.0</modelVersion>
+            <groupId>proofgrid.v091</groupId>
+            <artifactId>stack-fingerprint</artifactId>
+            <version>0.9.1</version>
+            <dependencies>
+              <dependency>
+                <groupId>com.okworx.ilcd.validation</groupId>
+                <artifactId>ilcd-validation</artifactId>
+                <version>2.12.2</version>
+              </dependency>
+              <dependency>
+                <groupId>com.okworx.ilcd.validation.profiles</groupId>
+                <artifactId>EPD-1.2-OEKOBAUDAT</artifactId>
+                <version>3.8.0</version>
+              </dependency>
+            </dependencies>
+          </project>
+          POM
+          mvn -B -ntp -f "$OUT/pom.xml" dependency:go-offline
+          LIB="$HOME/.m2/repository/com/okworx/ilcd/validation/ilcd-validation/2.12.2/ilcd-validation-2.12.2.jar"
+          LIB_POM="$HOME/.m2/repository/com/okworx/ilcd/validation/ilcd-validation/2.12.2/ilcd-validation-2.12.2.pom"
+          PROFILE="$HOME/.m2/repository/com/okworx/ilcd/validation/profiles/EPD-1.2-OEKOBAUDAT/3.8.0/EPD-1.2-OEKOBAUDAT-3.8.0.jar"
+          PROFILE_POM="$HOME/.m2/repository/com/okworx/ilcd/validation/profiles/EPD-1.2-OEKOBAUDAT/3.8.0/EPD-1.2-OEKOBAUDAT-3.8.0.pom"
+          test "$(sha256sum "$LIB" | awk '{print $1}')" = '55427919601b5deceee99b34fbbbaf8f00cbcf0aca1fdb1eb493c31f473e077b'
+          test "$(sha256sum "$LIB_POM" | awk '{print $1}')" = '16430562fe6ebb6da3e4afea4a8c6cce98d822d61f59eb33e0b5dc98a4eb1fc1'
+          test "$(sha256sum "$PROFILE" | awk '{print $1}')" = '96ee05b9cf5172a344df3ea844aa8d94060eae4e4e8188f72e46441a3d61921e'
+          test "$(sha256sum "$PROFILE_POM" | awk '{print $1}')" = '0188dfb7ee16feb4c20c58003f419db7e5007382be7794d47cfd56d67a39047a'
+          test "$(unzip -p "$PROFILE" includes/EPD-1.2-Generic.jar | sha256sum | awk '{print $1}')" = '31402bb2746ddb9d2ab4ce40dd5d3e848ab701d1f4da00f2da004f15c7e1cc25'
+          test "$(unzip -p "$PROFILE" includes/EPD-1.2-EN15804.jar | sha256sum | awk '{print $1}')" = 'a05ac55df8f567985da8c95e30ff6579761d336e0f23087aa73fefb4d9a2b147'
+          echo EXACT_OFFICIAL_STACK=PASS
+
+      - name: Produce exact-stack hardened admission receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from datetime import date
+          from pathlib import Path
+          import json, tempfile
+          from reference import environmental_admission as v09
+          from reference import environmental_admission_v091 as v091
+          from tests.test_environmental_admission import AdmissionFixture, canonical_receipt
+
+          out=Path('/tmp/proofgrid-v091')
+          td=tempfile.TemporaryDirectory()
+          fx=AdmissionFixture(Path(td.name), '1.2', zipped=True)
+          pre=v09.preflight(fx.root, as_of=date(2026,8,20))
+          body={
+            'claim_token':v09.V12_CLAIM,
+            'compatibility_claim':True,
+            'compatibility_scope':'v0.9.1 exact-stack synthetic consumer control; upstream profile compatibility is separately evidenced by v0.8.',
+            'certified':False,
+            'authority_inference_allowed':False,
+            'real_provider_epd_tested':False,
+            'package_manifest_sha256':pre['source']['package_manifest_sha256'],
+            'official_validator':v091.EXPECTED_VALIDATOR,
+            'official_profile':v091.EXPECTED_PROFILE,
+            'official_stack_fingerprint_sha256':v091.STACK_FINGERPRINT_SHA256,
+            'positive_control':{'error_count':0,'warning_count':26,'is_positive':True},
+            'limitations':['Synthetic consumer hardening control; not certification or a replacement for the separate v0.8 exact-profile execution receipt.']
+          }
+          conf=canonical_receipt(body)
+          final=v091.finalize(pre, conf)
+          assert final['engine']['version']=='0.9.1'
+          assert final['conformance']['official_stack']['fingerprint_sha256']==v091.STACK_FINGERPRINT_SHA256
+          assert final['evidence_dimensions']['validator_profile_stack_identity']=='VERIFIED_EXACT'
+          assert final['normalization_permitted'] is True and final['certified'] is False
+          (out/'v091-preflight.json').write_text(json.dumps(pre,indent=2,sort_keys=True)+'\n')
+          (out/'v091-conformance.json').write_text(json.dumps(conf,indent=2,sort_keys=True)+'\n')
+          (out/'v091-admission.json').write_text(json.dumps(final,indent=2,sort_keys=True)+'\n')
+          print('V091_EXACT_STACK_ADMISSION=PASS')
+          print('stack_fingerprint_sha256=',v091.STACK_FINGERPRINT_SHA256)
+          print('admission_receipt_sha256=',final['receipt_sha256'])
+          PY
+
+      - name: Prove forged exact-stack receipt is rejected
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from reference import environmental_admission as v09
+          from reference import environmental_admission_v091 as v091
+          pre=json.load(open('/tmp/proofgrid-v091/v091-preflight.json'))
+          conf=json.load(open('/tmp/proofgrid-v091/v091-conformance.json'))
+          conf['official_profile']['jar_sha256']='9'*64
+          conf.pop('receipt_sha256',None)
+          conf['receipt_sha256']=v09.sha256_bytes(v09.canonical_json_bytes(conf))
+          try:
+              v091.finalize(pre,conf)
+          except v09.AdmissionError:
+              print('FORGED_STACK_REJECTED=PASS')
+          else:
+              raise SystemExit('forged stack fingerprint was accepted')
+          PY
+
+      - name: Retain v0.9.1 receipts
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v091-exact-stack-fingerprint
+          path: |
+            /tmp/proofgrid-v091/v091-preflight.json
+            /tmp/proofgrid-v091/v091-conformance.json
+            /tmp/proofgrid-v091/v091-admission.json
+          if-no-files-found: error
+          retention-days: 30
