@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>com.regenexcalibur.proofgrid</groupId>
+  <artifactId>ilcd-epd-validation-harness</artifactId>
+  <version>0.7.0-SNAPSHOT</version>
+  <name>RegenExcalibur ProofGrid ILCD+EPD validation harness</name>
+
+  <properties>
+    <maven.compiler.release>21</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <ilcd.validation.version>3.0.0</ilcd.validation.version>
+    <oekobaudat.profile.version>3.8.0</oekobaudat.profile.version>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>com.okworx.ilcd.validation</groupId>
+      <artifactId>ilcd-validation</artifactId>
+      <version>${ilcd.validation.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.okworx.ilcd.validation.profiles</groupId>
+      <artifactId>EPD-1.2-OEKOBAUDAT</artifactId>
+      <version>${oekobaudat.profile.version}</version>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.14.0</version>
+        <configuration>
+          <release>${maven.compiler.release}</release>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-dependency-plugin</artifactId>
+        <version>3.8.1</version>
+      </plugin>
+    </plugins>
+  </build>
+</project>
