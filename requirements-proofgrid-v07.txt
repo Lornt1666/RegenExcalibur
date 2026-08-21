@@ -5,5 +5,6 @@
 # v1.0 documentation-complete inherited validation trigger only; dependency semantics unchanged.
 # v1.0 cross-run reproducibility confirmation trigger only; dependency semantics unchanged.
 # v1.1 cross-run declared-indicator and inherited validation trigger only; dependency semantics unchanged.
+# v1.1 final synchronized research/extraction/inherited acceptance trigger; dependency semantics unchanged.
 xmlschema==4.3.1
 elementpath==5.1.2
