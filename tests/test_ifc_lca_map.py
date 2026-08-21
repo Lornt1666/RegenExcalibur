@@ -231,7 +231,7 @@ class IFCEnvironmentalMappingV05Tests(unittest.TestCase):
     def test_missing_material_name_cannot_be_inferred(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            extraction_path, mapping_path, _, registry_path = self.prepare(root, material_name=None)
+            extraction_path, mapping_path, _, registry_path = self.prepare(root, material_name="")
             self.assert_mapping_error(extraction_path, mapping_path, registry_path)
 
     def test_duplicate_mapping_identity_fails_closed(self):
