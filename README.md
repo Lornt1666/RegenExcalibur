@@ -2,9 +2,9 @@
 
 ## ProofGrid / RX Evidence Fabric
 
-RegenExcalibur's current flagship reference implementation is **ProofGrid**: a cloud-neutral, machine-verifiable evidence kernel for built-environment data. It is designed to keep claims, calculations, review states, provenance, integrity, environmental-source boundaries, and certification boundaries explicit.
+RegenExcalibur's current flagship reference implementation is **ProofGrid**: a cloud-neutral, machine-verifiable evidence kernel for built-environment data. It is designed to keep claims, calculations, review states, provenance, integrity, environmental-source boundaries, IFC-declared data, and certification boundaries explicit.
 
-### ProofGrid v0.3 quick start
+### ProofGrid v0.4 quick start
 
 Install the locked open-source dependencies:
 
@@ -25,15 +25,30 @@ Verify the fictional Alberta fixture:
 python reference/rx_cli.py verify evidence/examples/alberta-house
 ```
 
-Inspect a real IFC STEP file through the read-only IfcOpenShell adapter:
+Inspect a real IFC STEP file structurally:
 
 ```bash
 python reference/rx_cli.py ifc-inspect path/to/model.ifc --output ifc-summary.json
 ```
 
-ProofGrid v0.3 validates canonical project/material/environmental-source inputs and generated evidence with JSON Schema Draft 2020-12 before issuing a `VERIFIABLE` receipt. Environmental quantities reference exact source-record IDs rather than embedding free-floating GWP factors. Source-content SHA-256, exact unit matching, material identity, lifecycle/system boundary compatibility, and source-record digests are checked before the deterministic calculation proceeds.
+Extract IFC-declared quantities, material associations, unit context, hierarchy, warnings, and source provenance:
 
-`VERIFIABLE` is **not** `CERTIFIED`. Source integrity is not scientific validation. IFC ingestion remains structural only and does not establish quantity takeoff, LCA, code compliance, engineering adequacy, or professional certification.
+```bash
+python reference/ifc_extract.py path/to/model.ifc --output ifc-extraction.json
+```
+
+ProofGrid v0.4 preserves the v0.3 provenance-controlled environmental-source path and adds a separate evidence-controlled IFC extraction path. It retains source IFC SHA-256, IFC schema, project unit assignments, spatial identifiers, supported material associations, and supported `IfcElementQuantity` values. The extraction artifact validates against JSON Schema Draft 2020-12 before the CLI reports success.
+
+### Hard boundaries
+
+- `VERIFIABLE` is **not** `CERTIFIED`.
+- Source integrity is not scientific validation.
+- IFC extraction is not a geometry-derived takeoff.
+- IFC quantity values are not silently converted between units.
+- Material names are not fuzzy-matched to environmental factors.
+- Conflicting declared quantities are retained and warned about rather than silently resolved.
+- The v0.4 IFC path is **not connected to the LCA/GWP calculation path**.
+- No code-compliance, engineering, architectural, procurement, LCA, regulatory, or certification conclusion is produced by the IFC extractor.
 
 Key files:
 
@@ -41,13 +56,15 @@ Key files:
 - `ARCHITECTURE.md`: ProofGrid/RX Evidence Fabric architecture and evidence gates.
 - `specs/rxep/`: RX Evidence Protocol specification and evidence-envelope schema.
 - `schemas/building.schema.json`: canonical project/building fixture schema.
-- `schemas/materials.schema.json`: v0.3 material quantities with exact source-record references.
-- `schemas/lca-source-records.schema.json`: v0.3 environmental-source registry schema.
-- `reference/rx_cli.py`: deterministic verifier, registry validator, and IFC inspection CLI.
-- `adapters/ifc/`: read-only IFC ingestion adapter.
+- `schemas/materials.schema.json`: material quantities with exact environmental source-record references.
+- `schemas/lca-source-records.schema.json`: environmental-source registry schema.
+- `schemas/ifc-extraction.schema.json`: v0.4 IFC declared-data extraction schema.
+- `reference/rx_cli.py`: deterministic environmental verifier, registry validator, and structural IFC inspection CLI.
+- `reference/ifc_extract.py`: v0.4 declared IFC quantity/material extraction CLI.
+- `adapters/ifc/`: structural inspection and declared-data extraction adapters.
 - `adapters/lca/`: environmental-source provenance rules and future connector boundary.
 - `evidence/examples/`: fictional test fixtures and hashed synthetic source content.
-- `tests/`: fail-closed provenance, schema, determinism, and IFC tests.
+- `tests/`: fail-closed provenance, schema, determinism, real IFC, and IFC conformance tests.
 
 ---
 
@@ -100,4 +117,4 @@ python RegenExcalibur_Project/master_autonomous_execution_script.py \
 
 ## Status
 
-ProofGrid v0.3 is a **reference implementation under evidence-gated development**. Runtime Draft 2020-12 schema validation, deterministic evidence generation, source-content hashing, exact environmental source-record resolution, no-implicit-conversion policy, lifecycle-boundary compatibility checks, and read-only real IFC ingestion are implemented on the stacked v0.3 development branch. Production EPD/database ingestion, IFC quantity/material extraction, professional code/compliance conclusions, independent domain reproduction, and production deployment remain separate future gates.
+ProofGrid v0.4 is a **reference implementation under evidence-gated development**. The environmental-source registry path has an exact-head hosted v0.3 receipt, and the v0.4 branch adds IFC-declared quantity/material/unit/hierarchy extraction behind a separate conformance schema and test suite. Automatic IFC→environmental-source mapping, unit conversion, geometry-derived takeoff, production EPD/database ingestion, professional code/compliance conclusions, independent domain reproduction, and production deployment remain separate future gates.
