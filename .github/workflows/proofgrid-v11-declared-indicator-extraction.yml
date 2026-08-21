@@ -1,0 +1,242 @@
+name: ProofGrid v1.1 Declared Indicator Extraction
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/proofgrid-v11-declared-indicator-extraction.yml'
+      - 'reference/declared_environmental_indicators.py'
+      - 'schemas/declared-environmental-indicators.schema.json'
+      - 'tests/test_declared_environmental_indicators.py'
+      - 'conformance/indicator-extraction-v11/frozen-indicator-map.json'
+      - 'requirements-proofgrid.txt'
+      - 'requirements-proofgrid-v07.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  declared-indicator-extraction:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v6.1.0
+
+      - name: Setup Python 3.11.16
+        uses: actions/setup-python@v6.0.0
+        with:
+          python-version: '3.11.16'
+
+      - name: Install exact ProofGrid dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-proofgrid.txt
+          python -m pip install -r requirements-proofgrid-v07.txt
+          python -m pip check
+
+      - name: Run v1.1 fail-closed unit suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest -v tests.test_declared_environmental_indicators
+
+      - name: Checkout pinned InData v1.2 structural control
+        uses: actions/checkout@v6.1.0
+        with:
+          repository: InDataWG/ILCD-EPD-Data-Format
+          ref: b7233bd2dd5435a6b5973505ffa212cd03d23468
+          path: .proofgrid-upstream/indata-v12
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Checkout pinned InData v1.3 structural control
+        uses: actions/checkout@v6.1.0
+        with:
+          repository: InDataWG/ILCD-EPD-Data-Format
+          ref: 7625c7dfc0d5b6bc2020eb0cf0b0503349c914aa
+          path: .proofgrid-upstream/indata-v13
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Stage exact pinned structures with TEST_ONLY parent-chain controls
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import json, zipfile
+          from tests.test_declared_environmental_indicators import receipt_chain, write_zip_entry
+          from reference import environmental_source_identity as canonical
+
+          root=Path('/tmp/proofgrid-v11-extraction')
+          root.mkdir(parents=True,exist_ok=True)
+
+          # v1.2: deterministically package the exact pinned public example process.
+          v12=root/'v12'; v12.mkdir()
+          raw12=Path('.proofgrid-upstream/indata-v12/sample_data/processes/57a4ae65-d305-421e-b21f-a3f0c35b8abe.xml').read_bytes()
+          source12=v12/'source.zip'
+          with zipfile.ZipFile(source12,'w',compression=zipfile.ZIP_STORED) as zf:
+              write_zip_entry(zf,'ILCD/processes/57a4ae65-d305-421e-b21f-a3f0c35b8abe.xml',raw12)
+          pre,conf,final=receipt_chain(source12,'application/zip','1.2')
+          record12=canonical.build_record(source12,pre,conf,final)
+          (v12/'canonical-source-identity.json').write_text(json.dumps(record12,indent=2,sort_keys=True,ensure_ascii=False)+'\n')
+
+          # v1.3: retain the exact pinned public example process bytes.
+          v13=root/'v13'; v13.mkdir()
+          source13=v13/'source.xml'
+          source13.write_bytes(Path('.proofgrid-upstream/indata-v13/sample_data/processes/EPDv1.3_example_57a4ae65-d305-421e-b21f-a3f0c35b8abe.xml').read_bytes())
+          pre,conf,final=receipt_chain(source13,'application/xml','1.3')
+          record13=canonical.build_record(source13,pre,conf,final)
+          (v13/'canonical-source-identity.json').write_text(json.dumps(record13,indent=2,sort_keys=True,ensure_ascii=False)+'\n')
+          print('PARENT_CHAIN_CONTROL=TEST_ONLY_SYNTHETIC_RECEIPTS_FOR_PARSER_CONFORMANCE')
+          PY
+
+      - name: Extract pinned v1.2 declared GWP-total twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT=/tmp/proofgrid-v11-extraction/v12
+          for N in a b; do
+            python reference/declared_environmental_indicators.py \
+              --source "$ROOT/source.zip" \
+              --canonical-source "$ROOT/canonical-source-identity.json" \
+              --output-dir "$ROOT/out-$N"
+          done
+          diff -u "$ROOT/out-a/declared-environmental-indicators.json" "$ROOT/out-b/declared-environmental-indicators.json"
+          diff -u "$ROOT/out-a/extraction-receipt.json" "$ROOT/out-b/extraction-receipt.json"
+
+      - name: Extract pinned v1.3 declared GWP-total twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT=/tmp/proofgrid-v11-extraction/v13
+          for N in a b; do
+            python reference/declared_environmental_indicators.py \
+              --source "$ROOT/source.xml" \
+              --canonical-source "$ROOT/canonical-source-identity.json" \
+              --output-dir "$ROOT/out-$N"
+          done
+          diff -u "$ROOT/out-a/declared-environmental-indicators.json" "$ROOT/out-b/declared-environmental-indicators.json"
+          diff -u "$ROOT/out-a/extraction-receipt.json" "$ROOT/out-b/extraction-receipt.json"
+
+      - name: Verify exact pinned module/scenario/value semantics
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          expected=[
+            ('A1-A3',None,'15.559479677163699'),
+            ('D','100% recycling','3.890472762252513'),
+            ('A4','Transport to Gdansk','10.403452605105544'),
+            ('C4','100% recycling','16.861343234824155'),
+            ('C3','100% recycling','12.55722191320309'),
+            ('D','100% incineration','21.473728298846915'),
+            ('C3','100% incineration','29.83997231119644'),
+            ('A4','Transport to Berlin','10.621689444677362'),
+            ('C4','100% incineration','37.34889504407421'),
+          ]
+          for version in ('v12','v13'):
+              path=f'/tmp/proofgrid-v11-extraction/{version}/out-a/declared-environmental-indicators.json'
+              d=json.load(open(path))
+              assert d['verdict']=='DECLARED_ENVIRONMENTAL_INDICATORS_EXTRACTED_VERIFIABLE'
+              assert d['indicator_scope']['indicator_uuid']=='6a37f984-a4b3-458a-a20a-64418c145fa2'
+              assert d['indicator_scope']['catalogue_version']=='04.00.016'
+              assert d['indicator_scope']['canonical_unit']=='kg CO2 eqv.'
+              assert d['indicator_scope']['unit_group_uuid']=='1ebf3012-d0db-4de2-aefd-ef30cedb0be1'
+              assert len(d['rows'])==9
+              actual=[(r['module'],None if r['scenario'] is None else r['scenario']['name'],r['value_lexical']) for r in d['rows']]
+              assert actual==expected,(version,actual)
+              assert all(r['value_origin']=='DECLARED_IN_SOURCE' for r in d['rows'])
+              assert all(r['calculated'] is False for r in d['rows'])
+              assert all(r['unit_conversion_performed'] is False for r in d['rows'])
+              assert d['ignored_unscoped_mean_amount']['lexical_value']=='0.0'
+              assert d['ignored_unscoped_mean_amount']['extracted'] is False
+              assert d['missing_value_policy']['missing_modules_are_zero'] is False
+              assert d['missing_value_policy']['aggregation_performed'] is False
+              assert d['scientific_validation_performed'] is False
+              assert d['professional_review_performed'] is False
+              assert d['certified'] is False
+          print('PINNED_DECLARED_GWP_TOTAL_VALUES=PASS')
+          PY
+
+      - name: Prove post-canonical source tamper rejection through CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT=/tmp/proofgrid-v11-extraction/v13
+          cp "$ROOT/source.xml" "$ROOT/tampered.xml"
+          printf '\n' >> "$ROOT/tampered.xml"
+          if python reference/declared_environmental_indicators.py \
+            --source "$ROOT/tampered.xml" \
+            --canonical-source "$ROOT/canonical-source-identity.json" \
+            --output-dir "$ROOT/should-not-exist"; then
+            echo 'tampered source unexpectedly extracted' >&2
+            exit 1
+          fi
+          echo 'POST_CANONICAL_SOURCE_TAMPER_REJECTED=PASS'
+
+      - name: Produce bounded v1.1 extraction integration receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib,json
+          root=Path('/tmp/proofgrid-v11-extraction')
+          def load(p): return json.loads(p.read_text())
+          v12=load(root/'v12/out-a/extraction-receipt.json')
+          v13=load(root/'v13/out-a/extraction-receipt.json')
+          report={
+            'verdict':'DECLARED_ENVIRONMENTAL_INDICATORS_EXTRACTED_VERIFIABLE',
+            'scope':'Pinned public InData example structures with TEST_ONLY synthetic parent receipt chains; production admission authority remains the accepted parent v0.9/v1.0 stack.',
+            'certified':False,
+            'calculated':False,
+            'unit_conversion_performed':False,
+            'scientific_validation_performed':False,
+            'professional_review_performed':False,
+            'research_freeze_receipt_sha256':'2345047d8e3888ccda965754728e939eed61851b28945033355d1ddae682941f',
+            'indicator_uuid':'6a37f984-a4b3-458a-a20a-64418c145fa2',
+            'indicator_code':'GWP-total',
+            'v12':{
+              'extraction_receipt_sha256':v12['receipt_sha256'],
+              'record_content_sha256':v12['record_content_sha256'],
+              'record_file_sha256':v12['record_file_sha256'],
+              'row_count':v12['row_count']
+            },
+            'v13':{
+              'extraction_receipt_sha256':v13['receipt_sha256'],
+              'record_content_sha256':v13['record_content_sha256'],
+              'record_file_sha256':v13['record_file_sha256'],
+              'row_count':v13['row_count']
+            },
+            'deterministic_repeat_within_run':True,
+            'post_canonical_source_tamper_rejected':True,
+            'missing_modules_are_zero':False,
+            'aggregation_performed':False,
+            'limitations':[
+              'The accepted v1.1 scope is initially limited to the exact frozen EF3.0 GWP-total identity.',
+              'Values are declared source values only; no scientific validity, professional review, programme-operator/BBSR approval, provider authority, or certification is established.'
+            ]
+          }
+          raw=json.dumps(report,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()
+          report['receipt_sha256']=hashlib.sha256(raw).hexdigest()
+          (root/'v11-extraction-integration-receipt.json').write_text(json.dumps(report,indent=2,sort_keys=True,ensure_ascii=False)+'\n')
+          print(json.dumps(report,indent=2,sort_keys=True,ensure_ascii=False))
+          PY
+
+      - name: Retain extracted declared-value records and receipts only
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v11-declared-indicator-extraction
+          path: |
+            /tmp/proofgrid-v11-extraction/v11-extraction-integration-receipt.json
+            /tmp/proofgrid-v11-extraction/v12/out-a/declared-environmental-indicators.json
+            /tmp/proofgrid-v11-extraction/v12/out-a/extraction-receipt.json
+            /tmp/proofgrid-v11-extraction/v13/out-a/declared-environmental-indicators.json
+            /tmp/proofgrid-v11-extraction/v13/out-a/extraction-receipt.json
+          if-no-files-found: error
+          retention-days: 30
