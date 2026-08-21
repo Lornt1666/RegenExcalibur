@@ -1,0 +1,180 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://regenexcalibur.example/schemas/declared-environmental-indicators.schema.json",
+  "title": "ProofGrid v1.1 declared environmental indicators",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "record_type",
+    "verdict",
+    "certified",
+    "calculated",
+    "unit_conversion_performed",
+    "scientific_validation_performed",
+    "professional_review_performed",
+    "source",
+    "canonical_source",
+    "frozen_map",
+    "indicator_scope",
+    "ignored_unscoped_mean_amount",
+    "rows",
+    "missing_value_policy",
+    "limitations",
+    "integrity"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "record_type": {"const": "ProofGridDeclaredEnvironmentalIndicators"},
+    "verdict": {"const": "DECLARED_ENVIRONMENTAL_INDICATORS_EXTRACTED_VERIFIABLE"},
+    "certified": {"const": false},
+    "calculated": {"const": false},
+    "unit_conversion_performed": {"const": false},
+    "scientific_validation_performed": {"const": false},
+    "professional_review_performed": {"const": false},
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256", "process_xml_sha256", "process_dataset_uuid", "format_version", "container"],
+      "properties": {
+        "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "process_xml_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "process_dataset_uuid": {"type": "string", "minLength": 1},
+        "format_version": {"enum": ["1.2", "1.3"]},
+        "container": {"enum": ["ZIP", "XML"]}
+      }
+    },
+    "canonical_source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["record_id", "content_sha256", "admission_receipt_sha256", "verdict"],
+      "properties": {
+        "record_id": {"type": "string", "minLength": 1},
+        "content_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "admission_receipt_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "verdict": {"const": "ADMITTED_ENVIRONMENTAL_SOURCE_IDENTITY_VERIFIABLE"}
+      }
+    },
+    "frozen_map": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256", "research_freeze_receipt_sha256", "catalogue_sha256"],
+      "properties": {
+        "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "research_freeze_receipt_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "catalogue_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      }
+    },
+    "indicator_scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["indicator_uuid", "code", "catalogue", "catalogue_version", "canonical_unit", "unit_group_uuid"],
+      "properties": {
+        "indicator_uuid": {"type": "string", "minLength": 1},
+        "code": {"type": "string", "minLength": 1},
+        "catalogue": {"type": "string", "minLength": 1},
+        "catalogue_version": {"type": "string", "minLength": 1},
+        "canonical_unit": {"type": "string", "minLength": 1},
+        "unit_group_uuid": {"type": "string", "minLength": 1}
+      }
+    },
+    "ignored_unscoped_mean_amount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["extracted", "lexical_value", "reason"],
+      "properties": {
+        "extracted": {"const": false},
+        "lexical_value": {"type": ["string", "null"]},
+        "reason": {"type": "string", "minLength": 1}
+      }
+    },
+    "rows": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "indicator_uuid",
+          "source_reference_version",
+          "module",
+          "scenario",
+          "value_lexical",
+          "value_decimal",
+          "value_origin",
+          "canonical_unit",
+          "unit_group_uuid",
+          "reference_unit_internal_id",
+          "reference_unit_name",
+          "reference_unit_mean_value_decimal",
+          "calculated",
+          "unit_conversion_performed",
+          "source_location"
+        ],
+        "properties": {
+          "indicator_uuid": {"type": "string", "minLength": 1},
+          "source_reference_version": {"type": ["string", "null"]},
+          "module": {"type": "string", "minLength": 1},
+          "scenario": {
+            "oneOf": [
+              {"type": "null"},
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["name", "group", "default"],
+                "properties": {
+                  "name": {"type": "string", "minLength": 1},
+                  "group": {"type": ["string", "null"]},
+                  "default": {"type": "boolean"}
+                }
+              }
+            ]
+          },
+          "value_lexical": {"type": "string", "minLength": 1},
+          "value_decimal": {"type": "string", "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$"},
+          "value_origin": {"const": "DECLARED_IN_SOURCE"},
+          "canonical_unit": {"type": "string", "minLength": 1},
+          "unit_group_uuid": {"type": "string", "minLength": 1},
+          "reference_unit_internal_id": {"type": "string", "minLength": 1},
+          "reference_unit_name": {"type": "string", "minLength": 1},
+          "reference_unit_mean_value_decimal": {"const": "1"},
+          "calculated": {"const": false},
+          "unit_conversion_performed": {"const": false},
+          "source_location": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["lcia_result_ordinal", "amount_ordinal", "path"],
+            "properties": {
+              "lcia_result_ordinal": {"type": "integer", "minimum": 1},
+              "amount_ordinal": {"type": "integer", "minimum": 1},
+              "path": {"type": "string", "minLength": 1}
+            }
+          }
+        }
+      }
+    },
+    "missing_value_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["missing_modules_are_zero", "aggregation_performed"],
+      "properties": {
+        "missing_modules_are_zero": {"const": false},
+        "aggregation_performed": {"const": false}
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["content_sha256", "canonicalization"],
+      "properties": {
+        "content_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "canonicalization": {"const": "UTF-8 JSON; sorted keys; compact separators; ensure_ascii=false"}
+      }
+    }
+  }
+}

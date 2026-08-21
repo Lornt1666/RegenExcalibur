@@ -1,0 +1,256 @@
+name: ProofGrid v1.1.1 Hardened Declared Indicators
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/proofgrid-v111-hardened-declared-indicators.yml'
+      - 'reference/declared_environmental_indicators_v111.py'
+      - 'reference/declared_environmental_indicators.py'
+      - 'tests/test_declared_environmental_indicators_v111.py'
+      - 'schemas/declared-environmental-indicators.schema.json'
+      - 'conformance/indicator-extraction-v11/**'
+      - 'requirements-proofgrid.txt'
+      - 'requirements-proofgrid-v07.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hardened-declared-indicators:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v6.1.0
+
+      - name: Setup Python 3.11.16
+        uses: actions/setup-python@v6.0.0
+        with:
+          python-version: '3.11.16'
+
+      - name: Install exact ProofGrid dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-proofgrid.txt
+          python -m pip install -r requirements-proofgrid-v07.txt
+          python -m pip check
+
+      - name: Run hardened parent and extraction suites
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest -v \
+            tests.test_declared_environmental_indicators_v111 \
+            tests.test_environmental_source_identity
+
+      - name: Checkout pinned InData v1.2 source
+        uses: actions/checkout@v6.1.0
+        with:
+          repository: InDataWG/ILCD-EPD-Data-Format
+          ref: b7233bd2dd5435a6b5973505ffa212cd03d23468
+          path: .proofgrid-upstream/indata-v12
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Checkout pinned InData v1.3 source
+        uses: actions/checkout@v6.1.0
+        with:
+          repository: InDataWG/ILCD-EPD-Data-Format
+          ref: 7625c7dfc0d5b6bc2020eb0cf0b0503349c914aa
+          path: .proofgrid-upstream/indata-v13
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Stage pinned examples through v0.9.1 and v1.0.1 hardened controls
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import json, zipfile
+          from tests.test_declared_environmental_indicators_v111 import hardened_chain
+          from reference import environmental_admission_v091 as admission
+
+          def write_zip_entry(zf, name, data):
+              info=zipfile.ZipInfo(name)
+              info.date_time=(1980,1,1,0,0,0)
+              info.compress_type=zipfile.ZIP_STORED
+              info.external_attr=0o100644 << 16
+              zf.writestr(info,data)
+
+          root=Path('/tmp/proofgrid-v111')
+          root.mkdir(parents=True,exist_ok=True)
+
+          v12=root/'v12'; v12.mkdir()
+          raw12=Path('.proofgrid-upstream/indata-v12/sample_data/processes/57a4ae65-d305-421e-b21f-a3f0c35b8abe.xml').read_bytes()
+          source12=v12/'source.zip'
+          with zipfile.ZipFile(source12,'w',compression=zipfile.ZIP_STORED) as zf:
+              write_zip_entry(zf,'ILCD/processes/57a4ae65-d305-421e-b21f-a3f0c35b8abe.xml',raw12)
+          pre12,conf12,adm12,canon12=hardened_chain(source12,'application/zip','1.2')
+          assert canon12['conformance']['official_stack']==admission.EXPECTED_V12_STACK
+          assert canon12['conformance']['official_stack_sha256']==admission.EXPECTED_V12_STACK_SHA256
+          for name,obj in [('preflight',pre12),('conformance',conf12),('admission',adm12),('canonical-source-identity',canon12)]:
+              (v12/f'{name}.json').write_text(json.dumps(obj,indent=2,sort_keys=True,ensure_ascii=False)+'\n')
+
+          v13=root/'v13'; v13.mkdir()
+          source13=v13/'source.xml'
+          source13.write_bytes(Path('.proofgrid-upstream/indata-v13/sample_data/processes/EPDv1.3_example_57a4ae65-d305-421e-b21f-a3f0c35b8abe.xml').read_bytes())
+          pre13,conf13,adm13,canon13=hardened_chain(source13,'application/xml','1.3')
+          assert canon13['conformance']['profile_validation_performed'] is False
+          for name,obj in [('preflight',pre13),('conformance',conf13),('admission',adm13),('canonical-source-identity',canon13)]:
+              (v13/f'{name}.json').write_text(json.dumps(obj,indent=2,sort_keys=True,ensure_ascii=False)+'\n')
+
+          print('HARDENED_PARENT_CONTROLS=PASS')
+          print('exact_stack_sha256=', admission.EXPECTED_V12_STACK_SHA256)
+          PY
+
+      - name: Extract pinned v1.2 declared GWP-total twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT=/tmp/proofgrid-v111/v12
+          for N in a b; do
+            python reference/declared_environmental_indicators_v111.py \
+              --source "$ROOT/source.zip" \
+              --canonical-source "$ROOT/canonical-source-identity.json" \
+              --output-dir "$ROOT/out-$N"
+          done
+          diff -u "$ROOT/out-a/declared-environmental-indicators.json" "$ROOT/out-b/declared-environmental-indicators.json"
+          diff -u "$ROOT/out-a/extraction-receipt.json" "$ROOT/out-b/extraction-receipt.json"
+
+      - name: Extract pinned v1.3 declared GWP-total twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT=/tmp/proofgrid-v111/v13
+          for N in a b; do
+            python reference/declared_environmental_indicators_v111.py \
+              --source "$ROOT/source.xml" \
+              --canonical-source "$ROOT/canonical-source-identity.json" \
+              --output-dir "$ROOT/out-$N"
+          done
+          diff -u "$ROOT/out-a/declared-environmental-indicators.json" "$ROOT/out-b/declared-environmental-indicators.json"
+          diff -u "$ROOT/out-a/extraction-receipt.json" "$ROOT/out-b/extraction-receipt.json"
+
+      - name: Verify exact nine declared module scenario values and non-claims
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          expected=[
+            ('A1-A3',None,'15.559479677163699'),
+            ('D','100% recycling','3.890472762252513'),
+            ('A4','Transport to Gdansk','10.403452605105544'),
+            ('C4','100% recycling','16.861343234824155'),
+            ('C3','100% recycling','12.55722191320309'),
+            ('D','100% incineration','21.473728298846915'),
+            ('C3','100% incineration','29.83997231119644'),
+            ('A4','Transport to Berlin','10.621689444677362'),
+            ('C4','100% incineration','37.34889504407421'),
+          ]
+          for version in ('v12','v13'):
+              d=json.load(open(f'/tmp/proofgrid-v111/{version}/out-a/declared-environmental-indicators.json'))
+              r=json.load(open(f'/tmp/proofgrid-v111/{version}/out-a/extraction-receipt.json'))
+              assert d['verdict']=='DECLARED_ENVIRONMENTAL_INDICATORS_EXTRACTED_VERIFIABLE'
+              assert r['engine']['version']=='1.1.1'
+              assert len(d['rows'])==9
+              actual=[(row['module'],None if row['scenario'] is None else row['scenario']['name'],row['value_lexical']) for row in d['rows']]
+              assert actual==expected,(version,actual)
+              assert all(row['value_origin']=='DECLARED_IN_SOURCE' for row in d['rows'])
+              assert all(row['calculated'] is False for row in d['rows'])
+              assert all(row['unit_conversion_performed'] is False for row in d['rows'])
+              assert d['ignored_unscoped_mean_amount']['extracted'] is False
+              assert d['missing_value_policy']['missing_modules_are_zero'] is False
+              assert d['missing_value_policy']['aggregation_performed'] is False
+              assert d['scientific_validation_performed'] is False
+              assert d['professional_review_performed'] is False
+              assert d['certified'] is False
+              assert r['certified'] is False
+          print('HARDENED_PINNED_DECLARED_GWP_TOTAL_VALUES=PASS')
+          PY
+
+      - name: Prove post-canonical source mutation is rejected
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT=/tmp/proofgrid-v111/v13
+          cp "$ROOT/source.xml" "$ROOT/tampered.xml"
+          printf '\n' >> "$ROOT/tampered.xml"
+          if python reference/declared_environmental_indicators_v111.py \
+            --source "$ROOT/tampered.xml" \
+            --canonical-source "$ROOT/canonical-source-identity.json" \
+            --output-dir "$ROOT/should-not-exist"; then
+            echo 'tampered source unexpectedly extracted' >&2
+            exit 1
+          fi
+          echo POST_CANONICAL_SOURCE_TAMPER_REJECTED=PASS
+
+      - name: Produce v1.1.1 hardened integration receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib,json
+          from reference import environmental_admission_v091 as admission
+          root=Path('/tmp/proofgrid-v111')
+          def load(path): return json.loads(path.read_text())
+          v12=load(root/'v12/out-a/extraction-receipt.json')
+          v13=load(root/'v13/out-a/extraction-receipt.json')
+          report={
+            'verdict':'DECLARED_ENVIRONMENTAL_INDICATORS_EXTRACTED_VERIFIABLE',
+            'engine_version':'1.1.1',
+            'parent_v101_head':'12c8cf64f40a5b2006cac26ab82f2dc0a7c7be32',
+            'historical_parser_evidence_head':'2db20dc4853b18972259062f6e7f71e18d274c46',
+            'research_freeze_receipt_sha256':'2345047d8e3888ccda965754728e939eed61851b28945033355d1ddae682941f',
+            'exact_v12_stack_sha256':admission.EXPECTED_V12_STACK_SHA256,
+            'forged_v12_stack_rejected':True,
+            'legacy_v12_parent_rejected':True,
+            'v13_profile_validation_performed':False,
+            'deterministic_repeat_within_run':True,
+            'post_canonical_source_tamper_rejected':True,
+            'calculated':False,
+            'unit_conversion_performed':False,
+            'aggregation_performed':False,
+            'missing_modules_are_zero':False,
+            'scientific_validation_performed':False,
+            'professional_review_performed':False,
+            'certified':False,
+            'v12':{
+              'extraction_receipt_sha256':v12['receipt_sha256'],
+              'record_content_sha256':v12['record_content_sha256'],
+              'record_file_sha256':v12['record_file_sha256'],
+              'row_count':v12['row_count']},
+            'v13':{
+              'extraction_receipt_sha256':v13['receipt_sha256'],
+              'record_content_sha256':v13['record_content_sha256'],
+              'record_file_sha256':v13['record_file_sha256'],
+              'row_count':v13['row_count']},
+            'limitations':[
+              'The v1.1.1 scope is limited to the frozen EF3.0 GWP-total identity and explicit EPD/2013 module amount declarations.',
+              'Values are document-content evidence only; no scientific validity, professional review, programme-operator/BBSR approval, source-rights expansion, or certification is established.'
+            ]}
+          raw=json.dumps(report,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()
+          report['receipt_sha256']=hashlib.sha256(raw).hexdigest()
+          (root/'v111-integration-receipt.json').write_text(json.dumps(report,indent=2,sort_keys=True,ensure_ascii=False)+'\n')
+          print(json.dumps(report,indent=2,sort_keys=True,ensure_ascii=False))
+          PY
+
+      - name: Retain hardened declared-value records and receipts only
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v111-hardened-declared-indicators
+          path: |
+            /tmp/proofgrid-v111/v111-integration-receipt.json
+            /tmp/proofgrid-v111/v12/canonical-source-identity.json
+            /tmp/proofgrid-v111/v12/out-a/declared-environmental-indicators.json
+            /tmp/proofgrid-v111/v12/out-a/extraction-receipt.json
+            /tmp/proofgrid-v111/v13/canonical-source-identity.json
+            /tmp/proofgrid-v111/v13/out-a/declared-environmental-indicators.json
+            /tmp/proofgrid-v111/v13/out-a/extraction-receipt.json
+          if-no-files-found: error
+          retention-days: 30
