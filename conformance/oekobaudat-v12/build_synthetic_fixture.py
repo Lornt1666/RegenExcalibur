@@ -30,12 +30,11 @@ START_PROCESS_UUID = "57a4ae65-d305-421e-b21f-a3f0c35b8abe"
 SYNTHETIC_PROCESS_UUID = "6b47f4cf-0bc4-4e0d-b9fd-9d5f845d1de0"
 SYNTHETIC_REGISTRATION_NUMBER = "RX-PROOFGRID-V08-SYNTH-001"
 
-# This is one of the exact programme-operator UUIDs accepted by ÖKOBAUDAT
-# profile 3.8.0. It is used only as a synthetic profile-conformance identifier.
-# It does not state affiliation, approval, registration, or source-use authority.
+# One of the exact programme-operator UUIDs accepted by ÖKOBAUDAT profile 3.8.0.
+# It is used only as a synthetic profile-conformance identifier and does not
+# state affiliation, approval, registration, publisher authority, or permission.
 PROFILE_ALLOWED_OPERATOR_UUID = "d111dbec-b024-4be5-86c5-752d6eb2cf95"
 PROFILE_ALLOWED_OPERATOR_NAME = "Institut Bauen und Umwelt e.V."
-
 PROFILE_CATEGORIES_RESOURCE = "edu/kit/iai/lca/epd/categories/OEKOBAU.DAT_Categories.xml"
 
 
@@ -104,6 +103,10 @@ def build_index(sample_root: Path, master_root: Path) -> dict[str, dict[str, Any
     return index
 
 
+def stable_source_label(path: Path, root: Path, prefix: str) -> str:
+    return f"{prefix}:{path.resolve().relative_to(root.resolve()).as_posix()}"
+
+
 def copy_reference_closure(sample_root: Path, master_root: Path, package_root: Path) -> dict[str, Any]:
     index = build_index(sample_root, master_root)
     require(START_PROCESS_UUID in index, "pinned Wood panel process is not present in source index")
@@ -125,6 +128,8 @@ def copy_reference_closure(sample_root: Path, master_root: Path, package_root: P
             continue
 
         src: Path = row["path"]
+        source_root: Path = row["source_root"]
+        source_prefix = "indata-v12-sample" if source_root.resolve() == sample_root.resolve() else "indata-master"
         dest = package_root / type_dir(row["kind"]) / src.name
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src, dest)
@@ -133,8 +138,8 @@ def copy_reference_closure(sample_root: Path, master_root: Path, package_root: P
             {
                 "uuid": uuid,
                 "kind": row["kind"],
-                "source": str(src),
-                "dest": str(dest.relative_to(package_root.parent)),
+                "source": stable_source_label(src, source_root, source_prefix),
+                "dest": str(dest.relative_to(package_root.parent).as_posix()),
                 "sha256": sha256_file(src),
             }
         )
@@ -188,8 +193,8 @@ def copy_reference_closure(sample_root: Path, master_root: Path, package_root: P
                 copied_digital.append(
                     {
                         "reference": rel_text,
-                        "source": str(original),
-                        "dest": str(target.relative_to(package_root.parent)),
+                        "source": stable_source_label(original, sample_root, "indata-v12-sample"),
+                        "dest": str(target.relative_to(package_root.parent).as_posix()),
                         "sha256": sha256_file(original),
                     }
                 )
@@ -280,8 +285,8 @@ def mutate_process(process_path: Path, category_path: list[dict[str, str]]) -> d
         if local_name(child.tag) == "classification":
             class_info.remove(child)
 
-    # Public InData v1.2 examples use the classification name `oekobau.dat`.
-    # The selected path is drawn from the exact 3.8.0 profile category resource.
+    # Public InData v1.2 examples use classification name `oekobau.dat`.
+    # The selected path comes from the exact 3.8.0 profile category resource.
     classification = ET.SubElement(class_info, f"{{{COMMON_NS}}}classification", {"name": "oekobau.dat"})
     for level, entry in enumerate(category_path):
         cls = ET.SubElement(
@@ -337,6 +342,18 @@ def create_synthetic_operator_contact(source_contact: Path, target_contact: Path
     for node in root.iter():
         if local_name(node.tag) in {"shortName", "name"}:
             node.text = PROFILE_ALLOWED_OPERATOR_NAME
+        elif local_name(node.tag) == "contactDescription":
+            node.text = (
+                "Synthetic local profile-conformance placeholder. The standard programme-operator UUID/name is used only as an interoperability identifier; no affiliation, approval, registration, address, or contact authority is claimed."
+            )
+
+    # Remove cloned contact/address channels so the synthetic placeholder does
+    # not associate the real programme-operator name with fake Swift details.
+    removable = {"contactAddress", "email", "wwwAddress", "phone", "fax", "faxNumber"}
+    for parent in root.iter():
+        for child in list(parent):
+            if local_name(child.tag) in removable:
+                parent.remove(child)
 
     version = next((x for x in root.iter() if local_name(x.tag) == "dataSetVersion"), None)
     if version is not None:
@@ -347,7 +364,7 @@ def create_synthetic_operator_contact(source_contact: Path, target_contact: Path
     return {
         "uuid": PROFILE_ALLOWED_OPERATOR_UUID,
         "display_name": PROFILE_ALLOWED_OPERATOR_NAME,
-        "fixture_semantics": "Synthetic local link-resolution placeholder using a profile-allowed identifier only; no affiliation, approval, registration, or authority is claimed.",
+        "fixture_semantics": "Synthetic local link-resolution placeholder using a profile-allowed identifier only; no affiliation, approval, registration, address, contact authority, or source-use permission is claimed.",
         "sha256": sha256_file(target_contact),
     }
 
@@ -379,16 +396,16 @@ def build(sample_root: Path, master_root: Path, profile_jar: Path, output_root: 
     require(original_operator.is_file(), "closure did not include base Swift contact")
     synthetic_operator = package_root / "contacts" / f"{PROFILE_ALLOWED_OPERATOR_UUID}.xml"
     operator_receipt = create_synthetic_operator_contact(original_operator, synthetic_operator)
-    # Retain the original Swift contact because public source-document datasets
-    # in the recursive closure still reference it independently of the process's
-    # registration-authority/publisher fields.
+    # Retain original Swift contact because a separate public source dataset in
+    # the closure still references it; only the process registration/publisher
+    # path is redirected to the synthetic allowed-operator placeholder.
 
     files: list[dict[str, Any]] = []
     for path in sorted(output_root.rglob("*")):
         if path.is_file():
             files.append(
                 {
-                    "path": str(path.relative_to(output_root)),
+                    "path": str(path.relative_to(output_root).as_posix()),
                     "sha256": sha256_file(path),
                     "size": path.stat().st_size,
                 }
@@ -397,7 +414,7 @@ def build(sample_root: Path, master_root: Path, profile_jar: Path, output_root: 
     receipt: dict[str, Any] = {
         "builder": {
             "name": "ProofGrid v0.8 synthetic ÖKOBAUDAT fixture builder",
-            "version": "0.8.0-iteration-2",
+            "version": "0.8.0",
         },
         "source": {
             "indata_v12_process_uuid": START_PROCESS_UUID,
@@ -416,7 +433,8 @@ def build(sample_root: Path, master_root: Path, profile_jar: Path, output_root: 
         "output_files": files,
         "limitations": [
             "This is a synthetic non-production profile-conformance fixture, not a real Environmental Product Declaration.",
-            "Use of a profile-allowed programme-operator identifier is solely an interoperability test input and does not state affiliation, registration, approval, publisher authority, or source-use permission.",
+            "Use of a profile-allowed programme-operator identifier is solely an interoperability test input and does not state affiliation, registration, approval, publisher authority, contact details, or source-use permission.",
+            "Profile warnings are retained rather than filled with invented environmental values solely to silence warnings.",
             "Passing a validation profile would not establish scientific validity, product representativeness, BBSR plausibility approval, professional LCA review, or certification.",
         ],
     }
