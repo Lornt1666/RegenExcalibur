@@ -1,0 +1,217 @@
+name: ProofGrid v1.8 Contribution Set Admission
+
+on:
+  pull_request:
+    paths:
+      - "reference/environmental_contribution_set.py"
+      - "schemas/environmental-contribution-set-request.schema.json"
+      - "schemas/environmental-contribution-set.schema.json"
+      - "tests/test_environmental_contribution_set.py"
+      - "conformance/environmental-contribution-set-v18/**"
+      - ".github/workflows/proofgrid-v18-contribution-set.yml"
+      - "requirements-proofgrid.txt"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  contribution-set-admission:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      V17_ARTIFACT_ID: "9461745262"
+      V17_ZIP_SHA256: "f6f6ce536edc1a8997538b688663a3b82913a32cb23bad752b972169e379b861"
+      V16_ARTIFACT_ID: "9461315121"
+      V16_ZIP_SHA256: "ced27bed9f4debfe210d0abb7f44b0f573587884d2318358b5c670d4d3269917"
+
+    steps:
+      - uses: actions/checkout@v6.1.0
+
+      - uses: actions/setup-python@v6.0.0
+        with:
+          python-version: "3.11.16"
+          check-latest: false
+
+      - name: Install exact ProofGrid dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-proofgrid.txt
+          python -m pip check
+
+      - name: Run v1.8 fail-closed unit suite
+        run: |
+          set -euo pipefail
+          python -m unittest -v tests.test_environmental_contribution_set
+
+      - name: Download exact accepted v1.7 and v1.6 artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/proofgrid-v18/{v17,v16,evidence}
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V17_ARTIFACT_ID}/zip" > /tmp/proofgrid-v18/v17.zip
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V16_ARTIFACT_ID}/zip" > /tmp/proofgrid-v18/v16.zip
+          echo "${V17_ZIP_SHA256}  /tmp/proofgrid-v18/v17.zip" | sha256sum -c -
+          echo "${V16_ZIP_SHA256}  /tmp/proofgrid-v18/v16.zip" | sha256sum -c -
+          unzip -q /tmp/proofgrid-v18/v17.zip -d /tmp/proofgrid-v18/v17
+          unzip -q /tmp/proofgrid-v18/v16.zip -d /tmp/proofgrid-v18/v16
+          cp /tmp/proofgrid-v18/v17/out-a/rxep-exact-decimal-calculated-contribution.json /tmp/proofgrid-v18/evidence/rxep.json
+          cp /tmp/proofgrid-v18/v17/out-a/rxep-exact-decimal-calculated-contribution-receipt.json /tmp/proofgrid-v18/evidence/rxep-receipt.json
+          cp /tmp/proofgrid-v18/v16/out-a/mapped-declared-result-calculation.json /tmp/proofgrid-v18/evidence/calc.json
+          cp /tmp/proofgrid-v18/v16/out-a/mapped-declared-result-calculation-receipt.json /tmp/proofgrid-v18/evidence/calc-receipt.json
+
+      - name: Build exact one-member PARTIAL set request
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('/tmp/proofgrid-v18/evidence/request.json')
+          request={
+            'schema_version':'1.0',
+            'request_version':'1.8.0',
+            'set_id':'proofgrid-v18-synthetic-partial-set',
+            'scope_id':'ifc:1BXL7DJx51bvggyIPU2Xi5',
+            'completeness_status':'PARTIAL',
+            'compatibility':{
+              'indicator_code':'GWP-total',
+              'indicator_uuid':'6a37f984-a4b3-458a-a20a-64418c145fa2',
+              'unit':'kg CO2 eqv.',
+              'module':'A1-A3',
+              'scenario':None,
+            },
+            'members':[{
+              'member_id':'member-001',
+              'rxep_record_path':'rxep.json',
+              'rxep_record_content_sha256':'4e09bb1db2dd54fe5c5f41fd52200482fa9c8d98e3de5a77061e26b4751729a5',
+              'rxep_record_file_sha256':'6a6d134b04855b57a99a1e8e68a2f592d67a2798f28facce88c5f052e6fce975',
+              'rxep_receipt_path':'rxep-receipt.json',
+              'rxep_receipt_sha256':'9558052d043578b9b3a603793e28ee95e11e38f782bc89ee54f7f26abdb12385',
+              'rxep_receipt_file_sha256':'7a7ac8b4f5d66ed9a1473c141a67dd1f57871a34d3078fbb41b6748e85566a9b',
+              'calculation_record_path':'calc.json',
+              'calculation_record_content_sha256':'1eff779368d48de3a9c637d0a9298788487c67480d6134c18302af1bacf7848e',
+              'calculation_record_file_sha256':'69921546aa24dd6e0e950964aa3e9bc8bd962f14ab6855f868a5fa8ed639e8d7',
+              'calculation_receipt_path':'calc-receipt.json',
+              'calculation_receipt_sha256':'486c4a9e133bf88ec563215649acdf991c4806a31751ddd6895acbac86615af8',
+              'calculation_receipt_file_sha256':'a21dbe86fce8eb707fc09b57f5638b8d8d1bcb99ae8712fb16fae2d2f894e69f',
+            }],
+          }
+          p.write_text(json.dumps(request,indent=2,sort_keys=True)+'\n',encoding='utf-8',newline='\n')
+          PY
+
+      - name: Admit exact contribution set twice
+        run: |
+          set -euo pipefail
+          for R in a b; do
+            python reference/environmental_contribution_set.py \
+              --request /tmp/proofgrid-v18/evidence/request.json \
+              --output-dir "/tmp/proofgrid-v18/out-${R}"
+          done
+          diff -u /tmp/proofgrid-v18/out-a/environmental-contribution-set.json /tmp/proofgrid-v18/out-b/environmental-contribution-set.json
+          diff -u /tmp/proofgrid-v18/out-a/environmental-contribution-set-receipt.json /tmp/proofgrid-v18/out-b/environmental-contribution-set-receipt.json
+
+      - name: Assert bounded PARTIAL membership semantics
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.loads(Path('/tmp/proofgrid-v18/out-a/environmental-contribution-set.json').read_text())
+          assert r['verdict']=='ENVIRONMENTAL_CONTRIBUTION_SET_ADMISSION_VERIFIABLE'
+          assert r['member_count']==1
+          assert r['completeness_status']=='PARTIAL'
+          assert r['aggregation_performed'] is False
+          assert r['sum_performed'] is False
+          assert r['missing_contributions_are_zero'] is False
+          assert r['missing_modules_are_zero'] is False
+          assert r['unit_conversion_performed'] is False
+          assert r['scenario_inference_performed'] is False
+          assert r['duplicate_members_permitted'] is False
+          m=r['members'][0]
+          i=m['semantic_identity']
+          assert i['ifc_source_sha256']=='23046f33df40fae4354fd085c2d72c6c9eaab3a45b2d46e77d8f9531041954c6'
+          assert i['element_global_id']=='1BXL7DJx51bvggyIPU2Xi5'
+          assert i['product_flow_uuid']=='a7432abd-0881-4977-a817-f8aaf627fb91'
+          assert i['product_flow_version']=='00.00.001'
+          assert i['indicator_uuid']=='6a37f984-a4b3-458a-a20a-64418c145fa2'
+          assert i['module']=='A1-A3'
+          assert i['scenario'] is None
+          assert i['value_decimal']=='15559.479677163699'
+          assert i['unit']=='kg CO2 eqv.'
+          PY
+
+      - name: Reject exact duplicate and completeness promotion
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import copy,json
+          from pathlib import Path
+          base=json.loads(Path('/tmp/proofgrid-v18/evidence/request.json').read_text())
+          dup=copy.deepcopy(base['members'][0]); dup['member_id']='member-002'
+          d=copy.deepcopy(base); d['members'].append(dup)
+          Path('/tmp/proofgrid-v18/evidence/duplicate.json').write_text(json.dumps(d,indent=2,sort_keys=True)+'\n')
+          c=copy.deepcopy(base); c['completeness_status']='DECLARED_SCOPE_COMPLETE'
+          Path('/tmp/proofgrid-v18/evidence/complete.json').write_text(json.dumps(c,indent=2,sort_keys=True)+'\n')
+          PY
+          if python reference/environmental_contribution_set.py --request /tmp/proofgrid-v18/evidence/duplicate.json --output-dir /tmp/proofgrid-v18/negative-dup; then
+            echo 'duplicate member unexpectedly accepted' >&2; exit 1
+          else
+            echo 'DUPLICATE_MEMBER_REJECTED=PASS'
+          fi
+          if python reference/environmental_contribution_set.py --request /tmp/proofgrid-v18/evidence/complete.json --output-dir /tmp/proofgrid-v18/negative-complete; then
+            echo 'completeness promotion unexpectedly accepted' >&2; exit 1
+          else
+            echo 'COMPLETENESS_PROMOTION_REJECTED=PASS'
+          fi
+
+      - name: Produce v1.8 integration receipt
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          root=Path('/tmp/proofgrid-v18')
+          record=json.loads((root/'out-a/environmental-contribution-set.json').read_text())
+          receipt=json.loads((root/'out-a/environmental-contribution-set-receipt.json').read_text())
+          out={
+            'verdict':'ENVIRONMENTAL_CONTRIBUTION_SET_ADMISSION_VERIFIABLE',
+            'accepted_v17_head':'d21d9eb16f8394e6a78352bec58c025b7a31fcb3',
+            'set_id':record['set_id'],
+            'scope_id':record['scope_id'],
+            'completeness_status':'PARTIAL',
+            'member_count':1,
+            'record_content_sha256':record['integrity']['content_sha256'],
+            'record_file_sha256':hashlib.sha256((root/'out-a/environmental-contribution-set.json').read_bytes()).hexdigest(),
+            'set_receipt_sha256':receipt['receipt_sha256'],
+            'set_receipt_file_sha256':hashlib.sha256((root/'out-a/environmental-contribution-set-receipt.json').read_bytes()).hexdigest(),
+            'member_semantic_identity_sha256':record['members'][0]['semantic_identity_sha256'],
+            'repeat_within_run_byte_identical':True,
+            'exact_duplicate_rejected':True,
+            'semantic_duplicate_rejected_by_unit_suite':True,
+            'compatibility_mismatches_rejected_by_unit_suite':True,
+            'completeness_promotion_rejected':True,
+            'aggregation_performed':False,
+            'sum_performed':False,
+            'missing_contributions_are_zero':False,
+            'unit_conversion_performed':False,
+            'scenario_inference_performed':False,
+            'certified':False,
+          }
+          out['receipt_sha256']=hashlib.sha256(json.dumps(out,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()
+          (root/'v18-integration-receipt.json').write_text(json.dumps(out,indent=2,sort_keys=True)+'\n',encoding='utf-8',newline='\n')
+          print(json.dumps(out,indent=2,sort_keys=True))
+          PY
+
+      - name: Retain bounded v1.8 membership evidence only
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v18-contribution-set-admission
+          path: |
+            /tmp/proofgrid-v18/evidence/request.json
+            /tmp/proofgrid-v18/out-a/environmental-contribution-set.json
+            /tmp/proofgrid-v18/out-a/environmental-contribution-set-receipt.json
+            /tmp/proofgrid-v18/v18-integration-receipt.json
+          if-no-files-found: error
+          retention-days: 30
