@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
-"""ProofGrid / RX Evidence Fabric v0.3 reference verifier.
+"""ProofGrid / RX Evidence Fabric v0.3.1 reference verifier.
 
 v0.3 adds a provenance-controlled LCA/EPD source registry. Material quantities
 reference exact source-record IDs; no fuzzy matching or implicit unit conversion
 is allowed. Compatible lifecycle boundaries and indicator units are enforced
 before deterministic calculation.
+
+v0.3.1 canonicalizes repository-relative receipt paths to POSIX form so the
+same verified inputs and method serialize identically across operating systems.
+The calculation method remains v0.3.0.
 
 The IFC subcommand remains read-only and uses IfcOpenShell for structural parsing.
 """
@@ -23,7 +27,7 @@ from typing import Any
 from jsonschema import Draft202012Validator, SchemaError
 
 ENGINE_NAME = "RegenExcalibur ProofGrid Reference Verifier"
-ENGINE_VERSION = "0.3.0"
+ENGINE_VERSION = "0.3.1"
 METHOD_NAME = "registry_resolved_material_gwp"
 METHOD_VERSION = "0.3.0"
 QUANT = Decimal("0.000001")
@@ -54,6 +58,11 @@ def sha256_bytes(data: bytes) -> str:
 
 def sha256_file(path: Path) -> str:
     return sha256_bytes(path.read_bytes())
+
+
+def repo_relative_posix(path: Path) -> str:
+    """Serialize repository-relative paths canonically, independent of host OS."""
+    return path.relative_to(REPO_ROOT).as_posix()
 
 
 def load_json(path: Path) -> Any:
@@ -303,10 +312,10 @@ def build_evidence(project_dir: Path) -> tuple[dict[str, Any], dict[str, Any]]:
         "project_id": str(project["id"]),
         "schema_validation": {
             "draft": "2020-12",
-            "project": str(BUILDING_SCHEMA.relative_to(REPO_ROOT)),
-            "materials": str(MATERIALS_SCHEMA.relative_to(REPO_ROOT)),
-            "lca_sources": str(LCA_SOURCES_SCHEMA.relative_to(REPO_ROOT)),
-            "evidence": str(EVIDENCE_SCHEMA.relative_to(REPO_ROOT)),
+            "project": repo_relative_posix(BUILDING_SCHEMA),
+            "materials": repo_relative_posix(MATERIALS_SCHEMA),
+            "lca_sources": repo_relative_posix(LCA_SOURCES_SCHEMA),
+            "evidence": repo_relative_posix(EVIDENCE_SCHEMA),
         },
         "lca_registry": {
             "path": "lca-sources.json",
@@ -354,7 +363,7 @@ def write_outputs(project_dir: Path, output_dir: Path) -> dict[str, Any]:
 <html lang=\"en\"><meta charset=\"utf-8\">
 <title>ProofGrid Verification — {project_name}</title>
 <body>
-<h1>RegenExcalibur ProofGrid v0.3</h1>
+<h1>RegenExcalibur ProofGrid {html.escape(ENGINE_VERSION)}</h1>
 <h2>{project_name}</h2>
 <p><strong>RESULT: VERIFIABLE — NOT CERTIFIED</strong></p>
 <p>Calculated sample material GWP: <strong>{total} kgCO2e</strong></p>
