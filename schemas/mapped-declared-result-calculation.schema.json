@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://regenexcalibur.example/schemas/mapped-declared-result-calculation.schema.json",
+  "title": "ProofGrid v1.6 mapped declared-result scaled contribution",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "record_type", "verdict", "calculation_scope", "inputs", "selection", "calculation", "calculation_performed", "aggregation_performed", "missing_modules_are_zero", "unit_conversion_performed", "scenario_inference_performed", "fuzzy_mapping_performed", "scientific_validation_performed", "professional_review_performed", "certified", "limitations", "integrity"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "record_type": {"const": "ProofGridMappedDeclaredResultCalculation"},
+    "verdict": {"const": "MAPPED_DECLARED_RESULT_SCALED_VERIFIABLE"},
+    "calculation_scope": {"const": "SINGLE_MAPPED_DECLARED_RESULT_ROW"},
+    "inputs": {"type": "object"},
+    "selection": {"type": "object"},
+    "calculation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method", "version", "formula", "mapped_quantity", "reference_quantity", "declared_result", "scale_factor_decimal", "scaled_result_decimal", "scaled_result_unit"],
+      "properties": {
+        "method": {"const": "exact_decimal_reference_basis_scaling"},
+        "version": {"const": "1.6.0"},
+        "formula": {"const": "(mapped_quantity / declaration_reference_quantity) * declared_environmental_result"},
+        "mapped_quantity": {"$ref": "#/$defs/quantity"},
+        "reference_quantity": {"$ref": "#/$defs/quantity"},
+        "declared_result": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["value_lexical", "value_decimal", "unit", "value_origin", "source_calculated", "source_unit_conversion_performed"],
+          "properties": {
+            "value_lexical": {"type": "string", "minLength": 1},
+            "value_decimal": {"$ref": "#/$defs/decimal"},
+            "unit": {"type": "string", "minLength": 1},
+            "value_origin": {"const": "DECLARED_IN_SOURCE"},
+            "source_calculated": {"const": false},
+            "source_unit_conversion_performed": {"const": false}
+          }
+        },
+        "scale_factor_decimal": {"$ref": "#/$defs/decimal"},
+        "scaled_result_decimal": {"$ref": "#/$defs/decimal"},
+        "scaled_result_unit": {"type": "string", "minLength": 1}
+      }
+    },
+    "calculation_performed": {"const": true},
+    "aggregation_performed": {"const": false},
+    "missing_modules_are_zero": {"const": false},
+    "unit_conversion_performed": {"const": false},
+    "scenario_inference_performed": {"const": false},
+    "fuzzy_mapping_performed": {"const": false},
+    "scientific_validation_performed": {"const": false},
+    "professional_review_performed": {"const": false},
+    "certified": {"const": false},
+    "limitations": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["content_sha256", "canonicalization", "signature"],
+      "properties": {
+        "content_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "canonicalization": {"const": "UTF-8 JSON; sorted keys; compact separators; ensure_ascii=false"},
+        "signature": {"type": "null"}
+      }
+    }
+  },
+  "$defs": {
+    "decimal": {"type": "string", "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$"},
+    "quantity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value_lexical", "value_decimal", "unit"],
+      "properties": {
+        "value_lexical": {"type": "string", "minLength": 1},
+        "value_decimal": {"$ref": "#/$defs/decimal"},
+        "unit": {"const": "kg"}
+      }
+    }
+  }
+}
