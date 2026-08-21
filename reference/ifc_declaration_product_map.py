@@ -172,8 +172,11 @@ def map_product(
 
     validate_schema(extraction, IFC_SCHEMA, "IFC extraction")
     validate_schema(mapping_artifact, MAPPING_SCHEMA, "explicit mapping artifact")
-    verify_bundle(bundle, bundle_raw, bundle_receipt)
-    verify_basis_parent(bundle, basis, basis_raw, basis_receipt)
+    try:
+        verify_bundle(bundle, bundle_raw, bundle_receipt)
+        verify_basis_parent(bundle, basis, basis_raw, basis_receipt)
+    except v14.BundleError as exc:
+        raise ProductMappingError(str(exc)) from exc
     declaration = resolve_declaration(bundle, bundle_receipt, basis, basis_receipt)
 
     mapping = mapping_artifact["mapping"]
