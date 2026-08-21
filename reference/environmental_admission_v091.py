@@ -18,8 +18,12 @@ from pathlib import Path
 import sys
 from typing import Any
 
-from reference import environmental_admission as base
-from reference import source_import
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from reference import environmental_admission as base  # noqa: E402
+from reference import source_import  # noqa: E402
 
 ENGINE_NAME = "RegenExcalibur ProofGrid Environmental Declaration Admission"
 ENGINE_VERSION = "0.9.1"
