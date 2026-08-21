@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<processDataSet xmlns="http://lca.jrc.it/ILCD/Process"
+                xmlns:common="http://lca.jrc.it/ILCD/Common"
+                xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                version="1.1"
+                locations="../locations/ILCDLocations.xml">
+  <processInformation>
+    <dataSetInformation>
+      <common:UUID>00000000-0000-0000-0000-000000000701</common:UUID>
+      <name>
+        <baseName xml:lang="en">ProofGrid deliberately incomplete ILCD+EPD profile fixture</baseName>
+      </name>
+    </dataSetInformation>
+  </processInformation>
+</processDataSet>
