@@ -1,60 +1,89 @@
-# RegenExcalibur ProofGrid / RX Evidence Fabric — Architecture v0.4
+# RegenExcalibur ProofGrid / RX Evidence Fabric — Architecture v0.5
 
 ## Mission
 
-Make built-environment claims independently inspectable without pretending that software integrity equals scientific validity, professional review, or certification.
+Make built-environment claims independently inspectable without pretending that software integrity equals scientific validity, professional review, regulatory approval, or certification.
 
-## v0.4 execution kernel
+## v0.5 execution kernel
 
 ```text
-ENVIRONMENTAL EVIDENCE PATH
+ENVIRONMENTAL SOURCE PATH
 
-project.json ───────────────┐
-materials.json ─────────────┼─ Draft 2020-12 schema validation ─┐
-lca-sources.json ───────────┘                                   │
-source content files ─ SHA-256 provenance validation ───────────┤
-                                                                │
-exact material identity + source_record_id resolution ──────────┤
-exact unit match + compatible lifecycle boundary/indicator ─────┤
-                                                                ↓
-                                                deterministic GWP calculation
-                                                                ↓
-                                                     RX evidence envelope
-                                                                ↓
-                                         registry/source/evidence integrity receipt
+lca-sources.json + referenced source bytes
+    ↓
+Draft 2020-12 validation
+    ↓
+source identity/conflict checks
+    ↓
+source-content SHA-256 verification
+    ↓
+provenance-controlled source-record index
 
 IFC DECLARED-DATA PATH
 
 IFC (.ifc)
-   ↓
-IfcOpenShell parser
-   ↓
-source SHA-256 + IFC schema + project unit context
-   ↓
+    ↓
+pinned IfcOpenShell parser
+    ↓
+source IFC SHA-256 + IFC schema + project unit context
+    ↓
 project/site/building/storey/space hierarchy
-   ↓
-IfcMaterial associations + IfcElementQuantity values
-   ↓
+    ↓
+IfcMaterial associations + supported IfcElementQuantity values
+    ↓
 conflict / ambiguity / missing-data warnings
-   ↓
+    ↓
 Draft 2020-12 IFC extraction artifact
 
-NO IFC→LCA LINK EXISTS IN v0.4
+EXPLICIT v0.5 MAPPING PATH
+
+reviewer-authored mapping artifact
+    │
+    ├─ source IFC SHA-256 + schema
+    ├─ element GlobalId + STEP ID + IFC type
+    ├─ material association/material STEP IDs + exact declared name
+    ├─ quantity-set/quantity STEP IDs + type + name + exact value
+    ├─ exact extracted unit declaration
+    ├─ explicit target material_identity_id
+    ├─ explicit target source_record_id
+    └─ mapping state + author + rationale
+    ↓
+Draft 2020-12 mapping validation
+    ↓
+exact resolution against IFC extraction
+    ↓
+REVIEWED mapping-state gate
+    ↓
+exact environmental source-record validation
+    ↓
+v0.5 unit-identity gate
+    ↓
+compatible indicator + lifecycle boundary
+    ↓
+deterministic mapped subtotal / total
+    ↓
+provenance-bearing mapping receipt
+
+NO FUZZY IFC MATERIAL → ENVIRONMENTAL SOURCE SELECTION
+NO GENERAL UNIT CONVERSION
+NO GEOMETRY-DERIVED QUANTITY TAKEOFF
 ```
 
-The environmental and IFC extraction paths remain deliberately separated. The next integration gate must connect extracted quantities/material identities to exact environmental source records without fuzzy matching, hidden unit conversion, or silent ambiguity resolution.
+The key architectural change in v0.5 is that the IFC and environmental paths may now meet, but the bridge is an **explicit evidence artifact**, not an inference engine. A string such as `Concrete` never chooses an environmental factor by itself.
 
 ## Architectural layers
 
 1. **Constitution** — safety, truth, authority, privacy, reversibility, accountability.
-2. **Schema / Protocol** — RXEP and canonical building/material/environmental-source/IFC-extraction structures.
-3. **Source provenance** — exact source records, source-content hashes, units, boundaries, versions, verification state, licensing metadata.
-4. **IFC evidence extraction** — source hash, spatial hierarchy, units, declared quantities, material associations, warnings.
-5. **Adapters** — IfcOpenShell plus future authorized EPD/LCA database connectors.
-6. **Deterministic engine** — auditable calculations independent of generative AI.
-7. **Evidence graph** — provenance-bearing machine-readable artifacts.
-8. **Orchestration** — existing cloud/agent systems may automate workflows without changing evidence semantics.
-9. **Commercial applications** — hosted collaboration, jurisdiction packs, integrations, services.
+2. **Schema / Protocol** — RXEP and canonical building/material/environmental-source/IFC-extraction/mapping structures.
+3. **Source provenance** — exact environmental source records, source-content hashes, units, boundaries, versions, verification state, and licensing metadata.
+4. **IFC evidence extraction** — source hash, spatial hierarchy, units, declared quantities, material associations, and warnings.
+5. **Explicit mapping evidence** — reviewed mapping records that bind exact IFC identities to exact environmental source-record identities.
+6. **Adapters** — pinned IfcOpenShell plus future authorized EPD/LCA database connectors.
+7. **Deterministic engines** — auditable calculations and mapping validation independent of generative AI.
+8. **Evidence graph / receipts** — provenance-bearing machine-readable artifacts.
+9. **Reproduction** — clean-environment known-answer reproduction with retained receipts.
+10. **Orchestration** — cloud/agent systems may automate workflows without changing evidence semantics or approval boundaries.
+11. **Commercial applications** — hosted collaboration, jurisdiction packs, integrations, and services.
 
 ## Cloud-neutral rule
 
@@ -62,21 +91,19 @@ The protocol and reference verifier must run locally without requiring a paid cl
 
 ## Deterministic-core rule
 
-Numeric evidence used for verification must be produced by deterministic code or an explicitly declared numerical method. AI may assist with extraction, mapping, and explanation, but inferred outputs must not be silently presented as deterministic facts.
+Numeric evidence used for verification must be produced by deterministic code or an explicitly declared numerical method. AI may assist with preparation, explanation, or proposed mappings, but an inferred output must never be silently promoted to a deterministic fact or approved mapping.
 
 ## Environmental source-selection rule
 
-Environmental factors may enter the deterministic GWP calculation only through an exact source-record ID and exact material-identity match. ProofGrid does not perform fuzzy factor selection.
+Environmental factors may enter a deterministic calculation only through an exact source-record ID and matching environmental material identity. ProofGrid does not perform fuzzy factor selection.
 
-## Environmental unit rule
-
-The v0.3/v0.4 environmental calculation performs no implicit unit conversion. A material quantity unit must exactly match the selected environmental source record's declared unit.
+In v0.5, the target source-record ID is supplied by the mapping artifact and then validated. The engine does not derive that ID from the IFC material name.
 
 ## IFC quantity rule
 
-ProofGrid v0.4 extracts only quantities explicitly declared through supported `IfcElementQuantity` subtypes. Geometry-derived values are not produced in this slice.
+ProofGrid extracts only quantities explicitly declared through supported `IfcElementQuantity` subtypes. Geometry-derived values are not produced by the v0.4/v0.5 conformance path.
 
-Each declared quantity retains:
+Each supported declared quantity retains:
 
 - quantity-set name and STEP ID;
 - quantity name and STEP ID;
@@ -85,44 +112,135 @@ Each declared quantity retains:
 - explicit quantity unit or project unit context when available;
 - `value_source = declared_ifc_element_quantity`.
 
-## IFC unit rule
+A v0.5 mapping must resolve the exact declared quantity identity and value. A changed STEP ID, type, name, value, or unit declaration fails closed.
 
-IFC values remain in their declared context. No conversion is performed. Alternate prefixes such as `MILLI` are retained in the extraction artifact rather than normalized silently.
+## v0.5 unit-identity rule
 
-## IFC material rule
+v0.5 does **not** add a general unit-conversion subsystem.
 
-Supported material relationships are preserved as IFC evidence inputs. Material names—including blank or ambiguous names—are not mapped to environmental source records by name. Ambiguity generates warnings.
+The initial conformance gate recognizes exactly one IFC unit declaration as one environmental unit identity:
 
-## Conflict rule
+```text
+IfcSIUnit
+  UnitType = MASSUNIT
+  Prefix   = KILO
+  Name     = GRAM
+          ↓
+unit identity = kg
+numerical conversion = none
+```
 
-Duplicate or conflicting declared quantities remain visible. ProofGrid emits deterministic warnings and does not choose a preferred value automatically.
+The declared numerical quantity is unchanged. Any other IFC unit identity fails this v0.5 mapping gate unless a later separately versioned conversion/identity subsystem explicitly supports it.
 
-## v0.4 acceptance gates
+## Mapping identity rule
 
-The inherited v0.3 gates remain required, plus:
+Every mapping record must bind the source IFC and exact extracted identities needed to prevent stale or accidental remapping:
 
-- a strict Draft 2020-12 IFC extraction schema exists;
-- source IFC SHA-256 and IFC schema are retained;
-- project/site/building/storey/space hierarchy preserves STEP IDs, GlobalIds, and parent identifiers;
-- project unit context is retained;
-- explicit quantity units override project unit context when present;
-- declared IFC length/area/volume/weight/count/time quantity types are supported;
-- no geometry-derived quantity is mislabeled as declared data;
-- material associations and supported material layer/constituent/profile/list structures are preserved;
-- millimetre-prefixed values remain millimetre-prefixed without hidden conversion;
-- absent quantities emit warnings;
-- duplicate/conflicting quantities emit warnings and remain in the artifact;
-- ambiguous material names emit warnings and remain unmapped;
-- extraction output validates before success is reported;
-- hosted CI exercises known-answer IFC4 hierarchy/unit/material/quantity fixtures;
-- the environmental registry and known-answer GWP path remain green;
-- no IFC→LCA factor linkage exists in this slice;
-- `VERIFIABLE` remains distinct from `CERTIFIED`.
+- source IFC SHA-256 and IFC schema;
+- element GlobalId, STEP ID, and IFC type;
+- material association STEP ID;
+- material STEP ID, exact declared material name, and material source type;
+- quantity-set STEP ID;
+- quantity STEP ID, name, IFC quantity type, numerical value, and extracted unit declaration;
+- explicit target `material_identity_id`;
+- explicit target `source_record_id`;
+- mapping review state, author, rationale, and optional reference.
+
+A source IFC hash mismatch, identity mismatch, value mismatch, unit mismatch, blank/ambiguous material name, missing source record, or failed source-provenance check stops calculation.
+
+## Mapping review-state rule
+
+The current mapping schema permits `DRAFT` and `REVIEWED` states. The v0.5 calculation gate accepts only `REVIEWED` mappings.
+
+`REVIEWED` is a **workflow/evidence state**, not a claim of professional licensure, scientific validation, program-operator verification, engineering approval, or regulatory approval. Those stronger authorities require separate evidence.
+
+## Duplicate/conflict rule
+
+- duplicate mapping IDs fail;
+- duplicate mappings for one IFC material/quantity identity fail;
+- conflicting environmental targets for one IFC identity fail;
+- ProofGrid does not choose a winner automatically.
+
+## Lifecycle/indicator rule
+
+Mapped environmental source records used in one v0.5 calculation must share a compatible lifecycle/system boundary and indicator. The initial synthetic conformance path uses `GWP-total` and `A1/A2/A3`.
+
+## Provenance receipt rule
+
+A successful v0.5 mapping receipt retains, at minimum:
+
+- mapping artifact version;
+- mapping file SHA-256 and canonical-content SHA-256;
+- IFC extraction artifact SHA-256;
+- source IFC SHA-256 and IFC schema;
+- IfcOpenShell adapter/version;
+- environmental registry SHA-256;
+- verified environmental source-content hashes;
+- exact environmental source-record digest;
+- mapping review metadata;
+- exact mapped element/material/quantity identities;
+- IFC unit declaration and canonical v0.5 unit identity;
+- explicit `numerical_conversion_applied = false`;
+- indicator and lifecycle boundary;
+- mapped subtotal/total;
+- receipt SHA-256;
+- explicit limitations and `certified = false`.
+
+## v0.5 known-answer conformance
+
+The initial real-IFC synthetic conformance case is intentionally narrow:
+
+- IFC4;
+- one `IfcWall`;
+- exact `IfcMaterial` association `Concrete`;
+- declared `IfcQuantityWeight` named `Mass` = `1000.0`;
+- project `MASSUNIT` = `KILO` + `GRAM`;
+- explicit reviewed mapping target `concrete` / `RX-FICT-CONCRETE-A1A3`;
+- synthetic factor `0.12 kgCO2e / kg`;
+- lifecycle boundary `A1/A2/A3`;
+- expected subtotal/total `120.0 kgCO2e`;
+- no numerical unit conversion.
+
+The known answer proves the declared software path, not real-project environmental validity.
+
+## v0.5 acceptance gates
+
+All inherited v0.3, v0.4, and clean-environment reproduction gates remain required, plus:
+
+- strict Draft 2020-12 mapping schema;
+- exact source IFC hash/schema matching;
+- exact element/material/quantity identity matching;
+- mapping state must be `REVIEWED`;
+- blank/ambiguous material names cannot be inferred into environmental targets;
+- no fuzzy material-name selection;
+- only the declared v0.5 `KILO+GRAM → kg` identity bridge is accepted;
+- no numerical unit conversion occurs in that bridge;
+- environmental target material identity must match the chosen source record;
+- chosen source record must pass the existing provenance/content-hash gate;
+- duplicate/conflicting mappings fail;
+- lifecycle boundary/indicator conflicts fail;
+- mapping/extraction/source-record provenance is retained in the receipt;
+- positive and adversarial real-IFC conformance tests pass;
+- hosted CI reproduces the `120.0 kgCO2e` known answer;
+- `EXPLICIT_IFC_ENVIRONMENTAL_MAPPING_VERIFIABLE` remains distinct from certification, professional approval, or real-building LCA validity.
+
+## Evidence already established before v0.5
+
+The prior stacked gates established:
+
+- provenance-controlled environmental source records;
+- read-only real IFC declared-data extraction;
+- exact-head hosted CI receipts;
+- clean-environment Linux/Windows reproduction of the synthetic environmental known answer;
+- bit-identical primary environmental artifacts across the declared hosted runtime matrix.
+
+These are software/provenance evidence layers, not substitutes for domain authority.
 
 ## Next evidence gates
 
-1. Evidence-controlled mapping between extracted IFC quantities/material identities and exact environmental source records.
-2. An explicitly versioned unit-conversion subsystem if cross-unit mapping is required.
-3. Authorized production EPD/database connectors with explicit licensing and import provenance.
-4. Independently reproduced non-production building example.
-5. Pilot measurement of time saved, errors detected, and reproducibility.
+1. Authorized production EPD/database connectors with explicit licensing, import provenance, and source-version controls.
+2. Externally reviewed mapping artifacts using openly redistributable or properly authorized non-production source data.
+3. A separately versioned deterministic unit-conversion subsystem if cross-unit mappings are required.
+4. Broader IFC/material/quantity conformance packs without weakening exact mapping identity.
+5. Independently reviewed real-project methodology before any real-building environmental claim.
+6. Pilot measurement of time saved, errors detected, and reproducibility.
