@@ -1,5 +1,6 @@
 # ProofGrid v0.7 authoritative ILCD+EPD v1.3 conformance dependencies.
 # Separate from requirements-proofgrid.txt so the frozen R5 reproduction lock is unchanged.
 # xmlschema 4.3.1 declares elementpath>=5.1.0,<6.0.0; 5.1.2 is the exact compatible PyPI version pinned here.
+# v0.9 documentation-complete validation trigger only; dependency semantics unchanged.
 xmlschema==4.3.1
 elementpath==5.1.2
