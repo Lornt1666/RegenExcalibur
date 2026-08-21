@@ -35,6 +35,7 @@ class RXEPV17Tests(unittest.TestCase):
             "value_decimal":"15559.479677163699",
             "decimal_value_is_authority":True,
             "numeric_value_is_authority":False,
+            "unit":"kg CO2 eqv.",
         })
         return e
 
