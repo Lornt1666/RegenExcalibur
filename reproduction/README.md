@@ -4,11 +4,16 @@ This package tests whether the frozen ProofGrid v0.4 implementation can be repro
 
 ## Frozen implementation
 
-`fe27d78171140832a7985e4d5157f5541c8a02aa`
+`7a563256e2b1c035fef5779dd2c81be6ac8b84a9`
 
-This is the portability-patched v0.4 head using verifier software `0.3.1` with calculation method `0.3.0`. The reproduction harness fails if declared core implementation paths differ from this commit.
+This is the bit-portable v0.4 head using verifier software `0.3.2` with deterministic calculation method `0.3.0`. The reproduction harness fails if declared core implementation paths differ from this commit.
 
-The prior frozen head `b0f3e0b4afbc7e787d7063f4b1cfa693083dd0d4` was intentionally superseded after a Windows clean-environment run discovered OS-native path separators inside the RXEP receipt. The calculation result and evidence-content digest reproduced, but the receipt digest differed. The defect was corrected by canonicalizing repository-relative schema paths to POSIX form, versioning the verifier, and re-running the entire v0.4 hosted gate before this manifest was refrozen.
+### Portability defects that were found instead of waived
+
+1. **OS-native receipt paths.** A Windows clean-environment run reproduced the known-answer result and evidence digest but not the RXEP receipt digest because repository-relative schema paths used `\\` on Windows and `/` on Linux. Verifier `0.3.1` canonicalized those paths to POSIX form.
+2. **OS-native output newlines.** Linux and Windows then reproduced the same logical evidence and receipt hashes, but pretty-printed output files differed byte-for-byte because text writes produced LF on Linux and CRLF on Windows. Verifier `0.3.2` now writes the four primary environmental artifacts as explicit UTF-8/LF bytes.
+
+The full v0.4 suite was re-run after each core correction before this reproduction manifest was refrozen.
 
 ## Exact runtime policy
 
@@ -20,7 +25,7 @@ The hosted reproduction matrix declares an exact CPython patch per operating-sys
 
 The separate Windows patch is explicit rather than permissive: the hosted Windows setup catalog does not provision Python 3.11 security-only releases such as 3.11.16 as Windows binaries, while 3.11.9 is available. The manifest records this platform-specific runtime policy and the harness rejects any version other than the declared exact version for the current OS.
 
-The same frozen ProofGrid implementation, dependency lock, inputs, expected hashes, and semantic assertions are used on both platforms.
+The same frozen ProofGrid implementation, dependency lock, inputs, logical hashes, byte hashes, and semantic assertions are used on both platforms.
 
 ## Reproduce
 
@@ -47,7 +52,7 @@ and writes `reproduction-receipt.json` containing:
 - input SHA-256 values;
 - known-answer environmental result;
 - exact evidence and RXEP receipt digests;
-- generated output hashes;
+- exact byte hashes for all four primary environmental artifacts;
 - fresh IFC source hash;
 - IFC structural/extraction results;
 - manual-correction state;
@@ -59,11 +64,20 @@ and writes `reproduction-receipt.json` containing:
 
 The synthetic Alberta fixture must reproduce:
 
+- verifier software `0.3.2`
+- calculation method `0.3.0`
 - `3860.0 kgCO2e`
 - `VERIFIABLE`
 - `certified: false`
-- evidence-content SHA-256 `9ce99ff076f41390c254377bd06e9897c4b203a4b778fbfd09c350624545142c`
-- RXEP receipt SHA-256 `44955751eec438621e43e2478e672a55bd6bff3aaf3a6e27ac588ff07cee8b7d`
+- evidence-content SHA-256 `be07217cfeed805d737637d7b760ae987f403a6d3b121b202889790bbdf5c001`
+- RXEP receipt SHA-256 `9fb074795aae8f5020a04fdd00b0b8730ddaac2a5294a98b3d409910976e7280`
+
+The four primary artifact files must also be bit-for-bit identical to the frozen Linux reference hashes:
+
+- `evidence.json`: `72e396ef5c16ad4ef95c16f73b9134a964cb0ab923f8e26a8d44a9c4a993e212`
+- `graph.jsonld`: `909a41748afc9cc4b458ce2da5c03cb8310719f8cd3c35fc617bca9d3aa63ffe`
+- `receipt.json`: `91645c1fb22d7f92adb7c7acfa332b34c139029a0ad26bbdf5929fa34d521eda`
+- `report.html`: `85cf90ad6565772e5251bfd324475048e12934d425b90d09c621de4b35432fe3`
 
 All inputs and environmental source-record digests are frozen in `r5-manifest.json`.
 
@@ -92,7 +106,7 @@ A reproduction by an unaffiliated human/researcher/organization using the worksh
 
 ## Fail-closed behavior
 
-Any mismatch in frozen core paths, platform-specific exact runtime, dependency versions, input hashes, known-answer value, evidence digest, RXEP receipt digest, source-record digests, or required IFC semantics causes a non-zero exit code.
+Any mismatch in frozen core paths, platform-specific exact runtime, dependency versions, input hashes, known-answer value, verifier/method versions, logical evidence digest, RXEP receipt digest, source-record digests, any of the four primary artifact byte hashes, or required IFC semantics causes a non-zero exit code.
 
 No discrepancy is automatically repaired or waived.
 
