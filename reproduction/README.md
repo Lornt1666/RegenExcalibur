@@ -8,19 +8,21 @@ This package is designed to test whether the frozen ProofGrid v0.4 implementatio
 
 The reproduction harness fails if the declared core implementation paths differ from that commit.
 
-## Environment
+## Exact runtime policy
 
-Required runtime:
+The hosted reproduction matrix declares an exact CPython patch per operating-system family:
 
-- Python `3.11.16`
-- exact packages in `requirements-proofgrid.txt`
-- Git checkout containing the frozen implementation commit in history
+- Linux / Ubuntu 24.04: Python `3.11.16`
+- Windows Server 2025: Python `3.11.9`
+- both environments: exact packages in `requirements-proofgrid.txt`
 
-The hosted reproduction workflow executes the same harness on fresh GitHub-hosted Linux and Windows runners.
+The separate Windows patch is explicit rather than permissive: the hosted Windows setup catalog does not provision Python 3.11 security-only releases such as 3.11.16 as Windows binaries, while 3.11.9 is available. The manifest records this platform-specific runtime policy and the harness rejects any version other than the declared exact version for the current OS.
+
+The same frozen ProofGrid implementation, same dependency lock, same inputs, same known-answer hashes, and same semantic assertions are used on both platforms.
 
 ## Reproduce
 
-From a clean clone/check-out of this branch:
+From a clean clone/check-out of this branch, use the exact Python patch declared for your platform, then run:
 
 ```bash
 python -m pip install --disable-pip-version-check -r requirements-proofgrid.txt
@@ -39,7 +41,7 @@ and writes `reproduction-receipt.json` containing:
 
 - frozen implementation commit and execution checkout SHA;
 - proof that the core implementation diff is clean;
-- runtime/platform and exact dependency versions;
+- declared runtime policy, actual runtime/platform, and exact dependency versions;
 - input SHA-256 values;
 - known-answer environmental result;
 - exact evidence and RXEP receipt digests;
@@ -88,7 +90,7 @@ A reproduction by an unaffiliated human/researcher/organization using the worksh
 
 ## Fail-closed behavior
 
-Any mismatch in frozen core paths, runtime, dependency versions, input hashes, known-answer value, evidence digest, RXEP receipt digest, source-record digests, or required IFC semantics causes a non-zero exit code.
+Any mismatch in frozen core paths, platform-specific exact runtime, dependency versions, input hashes, known-answer value, evidence digest, RXEP receipt digest, source-record digests, or required IFC semantics causes a non-zero exit code.
 
 No discrepancy is automatically repaired.
 
