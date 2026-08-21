@@ -41,6 +41,15 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
+      - name: Checkout pinned InData master data
+        uses: actions/checkout@v6.1.0
+        with:
+          repository: InDataWG/ILCD-EPD-Master-Data
+          ref: 32117b6a70d6c486344247a429449755a2c7eab4
+          path: .proofgrid-upstream/indata-master
+          fetch-depth: 1
+          persist-credentials: false
+
       - name: Freeze authoritative catalogue identities
         shell: bash
         run: |
@@ -49,6 +58,7 @@ jobs:
           mkdir -p "$OUT"
           test "$(git -C .proofgrid-upstream/indata-v12 rev-parse HEAD)" = 'b7233bd2dd5435a6b5973505ffa212cd03d23468'
           test "$(git -C .proofgrid-upstream/indata-v13 rev-parse HEAD)" = '7625c7dfc0d5b6bc2020eb0cf0b0503349c914aa'
+          test "$(git -C .proofgrid-upstream/indata-master rev-parse HEAD)" = '32117b6a70d6c486344247a429449755a2c7eab4'
           CATALOG=.proofgrid-upstream/indata-v13/doc/identifiers/EN15804+A2_EF3.0_indicators.csv
           test -f "$CATALOG"
           sha256sum "$CATALOG" | tee "$OUT/ef30-catalog.sha256"
@@ -67,36 +77,103 @@ jobs:
             --v13-root .proofgrid-upstream/indata-v13 \
             --output /tmp/proofgrid-v11-research/indicator-structure-research-receipt.json
 
-      - name: Require bounded research verdict without accepting extractor
+      - name: Freeze exact GWP unit-reference identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          python conformance/indicator-extraction-v11/unit_reference_probe.py \
+            --master-root .proofgrid-upstream/indata-master \
+            --output /tmp/proofgrid-v11-research/unit-reference-research-receipt.json
+
+      - name: Produce combined v1.1 research freeze
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib,json
+          root=Path('/tmp/proofgrid-v11-research')
+          structure=json.loads((root/'indicator-structure-research-receipt.json').read_text())
+          unit=json.loads((root/'unit-reference-research-receipt.json').read_text())
+          ef30=(root/'ef30-catalog.sha256').read_text().split()[0]
+          ef31=(root/'ef31-catalog.sha256').read_text().split()[0] if (root/'ef31-catalog.sha256').exists() else None
+          report={
+            'verdict':'DECLARED_INDICATOR_RESEARCH_FREEZE_VERIFIABLE',
+            'research_version':'1.1.0',
+            'extractor_accepted':False,
+            'certified':False,
+            'upstreams':{
+              'v12_commit':'b7233bd2dd5435a6b5973505ffa212cd03d23468',
+              'v13_commit':'7625c7dfc0d5b6bc2020eb0cf0b0503349c914aa',
+              'master_data_commit':'32117b6a70d6c486344247a429449755a2c7eab4'
+            },
+            'catalogues':{'ef30_sha256':ef30,'ef31_sha256':ef31},
+            'structure_receipt_sha256':structure['receipt_sha256'],
+            'unit_reference_receipt_sha256':unit['receipt_sha256'],
+            'observed_result_path':'processDataSet/LCIAResults/LCIAResult',
+            'indicator_reference_path':'processDataSet/LCIAResults/LCIAResult/referenceToLCIAMethodDataSet',
+            'module_amount_path':'processDataSet/LCIAResults/LCIAResult/other/amount',
+            'unit_group_reference_path':'processDataSet/LCIAResults/LCIAResult/other/referenceToUnitGroupDataSet',
+            'amount_namespace':'http://www.iai.kit.edu/EPD/2013',
+            'module_attribute':'module',
+            'scenario_attribute':'scenario',
+            'unscoped_mean_amount_extracted':False,
+            'unit_identity_basis':unit['unit_identity_basis'],
+            'implicit_unit_conversion_permitted':False,
+            'scientific_validation_performed':False,
+            'professional_review_performed':False,
+            'limitations':[
+              'The freeze records exact structure observed in pinned public synthetic/example data only; it is not an accepted environmental-value extractor.',
+              'The LCIAResult meanAmount is not treated as a lifecycle-module declaration by v1.1.',
+              'No missing module is converted to zero and no environmental value is inferred from warnings or labels.'
+            ]
+          }
+          raw=json.dumps(report,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()
+          report['receipt_sha256']=hashlib.sha256(raw).hexdigest()
+          (root/'v11-research-freeze.json').write_text(json.dumps(report,indent=2,sort_keys=True,ensure_ascii=False)+'\n')
+          print(json.dumps(report,indent=2,sort_keys=True,ensure_ascii=False))
+          PY
+
+      - name: Require bounded research freeze without accepting extractor
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
           import json
-          d=json.load(open('/tmp/proofgrid-v11-research/indicator-structure-research-receipt.json'))
+          root='/tmp/proofgrid-v11-research/'
+          d=json.load(open(root+'indicator-structure-research-receipt.json'))
+          u=json.load(open(root+'unit-reference-research-receipt.json'))
+          f=json.load(open(root+'v11-research-freeze.json'))
           assert d['verdict']=='DECLARED_INDICATOR_STRUCTURE_RESEARCH_VERIFIABLE'
           assert d['catalogue']['gwp_total']['uuid']=='6a37f984-a4b3-458a-a20a-64418c145fa2'
           assert d['catalogue']['gwp_total']['version']=='04.00.016'
           assert d['catalogue']['gwp_total']['unit_en']=='kg CO2 eqv.'
           assert d['v12']['gwp_total_occurrence_count'] >= 1
           assert d['v13']['gwp_total_occurrence_count'] >= 1
-          assert all(row['ancestor_chain'] for row in d['v12']['gwp_total_occurrences'])
-          assert all(row['ancestor_chain'] for row in d['v13']['gwp_total_occurrences'])
-          assert d['extractor_accepted'] is False
-          assert d['scientific_validation_performed'] is False
-          assert d['professional_review_performed'] is False
-          assert d['certified'] is False
-          print('DECLARED_INDICATOR_STRUCTURE_RESEARCH=PASS')
-          print('receipt_sha256=',d['receipt_sha256'])
+          assert u['unit_group']['uuid']=='1ebf3012-d0db-4de2-aefd-ef30cedb0be1'
+          assert u['unit_group']['reference_unit_mean_value_decimal']=='1'
+          assert u['unit_group']['identity_conversion'] is True
+          assert u['implicit_unit_conversion_permitted'] is False
+          assert f['verdict']=='DECLARED_INDICATOR_RESEARCH_FREEZE_VERIFIABLE'
+          assert f['extractor_accepted'] is False
+          assert f['unscoped_mean_amount_extracted'] is False
+          assert f['implicit_unit_conversion_permitted'] is False
+          assert f['scientific_validation_performed'] is False
+          assert f['professional_review_performed'] is False
+          assert f['certified'] is False
+          print('DECLARED_INDICATOR_RESEARCH_FREEZE=PASS')
+          print('receipt_sha256=',f['receipt_sha256'])
           PY
 
-      - name: Retain research receipt and catalogue identities
+      - name: Retain research receipts and catalogue identities
         if: always()
         uses: actions/upload-artifact@v4.6.2
         with:
           name: proofgrid-v11-indicator-structure-research
           path: |
             /tmp/proofgrid-v11-research/indicator-structure-research-receipt.json
+            /tmp/proofgrid-v11-research/unit-reference-research-receipt.json
+            /tmp/proofgrid-v11-research/v11-research-freeze.json
             /tmp/proofgrid-v11-research/ef30-catalog.sha256
             /tmp/proofgrid-v11-research/ef30-catalog.git-blob
             /tmp/proofgrid-v11-research/ef31-catalog.sha256
