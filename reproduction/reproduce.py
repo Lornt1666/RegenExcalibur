@@ -52,8 +52,23 @@ def require(condition: bool, message: str) -> None:
         raise ReproductionError(message)
 
 
+def _subprocess_environment() -> dict[str, str]:
+    environment = dict(os.environ)
+    environment["PYTHONUTF8"] = "1"
+    environment["PYTHONIOENCODING"] = "utf-8"
+    return environment
+
+
 def run(command: list[str], *, cwd: Path = ROOT, echo: bool = True) -> subprocess.CompletedProcess[str]:
-    process = subprocess.run(command, cwd=cwd, text=True, capture_output=True)
+    process = subprocess.run(
+        command,
+        cwd=cwd,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        capture_output=True,
+        env=_subprocess_environment(),
+    )
     if echo and process.stdout:
         print(process.stdout, end="" if process.stdout.endswith("\n") else "\n")
     if process.returncode != 0:
@@ -87,7 +102,15 @@ def git_state(manifest: dict[str, Any]) -> dict[str, Any]:
     run(["git", "cat-file", "-e", f"{implementation_commit}^{{commit}}"], echo=False)
     head = run(["git", "rev-parse", "HEAD"], echo=False).stdout.strip()
     command = ["git", "diff", "--exit-code", implementation_commit, "HEAD", "--", *manifest["core_paths"]]
-    process = subprocess.run(command, cwd=ROOT, text=True, capture_output=True)
+    process = subprocess.run(
+        command,
+        cwd=ROOT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        capture_output=True,
+        env=_subprocess_environment(),
+    )
     if process.returncode != 0:
         detail = process.stdout[-4000:] if process.stdout else process.stderr[-4000:]
         raise ReproductionError(
@@ -98,6 +121,13 @@ def git_state(manifest: dict[str, Any]) -> dict[str, Any]:
         "execution_checkout_sha": head,
         "core_diff_from_implementation_commit": "CLEAN",
     }
+
+
+def expected_python_for_platform(manifest: dict[str, Any]) -> tuple[str, str]:
+    system = platform.system()
+    mapping = manifest["runtime"]["python_by_platform"]
+    require(system in mapping, f"no exact Python runtime declared for platform {system!r}")
+    return system, str(mapping[system])
 
 
 def verify_inputs(manifest: dict[str, Any]) -> dict[str, str]:
@@ -232,8 +262,8 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         manifest = load_json(args.manifest)
-        expected_python = str(manifest["runtime"]["python"])
-        require(platform.python_version() == expected_python, f"Python mismatch: expected {expected_python}, got {platform.python_version()}")
+        system, expected_python = expected_python_for_platform(manifest)
+        require(platform.python_version() == expected_python, f"Python mismatch for {system}: expected {expected_python}, got {platform.python_version()}")
         git = git_state(manifest)
         dependencies = installed_lock_state(ROOT / str(manifest["runtime"]["dependencies"]))
         input_hashes = verify_inputs(manifest)
@@ -253,8 +283,10 @@ def main(argv: list[str] | None = None) -> int:
             "deviations": [],
             "manifest_sha256": sha256_file(args.manifest),
             "git": git,
+            "runtime_policy": manifest["runtime"],
             "environment": {
                 "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+                "platform_system": system,
                 "platform": platform.platform(),
                 "python": platform.python_version(),
                 "python_executable": sys.executable,
