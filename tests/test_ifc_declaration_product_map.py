@@ -258,13 +258,13 @@ class IFCDeclarationProductMappingTests(unittest.TestCase):
         write_json(mapping_path, mapping)
         return extraction_path, mapping_path, bundle_path, bundle_receipt_path, basis_path, basis_receipt_path, mapping, extraction
 
-    def run(self, prepared):
+    def run_mapping(self, prepared):
         return mapper.map_product(*prepared[:6])
 
     def test_explicit_mapping_succeeds_despite_dissimilar_display_names(self):
         with tempfile.TemporaryDirectory() as td:
             prepared = self.prepare(Path(td))
-            record = self.run(prepared)
+            record = self.run_mapping(prepared)
             self.assertEqual(record["verdict"], mapper.VERDICT)
             self.assertEqual(record["declaration"]["product_flow_uuid"], PRODUCT_UUID)
             self.assertEqual(record["declaration"]["product_flow_version"], PRODUCT_VERSION)
@@ -322,14 +322,13 @@ class IFCDeclarationProductMappingTests(unittest.TestCase):
             basis["product_flow"]["version"] = "99.99.999"
             write_json(basis_path, basis)
             with self.assertRaises(mapper.ProductMappingError):
-                self.run(p)
+                self.run_mapping(p)
 
     def test_non_identity_mass_unit_rejected(self):
         with tempfile.TemporaryDirectory() as td:
             p = self.prepare(Path(td), mass_prefix=None)
-            # The mapping schema requires the supported kg identity and therefore fails closed.
             with self.assertRaises(mapper.ProductMappingError):
-                self.run(p)
+                self.run_mapping(p)
 
     def test_name_only_artifact_rejected_by_schema(self):
         with tempfile.TemporaryDirectory() as td:
@@ -340,7 +339,7 @@ class IFCDeclarationProductMappingTests(unittest.TestCase):
             del mapping["mapping"]["material"]["association_step_id"]
             write_json(mapping_path, mapping)
             with self.assertRaises(mapper.ProductMappingError):
-                self.run(p)
+                self.run_mapping(p)
 
     def test_bundle_certification_promotion_rejected(self):
         with tempfile.TemporaryDirectory() as td:
@@ -352,13 +351,13 @@ class IFCDeclarationProductMappingTests(unittest.TestCase):
             receipt = seal_receipt(receipt)
             write_json(receipt_path, receipt)
             with self.assertRaises(mapper.ProductMappingError):
-                self.run(p)
+                self.run_mapping(p)
 
     def test_repeat_is_byte_deterministic(self):
         with tempfile.TemporaryDirectory() as td:
             p = self.prepare(Path(td))
-            a = self.run(p)
-            b = self.run(p)
+            a = self.run_mapping(p)
+            b = self.run_mapping(p)
             self.assertEqual(mapper.canonical_json_bytes(a), mapper.canonical_json_bytes(b))
             self.assertEqual(a["integrity"]["content_sha256"], b["integrity"]["content_sha256"])
 
