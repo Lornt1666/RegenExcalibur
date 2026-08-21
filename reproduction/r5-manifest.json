@@ -1,0 +1,82 @@
+{
+  "schema_version": "1.3",
+  "gate": "ProofGrid R5 clean-environment reproduction candidate",
+  "implementation_commit": "7a563256e2b1c035fef5779dd2c81be6ac8b84a9",
+  "runtime": {
+    "python_by_platform": {
+      "Linux": "3.11.16",
+      "Windows": "3.11.9"
+    },
+    "dependencies": "requirements-proofgrid.txt",
+    "policy": "Exact CPython patch versions are declared per operating-system family. Windows uses 3.11.9 because later CPython 3.11 security releases are not provisioned as Windows binaries by the hosted setup catalog; both runtimes execute the same locked ProofGrid dependency set and frozen implementation."
+  },
+  "core_paths": [
+    ".gitattributes",
+    "CONSTITUTION.md",
+    "ARCHITECTURE.md",
+    "reference",
+    "adapters",
+    "schemas",
+    "specs/rxep",
+    "evidence/examples",
+    "requirements-proofgrid.txt"
+  ],
+  "fixture": "evidence/examples/alberta-house",
+  "expected": {
+    "engine_version": "0.3.2",
+    "method_version": "0.3.0",
+    "project_id": "rx-demo-ab-house-001",
+    "total_kgco2e": 3860.0,
+    "indicator": "GWP-total",
+    "system_boundary_modules": ["A1", "A2", "A3"],
+    "evidence_content_sha256": "be07217cfeed805d737637d7b760ae987f403a6d3b121b202889790bbdf5c001",
+    "receipt_sha256": "9fb074795aae8f5020a04fdd00b0b8730ddaac2a5294a98b3d409910976e7280",
+    "generated_output_sha256": {
+      "evidence.json": "72e396ef5c16ad4ef95c16f73b9134a964cb0ab923f8e26a8d44a9c4a993e212",
+      "graph.jsonld": "909a41748afc9cc4b458ce2da5c03cb8310719f8cd3c35fc617bca9d3aa63ffe",
+      "receipt.json": "91645c1fb22d7f92adb7c7acfa332b34c139029a0ad26bbdf5929fa34d521eda",
+      "report.html": "85cf90ad6565772e5251bfd324475048e12934d425b90d09c621de4b35432fe3"
+    },
+    "input_sha256": {
+      "project.json": "f9b83225b208b734e1e96fd0f39e1cb9c56e15de55432cbd4bb7e7535a126a92",
+      "materials.json": "ea19004cf12d677eb47cb2bf30b9ec86fe9ca04ef31f1e1ec92d8e6123f32036",
+      "lca-sources.json": "aef83d64289673d8ff0f7f13b101649e8f620db39b32d187dfc1503ac2755b8a",
+      "sources/fictional-demo-factors.txt": "ce14d023031cabc4e3e677a9d58696e8a938e696d0ef516b657a73515252b54e"
+    },
+    "source_record_sha256": {
+      "RX-FICT-CONCRETE-A1A3": "2ae1e40fe2cf551975ae2c5a748971b329fc3cb23c75fb70718af795e7d4d5a1",
+      "RX-FICT-STEEL-A1A3": "161e7f98ba2cf5a3bda1c102bf323649856d605b080871130d6b4a35f0236d8a",
+      "RX-FICT-WOOD-A1A3": "53ec9a145b8ba8d71fa8140a42510681773718d43af22ae1a4052f0b4d16cd47"
+    },
+    "ifc": {
+      "schema_prefix": "IFC4",
+      "projects": 1,
+      "buildings": 1,
+      "walls": 1,
+      "declared_quantity_name": "Length",
+      "declared_quantity_value": 3.5,
+      "declared_quantity_unit_type": "LENGTHUNIT",
+      "declared_quantity_unit_name": "METRE",
+      "material_name": "Concrete"
+    }
+  },
+  "portability_history": [
+    {
+      "implementation_commit": "b0f3e0b4afbc7e787d7063f4b1cfa693083dd0d4",
+      "finding": "Windows reproduction discovered OS-native schema path separators in the RXEP receipt, causing a receipt digest mismatch while the known-answer result and evidence-content digest matched.",
+      "resolution": "Verifier 0.3.1 canonicalized repository-relative schema paths to POSIX form. The calculation method remained 0.3.0."
+    },
+    {
+      "implementation_commit": "fe27d78171140832a7985e4d5157f5541c8a02aa",
+      "finding": "Linux and Windows reproduced the same logical evidence-content and RXEP receipt hashes, but pretty-printed primary artifact files differed byte-for-byte because host-native text writing produced LF on Linux and CRLF on Windows.",
+      "resolution": "Verifier 0.3.2 writes evidence.json, graph.jsonld, receipt.json, and report.html as explicit UTF-8/LF bytes. ProofGrid Genesis run 32438377372 validated the patched core and emitted the frozen byte hashes in this manifest."
+    }
+  ],
+  "result_label": "CLEAN_ENVIRONMENT_REPRODUCED",
+  "independence_scope": "Execution occurs on fresh third-party-hosted runner environments from repository-published files only. The reproduction harness is authored in the same repository and therefore is not represented as independent professional or scientific review.",
+  "limitations": [
+    "The Alberta fixture and environmental factors are synthetic software-test data.",
+    "Clean-environment reproduction is not professional LCA review, code compliance, engineering approval, regulatory approval, certification, or product-market validation.",
+    "A human third-party reproduction remains stronger evidence than repository-authored automation and is still encouraged."
+  ]
+}
