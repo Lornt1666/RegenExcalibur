@@ -1,0 +1,210 @@
+name: ProofGrid v1.4 Declaration Evidence Bundle
+
+on:
+  pull_request:
+    paths:
+      - "reference/declaration_evidence_bundle.py"
+      - "schemas/declaration-evidence-bundle.schema.json"
+      - "tests/test_declaration_evidence_bundle.py"
+      - "conformance/declaration-evidence-v14/**"
+      - ".github/workflows/proofgrid-v14-declaration-evidence-bundle.yml"
+      - "requirements-proofgrid.txt"
+      - "requirements-proofgrid-v07.txt"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  declaration-evidence-bundle:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      V111_ARTIFACT_ID: "9449899824"
+      V111_ZIP_SHA256: "9623e0f076d7b19f7b074042e826ec117b0778d60a45c91d506c5b7c9081126d"
+      V13_ARTIFACT_ID: "9449300824"
+      V13_ZIP_SHA256: "503582a65087464c3caa3a671122d3081a51858b80d635f99e4c21dd107ce247"
+      V131_ARTIFACT_ID: "9449656400"
+      V131_ZIP_SHA256: "cbd0a7f6baa33687ff96467e93edc629e896cced47cb137ced2a7f00a29b0ac9"
+
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v6.1.0
+
+      - name: Setup Python 3.11.16
+        uses: actions/setup-python@v6.0.0
+        with:
+          python-version: "3.11.16"
+          check-latest: false
+
+      - name: Install exact ProofGrid dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-proofgrid.txt
+          python -m pip install -r requirements-proofgrid-v07.txt
+          python -m pip check
+
+      - name: Run v1.4 fail-closed unit suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest -v tests.test_declaration_evidence_bundle
+
+      - name: Download exact accepted parent evidence artifacts
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/proofgrid-v14/parents/v111 /tmp/proofgrid-v14/parents/v13 /tmp/proofgrid-v14/parents/v131
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V111_ARTIFACT_ID}/zip" > /tmp/proofgrid-v14/v111.zip
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V13_ARTIFACT_ID}/zip" > /tmp/proofgrid-v14/v13.zip
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V131_ARTIFACT_ID}/zip" > /tmp/proofgrid-v14/v131.zip
+          echo "${V111_ZIP_SHA256}  /tmp/proofgrid-v14/v111.zip" | sha256sum -c -
+          echo "${V13_ZIP_SHA256}  /tmp/proofgrid-v14/v13.zip" | sha256sum -c -
+          echo "${V131_ZIP_SHA256}  /tmp/proofgrid-v14/v131.zip" | sha256sum -c -
+          unzip -q /tmp/proofgrid-v14/v111.zip -d /tmp/proofgrid-v14/parents/v111
+          unzip -q /tmp/proofgrid-v14/v13.zip -d /tmp/proofgrid-v14/parents/v13
+          unzip -q /tmp/proofgrid-v14/v131.zip -d /tmp/proofgrid-v14/parents/v131
+
+      - name: Bind exact accepted v1.2 declaration evidence twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          for R in a b; do
+            python reference/declaration_evidence_bundle.py \
+              --canonical-source /tmp/proofgrid-v14/parents/v111/v12/canonical-source-identity.json \
+              --indicator-record /tmp/proofgrid-v14/parents/v111/v12/out-a/declared-environmental-indicators.json \
+              --indicator-receipt /tmp/proofgrid-v14/parents/v111/v12/out-a/extraction-receipt.json \
+              --basis-record /tmp/proofgrid-v14/parents/v13/v12/out-a/declared-reference-basis.json \
+              --basis-receipt /tmp/proofgrid-v14/parents/v13/v12/out-a/declared-reference-basis-receipt.json \
+              --semantics-evidence /tmp/proofgrid-v14/parents/v131/a/v12.json \
+              --semantics-integration-receipt /tmp/proofgrid-v14/parents/v131/v131-integration-receipt.json \
+              --output-dir "/tmp/proofgrid-v14/v12/${R}"
+          done
+          diff -u /tmp/proofgrid-v14/v12/a/declaration-evidence-bundle.json /tmp/proofgrid-v14/v12/b/declaration-evidence-bundle.json
+          diff -u /tmp/proofgrid-v14/v12/a/declaration-evidence-bundle-receipt.json /tmp/proofgrid-v14/v12/b/declaration-evidence-bundle-receipt.json
+
+      - name: Bind exact accepted v1.3 declaration evidence twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          for R in a b; do
+            python reference/declaration_evidence_bundle.py \
+              --canonical-source /tmp/proofgrid-v14/parents/v111/v13/canonical-source-identity.json \
+              --indicator-record /tmp/proofgrid-v14/parents/v111/v13/out-a/declared-environmental-indicators.json \
+              --indicator-receipt /tmp/proofgrid-v14/parents/v111/v13/out-a/extraction-receipt.json \
+              --basis-record /tmp/proofgrid-v14/parents/v13/v13/out-a/declared-reference-basis.json \
+              --basis-receipt /tmp/proofgrid-v14/parents/v13/v13/out-a/declared-reference-basis-receipt.json \
+              --semantics-evidence /tmp/proofgrid-v14/parents/v131/a/v13.json \
+              --semantics-integration-receipt /tmp/proofgrid-v14/parents/v131/v131-integration-receipt.json \
+              --output-dir "/tmp/proofgrid-v14/v13/${R}"
+          done
+          diff -u /tmp/proofgrid-v14/v13/a/declaration-evidence-bundle.json /tmp/proofgrid-v14/v13/b/declaration-evidence-bundle.json
+          diff -u /tmp/proofgrid-v14/v13/a/declaration-evidence-bundle-receipt.json /tmp/proofgrid-v14/v13/b/declaration-evidence-bundle-receipt.json
+
+      - name: Verify dimension separation and exact nine-row preservation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          expected_values=[
+            '15.559479677163699','3.890472762252513','10.403452605105544',
+            '16.861343234824155','12.55722191320309','21.473728298846915',
+            '29.83997231119644','10.621689444677362','37.34889504407421',
+          ]
+          for version in ('v12','v13'):
+            r=json.loads(Path(f'/tmp/proofgrid-v14/{version}/a/declaration-evidence-bundle.json').read_text())
+            assert r['verdict']=='DECLARATION_EVIDENCE_DIMENSIONS_BOUND_VERIFIABLE'
+            assert r['environmental_results']['row_count']==9
+            assert [row['value_decimal'] for row in r['environmental_results']['rows']]==expected_values
+            assert r['dimension_separation']['environmental_result_unit']=='kg CO2 eqv.'
+            assert r['dimension_separation']['product_reference_unit']=='kg'
+            assert r['dimension_separation']['same_dimension'] is False
+            assert r['dimension_separation']['unit_interchange_permitted'] is False
+            assert r['declared_reference_basis']['quantity_decimal']=='1'
+            assert r['amount_semantics']['resulting_amount_present'] is False
+            assert r['calculated'] is False
+            assert r['building_quantity_multiplication_performed'] is False
+            assert r['aggregation_performed'] is False
+            assert r['unit_conversion_performed'] is False
+            assert r['certified'] is False
+          PY
+
+      - name: Prove cross-version amount-semantics substitution fails closed
+        shell: bash
+        run: |
+          set -euo pipefail
+          if python reference/declaration_evidence_bundle.py \
+            --canonical-source /tmp/proofgrid-v14/parents/v111/v12/canonical-source-identity.json \
+            --indicator-record /tmp/proofgrid-v14/parents/v111/v12/out-a/declared-environmental-indicators.json \
+            --indicator-receipt /tmp/proofgrid-v14/parents/v111/v12/out-a/extraction-receipt.json \
+            --basis-record /tmp/proofgrid-v14/parents/v13/v12/out-a/declared-reference-basis.json \
+            --basis-receipt /tmp/proofgrid-v14/parents/v13/v12/out-a/declared-reference-basis-receipt.json \
+            --semantics-evidence /tmp/proofgrid-v14/parents/v131/a/v13.json \
+            --semantics-integration-receipt /tmp/proofgrid-v14/parents/v131/v131-integration-receipt.json \
+            --output-dir /tmp/proofgrid-v14/negative; then
+              echo "cross-version amount semantics unexpectedly accepted" >&2
+              exit 1
+          else
+              echo "CROSS_VERSION_SEMANTICS_REJECTED=PASS"
+          fi
+
+      - name: Produce bounded v1.4 integration receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          root=Path('/tmp/proofgrid-v14')
+          report={
+            'verdict':'DECLARATION_EVIDENCE_DIMENSIONS_BOUND_VERIFIABLE',
+            'accepted_parent_heads':{
+              'v111':'61e6f86c3c633ab8191539292f36cbb1706689f1',
+              'v13':'77931d81ae9857eb33b3cecaf8f9180f0c2b7e4a',
+              'v131':'b8d25bc7982434bf94e763d291d3be08bc9241d7',
+            },
+            'accepted_parent_artifacts':{
+              'v111':int('9449899824'),
+              'v13':int('9449300824'),
+              'v131':int('9449656400'),
+            },
+            'v12_record_file_sha256':hashlib.sha256((root/'v12/a/declaration-evidence-bundle.json').read_bytes()).hexdigest(),
+            'v12_receipt_file_sha256':hashlib.sha256((root/'v12/a/declaration-evidence-bundle-receipt.json').read_bytes()).hexdigest(),
+            'v13_record_file_sha256':hashlib.sha256((root/'v13/a/declaration-evidence-bundle.json').read_bytes()).hexdigest(),
+            'v13_receipt_file_sha256':hashlib.sha256((root/'v13/a/declaration-evidence-bundle-receipt.json').read_bytes()).hexdigest(),
+            'real_accepted_parent_evidence_used':True,
+            'repeat_within_run_byte_identical':True,
+            'cross_version_semantics_rejected':True,
+            'building_quantity_multiplication_performed':False,
+            'calculated':False,
+            'environmental_values_transformed':False,
+            'aggregation_performed':False,
+            'unit_conversion_performed':False,
+            'scientific_validation_performed':False,
+            'professional_review_performed':False,
+            'certified':False,
+          }
+          canonical=json.dumps(report,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()
+          report['receipt_sha256']=hashlib.sha256(canonical).hexdigest()
+          (root/'v14-integration-receipt.json').write_text(json.dumps(report,indent=2,sort_keys=True)+'\n',encoding='utf-8',newline='\n')
+          print(json.dumps(report,indent=2,sort_keys=True))
+          PY
+
+      - name: Retain declaration evidence bundles only
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v14-declaration-evidence-bundle
+          path: |
+            /tmp/proofgrid-v14/v12/a/declaration-evidence-bundle.json
+            /tmp/proofgrid-v14/v12/a/declaration-evidence-bundle-receipt.json
+            /tmp/proofgrid-v14/v13/a/declaration-evidence-bundle.json
+            /tmp/proofgrid-v14/v13/a/declaration-evidence-bundle-receipt.json
+            /tmp/proofgrid-v14/v14-integration-receipt.json
+          if-no-files-found: error
+          retention-days: 30
