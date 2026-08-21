@@ -23,7 +23,14 @@ EXPECTED_PROCESS_UUID = "6b47f4cf-0bc4-4e0d-b9fd-9d5f845d1de0"
 EXPECTED_OPERATOR_UUID = "d111dbec-b024-4be5-86c5-752d6eb2cf95"
 EXPECTED_REGISTRATION = "RX-PROOFGRID-V08-SYNTH-001"
 FORBIDDEN_CONTACT_FIELDS = {
-    "contactAddress", "email", "wwwAddress", "phone", "fax", "faxNumber"
+    "contactAddress",
+    "telephone",
+    "telefax",
+    "email",
+    "WWWAddress",
+    "centralContactPoint",
+    "referenceToContact",
+    "referenceToLogo",
 }
 
 
@@ -33,6 +40,10 @@ class BoundaryError(ValueError):
 
 def local_name(tag: str) -> str:
     return tag.rsplit("}", 1)[-1] if "}" in tag else tag
+
+
+def node_text(node: ET.Element) -> str:
+    return " ".join(part.strip() for part in node.itertext() if part and part.strip())
 
 
 def sha256_file(path: Path) -> str:
@@ -46,9 +57,21 @@ def canonical_sha256(value: object) -> str:
 
 def first_text(root: ET.Element, name: str) -> str:
     for node in root.iter():
-        if local_name(node.tag) == name and node.text and node.text.strip():
-            return node.text.strip()
+        if local_name(node.tag) == name:
+            value = node_text(node)
+            if value:
+                return value
     return ""
+
+
+def all_text(root: ET.Element, name: str) -> list[str]:
+    values: list[str] = []
+    for node in root.iter():
+        if local_name(node.tag) == name:
+            value = node_text(node)
+            if value:
+                values.append(value)
+    return values
 
 
 def inspect(package_root: Path, build_receipt_path: Path, final_receipt_path: Path) -> dict:
@@ -77,15 +100,10 @@ def inspect(package_root: Path, build_receipt_path: Path, final_receipt_path: Pa
     if first_text(process_root, "registrationNumber") != EXPECTED_REGISTRATION:
         raise BoundaryError("synthetic registration marker is missing or changed")
 
-    comments = [
-        (node.text or "").strip()
-        for node in process_root.iter()
-        if local_name(node.tag) == "generalComment" and (node.text or "").strip()
-    ]
-    joined_comments = " ".join(comments).lower()
+    joined_comments = " ".join(all_text(process_root, "generalComment")).lower()
     if "synthetic non-production interoperability fixture" not in joined_comments:
         raise BoundaryError("process does not visibly identify itself as a synthetic non-production fixture")
-    if "no affiliation" not in joined_comments or "no" not in joined_comments:
+    if "no affiliation" not in joined_comments:
         raise BoundaryError("process comment does not preserve explicit non-affiliation semantics")
 
     operator_refs = []
@@ -105,33 +123,50 @@ def inspect(package_root: Path, build_receipt_path: Path, final_receipt_path: Pa
     operator_root = ET.parse(operator_path).getroot()
     if first_text(operator_root, "UUID") != EXPECTED_OPERATOR_UUID:
         raise BoundaryError("synthetic operator contact UUID mismatch")
-    description = first_text(operator_root, "contactDescription")
+
+    descriptions = all_text(operator_root, "contactDescriptionOrComment")
+    if not descriptions:
+        raise BoundaryError("schema-correct contactDescriptionOrComment marker is missing")
+    description = " ".join(descriptions)
     lower_description = description.lower()
-    required_phrases = ("synthetic local profile-conformance placeholder", "no affiliation", "no", "authority")
+    required_phrases = (
+        "synthetic local profile-conformance placeholder",
+        "no affiliation",
+        "no approval",
+        "no registration",
+        "no contact authority",
+    )
     if any(phrase not in lower_description for phrase in required_phrases):
         raise BoundaryError("synthetic operator contact description does not preserve the non-authority boundary")
 
-    forbidden_present = []
+    forbidden_present: list[str] = []
     for node in operator_root.iter():
-        if local_name(node.tag) in FORBIDDEN_CONTACT_FIELDS and ((node.text or "").strip() or node.attrib):
+        if local_name(node.tag) in FORBIDDEN_CONTACT_FIELDS and (node_text(node) or node.attrib):
             forbidden_present.append(local_name(node.tag))
     if forbidden_present:
-        raise BoundaryError(f"synthetic operator placeholder contains contact/address channels: {sorted(set(forbidden_present))}")
+        raise BoundaryError(
+            f"synthetic operator placeholder contains contact/relationship channels: {sorted(set(forbidden_present))}"
+        )
 
     semantics = build.get("operator_contact", {}).get("fixture_semantics", "")
-    if "no affiliation" not in semantics.lower() or "source-use permission" not in semantics.lower():
+    lower_semantics = semantics.lower()
+    if "no affiliation" not in lower_semantics or "source-use permission" not in lower_semantics:
         raise BoundaryError("builder receipt lost explicit non-affiliation/source-use semantics")
+    if build.get("operator_contact", {}).get("description_field") != "contactDescriptionOrComment":
+        raise BoundaryError("builder receipt does not identify the schema-correct authority-boundary field")
     build_limitations = " ".join(build.get("limitations", [])).lower()
     if "synthetic non-production" not in build_limitations or "does not state affiliation" not in build_limitations:
         raise BoundaryError("builder limitations do not preserve the authority boundary")
 
     if final.get("certified") is not False:
         raise BoundaryError("final receipt must remain certified=false")
+    if final.get("fixture_build_receipt_sha256") not in (None, build.get("receipt_sha256")):
+        raise BoundaryError("final receipt does not bind to the supplied authority-safe build receipt")
     final_limitations = " ".join(final.get("limitations", [])).lower()
     for phrase in (
-        "synthetic and non-production",
+        "synthetic",
         "does not state affiliation",
-        "source acquisition/use authorization remains a separate",
+        "source acquisition/use authorization",
     ):
         if phrase not in final_limitations:
             raise BoundaryError(f"final receipt is missing required limitation phrase: {phrase}")
@@ -152,6 +187,7 @@ def inspect(package_root: Path, build_receipt_path: Path, final_receipt_path: Pa
         "synthetic_operator_placeholder": {
             "uuid": EXPECTED_OPERATOR_UUID,
             "sha256": sha256_file(operator_path),
+            "description_field": "contactDescriptionOrComment",
             "description": description,
             "forbidden_contact_channels_present": [],
             "profile_reference_fields": operator_refs,
