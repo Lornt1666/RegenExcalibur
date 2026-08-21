@@ -1,7 +1,7 @@
 {
-  "schema_version": "1.1",
+  "schema_version": "1.2",
   "gate": "ProofGrid R5 clean-environment reproduction candidate",
-  "implementation_commit": "b0f3e0b4afbc7e787d7063f4b1cfa693083dd0d4",
+  "implementation_commit": "fe27d78171140832a7985e4d5157f5541c8a02aa",
   "runtime": {
     "python_by_platform": {
       "Linux": "3.11.16",
@@ -27,8 +27,8 @@
     "total_kgco2e": 3860.0,
     "indicator": "GWP-total",
     "system_boundary_modules": ["A1", "A2", "A3"],
-    "evidence_content_sha256": "d914a8faf3a387fd5919784102fa396298c2977af23789e75b024771cda7ef0d",
-    "receipt_sha256": "2406b1a781cb10d2df0806200a1811d72de05d256fd06ba18b67511a2fbc4229",
+    "evidence_content_sha256": "9ce99ff076f41390c254377bd06e9897c4b203a4b778fbfd09c350624545142c",
+    "receipt_sha256": "44955751eec438621e43e2478e672a55bd6bff3aaf3a6e27ac588ff07cee8b7d",
     "input_sha256": {
       "project.json": "f9b83225b208b734e1e96fd0f39e1cb9c56e15de55432cbd4bb7e7535a126a92",
       "materials.json": "ea19004cf12d677eb47cb2bf30b9ec86fe9ca04ef31f1e1ec92d8e6123f32036",
@@ -51,6 +51,11 @@
       "declared_quantity_unit_name": "METRE",
       "material_name": "Concrete"
     }
+  },
+  "portability_history": {
+    "prior_implementation_commit": "b0f3e0b4afbc7e787d7063f4b1cfa693083dd0d4",
+    "finding": "Windows reproduction discovered OS-native schema path separators in the RXEP receipt, causing a receipt digest mismatch while the known-answer result and evidence-content digest matched.",
+    "resolution": "Verifier 0.3.1 canonicalizes repository-relative schema paths to POSIX form. The calculation method remains 0.3.0. The patched implementation passed ProofGrid Genesis run 32438095422 before this manifest was refrozen."
   },
   "result_label": "CLEAN_ENVIRONMENT_REPRODUCED",
   "independence_scope": "Execution occurs on fresh third-party-hosted runner environments from repository-published files only. The reproduction harness is authored in the same repository and therefore is not represented as independent professional or scientific review.",
