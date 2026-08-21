@@ -1,0 +1,226 @@
+name: ProofGrid v1.6 Mapped Declared Result Scaling
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/proofgrid-v16-mapped-declared-result-scaling.yml'
+      - 'reference/mapped_declared_result_scale.py'
+      - 'schemas/mapped-declared-result-calculation-request.schema.json'
+      - 'schemas/mapped-declared-result-calculation.schema.json'
+      - 'tests/test_mapped_declared_result_scale.py'
+      - 'requirements-proofgrid.txt'
+      - 'requirements-proofgrid-v07.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  mapped-declared-result-scaling:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      V15_ARTIFACT_ID: '9450930527'
+      V15_ZIP_SHA256: 'f9b0fdc47aa2c03a2eca3f4fc35086d2708eb176bce8757a8c2817be1f158d32'
+      V14_ARTIFACT_ID: '9450293777'
+      V14_ZIP_SHA256: '6bbc8efb8d762ce8171e94d27d5cffc42d34ab439bf5006cf6f79235cc7df4d2'
+
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v6.1.0
+
+      - name: Setup Python 3.11.16
+        uses: actions/setup-python@v6.0.0
+        with:
+          python-version: '3.11.16'
+
+      - name: Install exact ProofGrid dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-proofgrid.txt
+          python -m pip install -r requirements-proofgrid-v07.txt
+          python -m pip check
+
+      - name: Run v1.6 exact-decimal fail-closed unit suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest -v tests.test_mapped_declared_result_scale
+
+      - name: Download and verify exact accepted v1.5 and v1.4 parent artifacts
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ROOT=/tmp/proofgrid-v16
+          mkdir -p "$ROOT/parents/v15" "$ROOT/parents/v14"
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V15_ARTIFACT_ID}/zip" > "$ROOT/v15.zip"
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V14_ARTIFACT_ID}/zip" > "$ROOT/v14.zip"
+          echo "${V15_ZIP_SHA256}  $ROOT/v15.zip" | sha256sum -c -
+          echo "${V14_ZIP_SHA256}  $ROOT/v14.zip" | sha256sum -c -
+          unzip -q "$ROOT/v15.zip" -d "$ROOT/parents/v15"
+          unzip -q "$ROOT/v14.zip" -d "$ROOT/parents/v14"
+          echo '6f68adfb094fc02ab4a2cb0937cb2019f97f6387d121577377b69e7924729832  /tmp/proofgrid-v16/parents/v15/out-a/ifc-declaration-product-mapping.json' | sha256sum -c -
+          echo 'a8a3845f26aef10566b80e1e888e3ffb8af832bbef23ba10925988ebea4771fa  /tmp/proofgrid-v16/parents/v15/out-a/ifc-declaration-product-mapping-receipt.json' | sha256sum -c -
+          echo 'f43bda379a6800e6a2954b1856901c8a71564a910cf34be34b602fc2746eec08  /tmp/proofgrid-v16/parents/v14/v12/a/declaration-evidence-bundle.json' | sha256sum -c -
+          echo 'ce9f0ac9514a546cdb056db3e1bb700e713cc8f4cb9487c5ac02308390c925b7  /tmp/proofgrid-v16/parents/v14/v12/a/declaration-evidence-bundle-receipt.json' | sha256sum -c -
+          echo EXACT_V15_V14_PARENT_BYTES=PASS
+
+      - name: Build exact A1-A3 null-scenario calculation request
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import json
+          root=Path('/tmp/proofgrid-v16')
+          request={
+            'schema_version':'1.0',
+            'request_version':'1.6.0',
+            'bindings':{
+              'mapping_record_content_sha256':'0375f89ea7aba5dd8be2575a0d5c7f16974ffac4915755f3f643424789192dff',
+              'mapping_receipt_sha256':'31a93364d0304fd210d88ca8895ecf07a5ee52562e42fc214f0df2939ae99a2b',
+              'declaration_bundle_content_sha256':'3459f2119776c7b3094871c3d5a7b7a71b7f8d766871885955d7513e9ad2a0f2',
+              'declaration_bundle_receipt_sha256':'a80ce1b3146b9378f4924a47929916a3061d5bb55daf560afd786802f3d59fc0'},
+            'selection':{
+              'indicator_uuid':'6a37f984-a4b3-458a-a20a-64418c145fa2',
+              'module':'A1-A3',
+              'scenario':None}}
+          (root/'request.json').write_text(json.dumps(request,indent=2,sort_keys=True)+'\n')
+          print('EXPLICIT_SINGLE_ROW_REQUEST=PASS')
+          PY
+
+      - name: Execute exact Decimal scaling twice and prove byte determinism
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT=/tmp/proofgrid-v16
+          for R in a b; do
+            python reference/mapped_declared_result_scale.py \
+              --mapping-record "$ROOT/parents/v15/out-a/ifc-declaration-product-mapping.json" \
+              --mapping-receipt "$ROOT/parents/v15/out-a/ifc-declaration-product-mapping-receipt.json" \
+              --declaration-bundle "$ROOT/parents/v14/v12/a/declaration-evidence-bundle.json" \
+              --declaration-bundle-receipt "$ROOT/parents/v14/v12/a/declaration-evidence-bundle-receipt.json" \
+              --request "$ROOT/request.json" \
+              --output-dir "$ROOT/out-$R"
+          done
+          diff -u "$ROOT/out-a/mapped-declared-result-calculation.json" "$ROOT/out-b/mapped-declared-result-calculation.json"
+          diff -u "$ROOT/out-a/mapped-declared-result-calculation-receipt.json" "$ROOT/out-b/mapped-declared-result-calculation-receipt.json"
+
+      - name: Verify exact expected Decimal result and bounded semantics
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          r=json.load(open('/tmp/proofgrid-v16/out-a/mapped-declared-result-calculation.json'))
+          receipt=json.load(open('/tmp/proofgrid-v16/out-a/mapped-declared-result-calculation-receipt.json'))
+          assert r['verdict']=='MAPPED_DECLARED_RESULT_SCALED_VERIFIABLE'
+          assert r['calculation_scope']=='SINGLE_MAPPED_DECLARED_RESULT_ROW'
+          assert r['selection']['indicator_uuid']=='6a37f984-a4b3-458a-a20a-64418c145fa2'
+          assert r['selection']['module']=='A1-A3'
+          assert r['selection']['scenario'] is None
+          assert r['calculation']['mapped_quantity']=={'value_lexical':'1000.0','value_decimal':'1000','unit':'kg'}
+          assert r['calculation']['reference_quantity']=={'value_lexical':'1','value_decimal':'1','unit':'kg'}
+          assert r['calculation']['declared_result']['value_lexical']=='15.559479677163699'
+          assert r['calculation']['declared_result']['value_decimal']=='15.559479677163699'
+          assert r['calculation']['declared_result']['unit']=='kg CO2 eqv.'
+          assert r['calculation']['scale_factor_decimal']=='1000'
+          assert r['calculation']['scaled_result_decimal']=='15559.479677163699'
+          assert r['calculation']['scaled_result_unit']=='kg CO2 eqv.'
+          assert r['calculation_performed'] is True
+          assert r['aggregation_performed'] is False
+          assert r['missing_modules_are_zero'] is False
+          assert r['unit_conversion_performed'] is False
+          assert r['scenario_inference_performed'] is False
+          assert r['fuzzy_mapping_performed'] is False
+          assert r['scientific_validation_performed'] is False
+          assert r['professional_review_performed'] is False
+          assert r['certified'] is False
+          assert receipt['scaled_result_decimal']=='15559.479677163699'
+          print('V16_EXACT_DECIMAL_RESULT=15559.479677163699 kg CO2 eqv.')
+          PY
+
+      - name: Prove wrong-scenario and stale-parent requests fail closed
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import copy,json,subprocess,sys
+          root=Path('/tmp/proofgrid-v16')
+          request=json.loads((root/'request.json').read_text())
+          cases=[]
+          wrong=copy.deepcopy(request)
+          wrong['selection']['scenario']={'name':'100% recycling','group':'EoL','default':True}
+          cases.append(('wrong-scenario',wrong))
+          stale=copy.deepcopy(request)
+          stale['bindings']['mapping_receipt_sha256']='0'*64
+          cases.append(('stale-mapping-receipt',stale))
+          for label,data in cases:
+              p=root/f'negative-{label}.json'; p.write_text(json.dumps(data,indent=2,sort_keys=True)+'\n')
+              cmd=[sys.executable,'reference/mapped_declared_result_scale.py','--mapping-record',str(root/'parents/v15/out-a/ifc-declaration-product-mapping.json'),'--mapping-receipt',str(root/'parents/v15/out-a/ifc-declaration-product-mapping-receipt.json'),'--declaration-bundle',str(root/'parents/v14/v12/a/declaration-evidence-bundle.json'),'--declaration-bundle-receipt',str(root/'parents/v14/v12/a/declaration-evidence-bundle-receipt.json'),'--request',str(p),'--output-dir',str(root/f'should-not-{label}')]
+              result=subprocess.run(cmd)
+              assert result.returncode!=0,label
+          print('V16_HOSTED_NEGATIVES=PASS')
+          PY
+
+      - name: Produce v1.6 integration receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib,json
+          root=Path('/tmp/proofgrid-v16')
+          r=json.loads((root/'out-a/mapped-declared-result-calculation-receipt.json').read_text())
+          report={
+            'verdict':'MAPPED_DECLARED_RESULT_SCALED_VERIFIABLE',
+            'accepted_v15_head':'c3af80c3b2c221c50e949e9b0a2efd6def2ef35b',
+            'accepted_v15_artifact':9450930527,
+            'accepted_v15_zip_sha256':'f9b0fdc47aa2c03a2eca3f4fc35086d2708eb176bce8757a8c2817be1f158d32',
+            'accepted_v14_artifact':9450293777,
+            'accepted_v14_zip_sha256':'6bbc8efb8d762ce8171e94d27d5cffc42d34ab439bf5006cf6f79235cc7df4d2',
+            'calculation_receipt_sha256':r['receipt_sha256'],
+            'record_content_sha256':r['record_content_sha256'],
+            'record_file_sha256':r['record_file_sha256'],
+            'indicator_uuid':r['indicator_uuid'],
+            'module':r['module'],
+            'scenario':r['scenario'],
+            'scale_factor_decimal':r['scale_factor_decimal'],
+            'scaled_result_decimal':r['scaled_result_decimal'],
+            'scaled_result_unit':r['scaled_result_unit'],
+            'calculation_scope':'SINGLE_MAPPED_DECLARED_RESULT_ROW',
+            'repeat_within_run_byte_identical':True,
+            'wrong_scenario_rejected':True,
+            'stale_parent_binding_rejected':True,
+            'aggregation_performed':False,
+            'missing_modules_are_zero':False,
+            'unit_conversion_performed':False,
+            'scenario_inference_performed':False,
+            'fuzzy_mapping_performed':False,
+            'scientific_validation_performed':False,
+            'professional_review_performed':False,
+            'certified':False,
+            'limitations':['This is one exact software-scaled declared-result contribution for one mapped IFC quantity and one explicitly selected declaration row; it is not a complete building LCA or certification.']}
+          raw=json.dumps(report,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()
+          report['receipt_sha256']=hashlib.sha256(raw).hexdigest()
+          (root/'v16-integration-receipt.json').write_text(json.dumps(report,indent=2,sort_keys=True)+'\n')
+          print(json.dumps(report,indent=2,sort_keys=True))
+          PY
+
+      - name: Retain bounded calculation evidence only
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v16-mapped-declared-result-scaling
+          path: |
+            /tmp/proofgrid-v16/v16-integration-receipt.json
+            /tmp/proofgrid-v16/request.json
+            /tmp/proofgrid-v16/out-a/mapped-declared-result-calculation.json
+            /tmp/proofgrid-v16/out-a/mapped-declared-result-calculation-receipt.json
+          if-no-files-found: error
+          retention-days: 30
