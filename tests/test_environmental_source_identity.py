@@ -40,6 +40,14 @@ def process_xml(version: str, uuid: str | None, *, name: str = "ProofGrid synthe
 '''.encode("utf-8")
 
 
+def _write_deterministic_zip_entry(zf: zipfile.ZipFile, name: str, data: bytes) -> None:
+    info = zipfile.ZipInfo(name)
+    info.date_time = (1980, 1, 1, 0, 0, 0)
+    info.compress_type = zipfile.ZIP_STORED
+    info.external_attr = 0o100644 << 16
+    zf.writestr(info, data)
+
+
 def build_source(root: Path, version: str, *, uuid: str | None = "11111111-2222-3333-4444-555555555555", extra_process_version: str | None = None) -> tuple[Path, str]:
     if version == "1.3" and extra_process_version is None:
         path = root / "source.xml"
@@ -48,9 +56,13 @@ def build_source(root: Path, version: str, *, uuid: str | None = "11111111-2222-
 
     path = root / "source.zip"
     with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_STORED) as zf:
-        zf.writestr("ILCD/processes/one.xml", process_xml(version, uuid))
+        _write_deterministic_zip_entry(zf, "ILCD/processes/one.xml", process_xml(version, uuid))
         if extra_process_version is not None:
-            zf.writestr("ILCD/processes/two.xml", process_xml(extra_process_version, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"))
+            _write_deterministic_zip_entry(
+                zf,
+                "ILCD/processes/two.xml",
+                process_xml(extra_process_version, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"),
+            )
     return path, "application/zip"
 
 
