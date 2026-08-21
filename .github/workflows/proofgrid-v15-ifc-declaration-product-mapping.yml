@@ -62,6 +62,10 @@ jobs:
           mkdir -p /tmp/proofgrid-v15/ifc
           python - <<'PY'
           import ifcopenshell
+          import re
+          from pathlib import Path
+
+          out = Path('/tmp/proofgrid-v15/ifc/fixture.ifc')
           m=ifcopenshell.file(schema='IFC4')
           mass=m.create_entity('IfcSIUnit',UnitType='MASSUNIT',Prefix='KILO',Name='GRAM')
           units=m.create_entity('IfcUnitAssignment',Units=[mass])
@@ -72,7 +76,22 @@ jobs:
           q=m.create_entity('IfcQuantityWeight',Name='Mass',WeightValue=1000.0)
           qset=m.create_entity('IfcElementQuantity',GlobalId='3BXL7DJx51bvggyIPU2Xi5',Name='Qto_WallBaseQuantities',Quantities=[q])
           m.create_entity('IfcRelDefinesByProperties',GlobalId='0BXL7DJx51bvggyIPU2Xi5',RelatedObjects=[wall],RelatingPropertyDefinition=qset)
-          m.write('/tmp/proofgrid-v15/ifc/fixture.ifc')
+          m.write(str(out))
+
+          # IfcOpenShell emits the current clock time in STEP FILE_NAME metadata.
+          # Canonicalize ONLY this synthetic test fixture so independent hosted runs
+          # hash the same source bytes. Real user/provider IFC files are never
+          # rewritten or normalized by ProofGrid source-ingestion paths.
+          text = out.read_text(encoding='utf-8')
+          text, count = re.subn(
+              r"(FILE_NAME\('[^']*',)'[^']*'",
+              r"\1'2026-01-01T00:00:00'",
+              text,
+              count=1,
+          )
+          if count != 1:
+              raise SystemExit(f'expected exactly one IFC FILE_NAME timestamp, replaced {count}')
+          out.write_text(text, encoding='utf-8', newline='\n')
           PY
           python reference/ifc_extract.py /tmp/proofgrid-v15/ifc/fixture.ifc --output /tmp/proofgrid-v15/ifc/extraction.json
       - name: Create explicit reviewed mapping artifact from exact IDs
@@ -92,7 +111,7 @@ jobs:
             'id':'RX-V15-MAP-001','source_ifc':{'sha256':ext['source_sha256'],'schema':ext['schema']},
             'element':{'step_id':wall['step_id'],'global_id':wall['global_id'],'ifc_type':wall['ifc_type']},
             'material':{'association_step_id':mat['association_step_id'],'material_step_id':mat['material_step_id'],'declared_name':mat['name'],'source_type':mat['source_type']},
-            'quantity':{'set_step_id':q['set_step_id'],'quantity_step_id':q['quantity_step_id'],'name':q['name'],'ifc_quantity_type':q['ifc_quantity_type'],'value':q['value'],'unit':{'unit_type':q['unit']['unit_type'],'name':q['unit']['name'],'prefix':q['unit']['prefix'],'source':q['unit']['source']}},
+            'quantity':{'set_step_id':q['set_step_id'],'quantity_step_id':q['quantity_step_id'],'name':q['name'],'ifc_quantity_type':q['ifc_quantity_type'],'value':q['value'],'unit':{'unit_type':q['unit']['unit_type'],'name':q['unit']['name'],'prefix':q['unit']['prefix'],'source':q['unit']['source']},},
             'declaration':declaration,
             'review':{'state':'REVIEWED_MAPPING_DECISION','reviewer':'ProofGrid synthetic reviewer','role':'synthetic test mapping reviewer','rationale':'Explicitly map exact IFC IDs to exact accepted declaration product identity; name similarity intentionally absent.','reference':'issue-42-synthetic-control'},
             'limitations':['Synthetic mapping control only; workflow review is not professional licensure.']}}
