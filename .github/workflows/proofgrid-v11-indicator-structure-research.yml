@@ -58,7 +58,7 @@ jobs:
             git -C .proofgrid-upstream/indata-v13 hash-object doc/identifiers/EN15804+A2_EF3.1_indicators.csv | tee "$OUT/ef31-catalog.git-blob"
           fi
 
-      - name: Discover exchange/module/scenario/value structure
+      - name: Discover exact UUID ancestry and structural neighbourhood
         shell: bash
         run: |
           set -euo pipefail
@@ -78,8 +78,10 @@ jobs:
           assert d['catalogue']['gwp_total']['uuid']=='6a37f984-a4b3-458a-a20a-64418c145fa2'
           assert d['catalogue']['gwp_total']['version']=='04.00.016'
           assert d['catalogue']['gwp_total']['unit_en']=='kg CO2 eqv.'
-          assert d['v12']['gwp_total_exchange_count'] >= 1
-          assert d['v13']['gwp_total_exchange_count'] >= 1
+          assert d['v12']['gwp_total_occurrence_count'] >= 1
+          assert d['v13']['gwp_total_occurrence_count'] >= 1
+          assert all(row['ancestor_chain'] for row in d['v12']['gwp_total_occurrences'])
+          assert all(row['ancestor_chain'] for row in d['v13']['gwp_total_occurrences'])
           assert d['extractor_accepted'] is False
           assert d['scientific_validation_performed'] is False
           assert d['professional_review_performed'] is False
