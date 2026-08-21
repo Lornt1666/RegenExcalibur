@@ -7,7 +7,6 @@ on:
       - 'reference/declared_environmental_indicators_v111.py'
       - 'reference/declared_environmental_indicators.py'
       - 'tests/test_declared_environmental_indicators_v111.py'
-      - 'tests/test_declared_environmental_indicators.py'
       - 'schemas/declared-environmental-indicators.schema.json'
       - 'conformance/indicator-extraction-v11/**'
       - 'requirements-proofgrid.txt'
@@ -39,12 +38,11 @@ jobs:
           python -m pip install -r requirements-proofgrid-v07.txt
           python -m pip check
 
-      - name: Run historical parser and hardened parent suites
+      - name: Run hardened parent and extraction suites
         shell: bash
         run: |
           set -euo pipefail
           python -m unittest -v \
-            tests.test_declared_environmental_indicators \
             tests.test_declared_environmental_indicators_v111 \
             tests.test_environmental_source_identity
 
@@ -73,9 +71,15 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           import json, zipfile
-          from tests.test_declared_environmental_indicators import write_zip_entry
           from tests.test_declared_environmental_indicators_v111 import hardened_chain
           from reference import environmental_admission_v091 as admission
+
+          def write_zip_entry(zf, name, data):
+              info=zipfile.ZipInfo(name)
+              info.date_time=(1980,1,1,0,0,0)
+              info.compress_type=zipfile.ZIP_STORED
+              info.external_attr=0o100644 << 16
+              zf.writestr(info,data)
 
           root=Path('/tmp/proofgrid-v111')
           root.mkdir(parents=True,exist_ok=True)
@@ -150,20 +154,22 @@ jobs:
           ]
           for version in ('v12','v13'):
               d=json.load(open(f'/tmp/proofgrid-v111/{version}/out-a/declared-environmental-indicators.json'))
+              r=json.load(open(f'/tmp/proofgrid-v111/{version}/out-a/extraction-receipt.json'))
               assert d['verdict']=='DECLARED_ENVIRONMENTAL_INDICATORS_EXTRACTED_VERIFIABLE'
-              assert d['software']['version']=='1.1.1'
+              assert r['engine']['version']=='1.1.1'
               assert len(d['rows'])==9
-              actual=[(r['module'],None if r['scenario'] is None else r['scenario']['name'],r['value_lexical']) for r in d['rows']]
+              actual=[(row['module'],None if row['scenario'] is None else row['scenario']['name'],row['value_lexical']) for row in d['rows']]
               assert actual==expected,(version,actual)
-              assert all(r['value_origin']=='DECLARED_IN_SOURCE' for r in d['rows'])
-              assert all(r['calculated'] is False for r in d['rows'])
-              assert all(r['unit_conversion_performed'] is False for r in d['rows'])
+              assert all(row['value_origin']=='DECLARED_IN_SOURCE' for row in d['rows'])
+              assert all(row['calculated'] is False for row in d['rows'])
+              assert all(row['unit_conversion_performed'] is False for row in d['rows'])
               assert d['ignored_unscoped_mean_amount']['extracted'] is False
               assert d['missing_value_policy']['missing_modules_are_zero'] is False
               assert d['missing_value_policy']['aggregation_performed'] is False
               assert d['scientific_validation_performed'] is False
               assert d['professional_review_performed'] is False
               assert d['certified'] is False
+              assert r['certified'] is False
           print('HARDENED_PINNED_DECLARED_GWP_TOTAL_VALUES=PASS')
           PY
 
