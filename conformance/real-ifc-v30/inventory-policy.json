@@ -1,0 +1,63 @@
+{
+  "policy_version": "3.0.0",
+  "policy_type": "PROOFGRID_MODEL_INVENTORY_POLICY",
+  "policy_id": "proofgrid-v30-real-ifc-inventory-policy",
+  "scope": "ONE_EXACT_IFC_REVISION_UNDER_EXPLICIT_ENUMERATION_POLICY",
+  "enumeration_types": [
+    "IfcProject",
+    "IfcSite",
+    "IfcBuilding",
+    "IfcBuildingStorey",
+    "IfcSpace",
+    "IfcElement"
+  ],
+  "classification": {
+    "evidence_not_applicable_exact_types": [
+      "IfcProject",
+      "IfcSite",
+      "IfcBuilding",
+      "IfcBuildingStorey",
+      "IfcSpace",
+      "IfcOpeningElement"
+    ],
+    "evidence_not_applicable_reason": "CONTEXT_SPATIAL_OR_VOID_OBJECT",
+    "evidence_required_supertype": "IfcElement",
+    "out_of_declared_evidence_scope_exact_types": [],
+    "out_of_scope_reason": "EXPLICIT_POLICY_EXCLUSION"
+  },
+  "identity_policy": {
+    "reject_duplicate_step_id": true,
+    "reject_duplicate_non_empty_global_id": true,
+    "require_step_id": true,
+    "allow_missing_global_id": false
+  },
+  "relationship_capture": {
+    "containment": true,
+    "decomposition": true,
+    "material_associations": true,
+    "declared_element_quantities": true,
+    "exact_step_quantity_lexical_tokens": true
+  },
+  "resource_limits": {
+    "max_source_bytes": 104857600,
+    "max_step_records": 1000000,
+    "max_enumerated_objects": 250000,
+    "max_relationships_per_entry": 10000
+  },
+  "determinism": {
+    "network_resolution": "FORBIDDEN",
+    "source_path_is_authority": false,
+    "source_bytes_are_authority": true,
+    "canonicalization": "UTF-8 JSON; sorted keys; compact separators; ensure_ascii=false",
+    "inventory_order": "STEP_ID_ASCENDING"
+  },
+  "acceptance_boundary": {
+    "synthetic_fixtures_may_test_mechanics": true,
+    "synthetic_fixtures_may_satisfy_v30_acceptance": false,
+    "real_user_authorized_ifc_required_for_v30_acceptance": true,
+    "whole_building_lca_claimed": false,
+    "scientific_validation_performed": false,
+    "professional_review_performed": false,
+    "certified": false
+  }
+}
