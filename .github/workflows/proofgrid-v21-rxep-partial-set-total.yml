@@ -1,0 +1,197 @@
+name: ProofGrid v2.1 RXEP Partial Set Exact Decimal Evidence
+
+on:
+  pull_request:
+    paths:
+      - "reference/rxep_partial_set_total_v21.py"
+      - "tests/test_rxep_partial_set_total_v21.py"
+      - "conformance/rxep-partial-set-total-v21/**"
+      - ".github/workflows/proofgrid-v21-rxep-partial-set-total.yml"
+      - "specs/rxep/evidence-envelope.schema.json"
+      - "requirements-proofgrid.txt"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  reproduce-rxep:
+    strategy:
+      fail-fast: false
+      matrix:
+        replica: [a, b]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      V20_ARTIFACT_ID: "9464376763"
+      V20_ZIP_SHA256: "9b63ae70c4db86e2b01577bcc433471ad705a3aedcc590cf028fd874d95e677b"
+    steps:
+      - uses: actions/checkout@v6.1.0
+      - uses: actions/setup-python@v6.0.0
+        with:
+          python-version: "3.11.16"
+          check-latest: false
+      - name: Install exact ProofGrid dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-proofgrid.txt
+          python -m pip check
+      - name: Run v2.1 fail-closed unit suite
+        run: |
+          set -euo pipefail
+          python -m unittest -v tests.test_rxep_partial_set_total_v21
+      - name: Download and SHA-verify accepted v2.0 artifact independently
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ROOT="/tmp/proofgrid-v21-${{ matrix.replica }}"
+          mkdir -p "${ROOT}"/{v20,out}
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V20_ARTIFACT_ID}/zip" > "${ROOT}/v20.zip"
+          echo "${V20_ZIP_SHA256}  ${ROOT}/v20.zip" | sha256sum -c -
+          unzip -q "${ROOT}/v20.zip" -d "${ROOT}/v20"
+      - name: Bind accepted PARTIAL total into RXEP
+        run: |
+          set -euo pipefail
+          ROOT="/tmp/proofgrid-v21-${{ matrix.replica }}"
+          python reference/rxep_partial_set_total_v21.py \
+            --v20-record "${ROOT}/v20/a/partial-contribution-set-exact-decimal-total.json" \
+            --v20-receipt "${ROOT}/v20/a/partial-contribution-set-exact-decimal-total-receipt.json" \
+            --v20-comparison "${ROOT}/v20/v20-independent-comparison-receipt.json" \
+            --output-dir "${ROOT}/out"
+      - name: Assert exact RXEP authority and bounded state
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path('/tmp/proofgrid-v21-${{ matrix.replica }}/out')
+          e=json.loads((root/'rxep-partial-set-exact-decimal-total.json').read_text())
+          assert e['verdict']=='RXEP_PARTIAL_SET_EXACT_DECIMAL_TOTAL_EVIDENCE_VERIFIABLE'
+          assert e['review']=={'state':'CALCULATED','reviewer':None}
+          assert e['measurement']['value_decimal']=='23339.2195157455485'
+          assert e['measurement']['decimal_value_is_authority'] is True
+          assert e['measurement']['numeric_value_is_authority'] is False
+          assert e['measurement']['unit']=='kg CO2 eqv.'
+          assert e['measurement']['member_count']==2
+          assert e['measurement']['completeness_status']=='PARTIAL'
+          assert e['measurement']['aggregation_scope']=='ADMITTED_SET_MEMBERS_ONLY'
+          assert e['aggregation_performed'] is True and e['sum_performed'] is True
+          assert e['whole_building_lca_claimed'] is False
+          assert e['declared_scope_complete_claimed'] is False
+          assert e['environmental_claim_independently_verified'] is False
+          assert e['scientific_validation_performed'] is False
+          assert e['professional_review_performed'] is False
+          assert e['certified'] is False
+          print('RXEP_PARTIAL_TOTAL='+e['measurement']['value_decimal'])
+          PY
+      - name: Upload replica RXEP evidence
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v21-rxep-partial-total-${{ matrix.replica }}
+          path: |
+            /tmp/proofgrid-v21-${{ matrix.replica }}/out/rxep-partial-set-exact-decimal-total.json
+            /tmp/proofgrid-v21-${{ matrix.replica }}/out/rxep-partial-set-exact-decimal-total-receipt.json
+          if-no-files-found: error
+          retention-days: 30
+
+  compare:
+    needs: reproduce-rxep
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      V20_ARTIFACT_ID: "9464376763"
+      V20_ZIP_SHA256: "9b63ae70c4db86e2b01577bcc433471ad705a3aedcc590cf028fd874d95e677b"
+    steps:
+      - uses: actions/checkout@v6.1.0
+      - uses: actions/setup-python@v6.0.0
+        with:
+          python-version: "3.11.16"
+          check-latest: false
+      - name: Install exact ProofGrid dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-proofgrid.txt
+          python -m pip check
+      - name: Download both replica artifacts
+        uses: actions/download-artifact@v4.3.0
+        with:
+          pattern: proofgrid-v21-rxep-partial-total-*
+          path: /tmp/v21
+          merge-multiple: false
+      - name: Require byte identity across independent binders
+        run: |
+          set -euo pipefail
+          A=/tmp/v21/proofgrid-v21-rxep-partial-total-a
+          B=/tmp/v21/proofgrid-v21-rxep-partial-total-b
+          diff -u "$A/rxep-partial-set-exact-decimal-total.json" "$B/rxep-partial-set-exact-decimal-total.json"
+          diff -u "$A/rxep-partial-set-exact-decimal-total-receipt.json" "$B/rxep-partial-set-exact-decimal-total-receipt.json"
+      - name: Require tampered v2.0 parent to fail closed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/v21-parent/{v20,negative}
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V20_ARTIFACT_ID}/zip" > /tmp/v21-parent/v20.zip
+          echo "${V20_ZIP_SHA256}  /tmp/v21-parent/v20.zip" | sha256sum -c -
+          unzip -q /tmp/v21-parent/v20.zip -d /tmp/v21-parent/v20
+          cp /tmp/v21-parent/v20/a/partial-contribution-set-exact-decimal-total.json /tmp/v21-parent/tampered.json
+          printf ' ' >> /tmp/v21-parent/tampered.json
+          if python reference/rxep_partial_set_total_v21.py \
+            --v20-record /tmp/v21-parent/tampered.json \
+            --v20-receipt /tmp/v21-parent/v20/a/partial-contribution-set-exact-decimal-total-receipt.json \
+            --v20-comparison /tmp/v21-parent/v20/v20-independent-comparison-receipt.json \
+            --output-dir /tmp/v21-parent/negative; then
+            echo 'tampered v2.0 parent unexpectedly bound into RXEP' >&2
+            exit 1
+          else
+            echo 'V20_PARENT_TAMPER_REJECTED=PASS'
+          fi
+      - name: Produce independent v2.1 comparison receipt
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          root=Path('/tmp/v21')
+          a=root/'proofgrid-v21-rxep-partial-total-a'
+          e=json.loads((a/'rxep-partial-set-exact-decimal-total.json').read_text())
+          r=json.loads((a/'rxep-partial-set-exact-decimal-total-receipt.json').read_text())
+          sha=lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
+          out={
+            'verdict':'RXEP_PARTIAL_SET_EXACT_DECIMAL_TOTAL_INDEPENDENTLY_REPRODUCED',
+            'accepted_v20_head':'2fc2c450b1f37cb2c355ff12d09622ad5f094eec',
+            'replicas':['a','b'],'independent_runner_count':2,'byte_identical':True,
+            'rxep_review_state':'CALCULATED','value_decimal':'23339.2195157455485','unit':'kg CO2 eqv.',
+            'member_count':2,'completeness_status':'PARTIAL','aggregation_scope':'ADMITTED_SET_MEMBERS_ONLY',
+            'rxep_record_content_sha256':e['integrity']['content_sha256'],
+            'rxep_record_file_sha256':sha(a/'rxep-partial-set-exact-decimal-total.json'),
+            'rxep_receipt_sha256':r['receipt_sha256'],
+            'rxep_receipt_file_sha256':sha(a/'rxep-partial-set-exact-decimal-total-receipt.json'),
+            'parent_v20_record_content_sha256':'8b47dfb87f1be4e1979666f85f7da58c41c00e48c92b7cd4a2f3c9fdd62e8ed0',
+            'parent_v20_receipt_sha256':'991de0efd5c71c067391c8e5fa7bbf81fd55febb72a4cfe8cf5a10f09ac238d4',
+            'parent_v20_comparison_receipt_sha256':'74f5ef72a9f1fdd6c8145bc3291e0bfbb9373c94cbf1b048822e291266b7f839',
+            'parent_tamper_rejected':True,
+            'aggregation_performed':True,'sum_performed':True,
+            'whole_building_lca_claimed':False,'declared_scope_complete_claimed':False,
+            'environmental_claim_independently_verified':False,
+            'scientific_validation_performed':False,'professional_review_performed':False,'certified':False,
+          }
+          out['comparison_receipt_sha256']=hashlib.sha256(json.dumps(out,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()
+          p=Path('/tmp/v21/v21-independent-comparison-receipt.json')
+          p.write_text(json.dumps(out,indent=2,sort_keys=True)+'\n',encoding='utf-8',newline='\n')
+          print(json.dumps(out,indent=2,sort_keys=True))
+          PY
+      - name: Retain bounded v2.1 evidence only
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v21-rxep-partial-set-total
+          path: |
+            /tmp/v21/proofgrid-v21-rxep-partial-total-a/rxep-partial-set-exact-decimal-total.json
+            /tmp/v21/proofgrid-v21-rxep-partial-total-a/rxep-partial-set-exact-decimal-total-receipt.json
+            /tmp/v21/v21-independent-comparison-receipt.json
+          if-no-files-found: error
+          retention-days: 30
