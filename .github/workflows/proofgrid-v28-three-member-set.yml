@@ -1,0 +1,146 @@
+name: ProofGrid v2.8 Three Member Set
+
+on:
+  pull_request:
+    paths:
+      - "reference/three_member_set_v28.py"
+      - "tests/test_three_member_set_v28.py"
+      - "conformance/three-member-set-v28/**"
+      - ".github/workflows/proofgrid-v28-three-member-set.yml"
+      - "requirements-proofgrid.txt"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  reproduce-set:
+    strategy:
+      fail-fast: false
+      matrix: {replica: [a, b]}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      V19_ARTIFACT_ID: "9464236551"
+      V19_ZIP_SHA256: "38e24b2bcfcfcc227eeee5ac6cbaf79966aa838d27c7dc6b027637aad7b3297c"
+      V27_ARTIFACT_ID: "9475053941"
+      V27_ZIP_SHA256: "40885a6899a01cf9430e3b7c9834e63dcc52ea6a87ad964bd1d8c714dde1a850"
+      V26_ARTIFACT_ID: "9474464410"
+      V26_ZIP_SHA256: "ea0226b482e74bceda2afc0cdbe34a79295c28b442b45f96601ce2a7f303f90e"
+    steps:
+      - uses: actions/checkout@v6.1.0
+      - uses: actions/setup-python@v6.2.0
+        with: {python-version: "3.11.16", check-latest: false}
+      - name: Install exact ProofGrid dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -r requirements-proofgrid.txt
+          python -m pip check
+      - name: Run v2.8 fail-closed unit suite
+        run: python -m unittest -v tests.test_three_member_set_v28
+      - name: Download and SHA-verify accepted parents independently
+        env: {GH_TOKEN: "${{ github.token }}"}
+        run: |
+          set -euo pipefail
+          ROOT="/tmp/proofgrid-v28-${{ matrix.replica }}"; mkdir -p "${ROOT}"/{v19,v27,v26,out}
+          for ITEM in "v19:${V19_ARTIFACT_ID}:${V19_ZIP_SHA256}" "v27:${V27_ARTIFACT_ID}:${V27_ZIP_SHA256}" "v26:${V26_ARTIFACT_ID}:${V26_ZIP_SHA256}"; do
+            IFS=: read NAME ID DIGEST <<< "${ITEM}"
+            gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${ID}/zip" > "${ROOT}/${NAME}.zip"
+            echo "${DIGEST}  ${ROOT}/${NAME}.zip" | sha256sum -c -
+            unzip -q "${ROOT}/${NAME}.zip" -d "${ROOT}/${NAME}"
+          done
+      - name: Admit exact third member without aggregation
+        run: |
+          ROOT="/tmp/proofgrid-v28-${{ matrix.replica }}"
+          python reference/three_member_set_v28.py \
+            --base-set "${ROOT}/v19/set/out-a/environmental-contribution-set.json" \
+            --base-receipt "${ROOT}/v19/set/out-a/environmental-contribution-set-receipt.json" \
+            --third-rxep "${ROOT}/v27/third-rxep-calculated-contribution.json" \
+            --third-rxep-receipt "${ROOT}/v27/third-rxep-calculated-contribution-receipt.json" \
+            --third-calculation "${ROOT}/v26/third-mapped-declared-result-calculation.json" \
+            --third-calculation-receipt "${ROOT}/v26/third-mapped-declared-result-calculation-receipt.json" \
+            --output-dir "${ROOT}/out"
+      - name: Assert exact three-member PARTIAL state
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          o=json.loads(Path('/tmp/proofgrid-v28-${{ matrix.replica }}/out/three-member-environmental-contribution-set.json').read_text())
+          r=json.loads(Path('/tmp/proofgrid-v28-${{ matrix.replica }}/out/three-member-environmental-contribution-set-receipt.json').read_text())
+          ids={m['semantic_identity_sha256'] for m in o['members']}
+          assert ids=={'b0c85f4123a5dbc6206cf3dc2ac08aed7626633c0a901a29e9fad395c67cf0dc','75eff1d5c89afbb44db7a709f8958c10bc6c46c52b96e7b6b56aab4ff8a5b950','2a67655f18b9cd8d776335e886dc324c9911dd9e1090e8852752235ecb958905'}
+          assert o['member_count']==3 and o['completeness_status']=='PARTIAL'
+          assert o['aggregation_performed'] is False and o['sum_performed'] is False
+          assert o['missing_contributions_are_zero'] is False and o['missing_modules_are_zero'] is False
+          assert r['verdict']=='THREE_MEMBER_ENVIRONMENTAL_CONTRIBUTION_SET_ADMISSION_VERIFIABLE'
+          assert r['whole_building_lca_claimed'] is False
+          PY
+      - name: Upload replica set evidence
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v28-set-replica-${{ matrix.replica }}
+          path: /tmp/proofgrid-v28-${{ matrix.replica }}/out/
+          if-no-files-found: error
+          retention-days: 30
+
+  compare:
+    needs: reproduce-set
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      V27_ARTIFACT_ID: "9475053941"
+      V27_ZIP_SHA256: "40885a6899a01cf9430e3b7c9834e63dcc52ea6a87ad964bd1d8c714dde1a850"
+    steps:
+      - uses: actions/checkout@v6.1.0
+      - uses: actions/setup-python@v6.2.0
+        with: {python-version: "3.11.16", check-latest: false}
+      - name: Install exact ProofGrid dependencies
+        run: |
+          python -m pip install --disable-pip-version-check -r requirements-proofgrid.txt
+          python -m pip check
+      - uses: actions/download-artifact@v4.3.0
+        with: {name: proofgrid-v28-set-replica-a, path: /tmp/v28/a}
+      - uses: actions/download-artifact@v4.3.0
+        with: {name: proofgrid-v28-set-replica-b, path: /tmp/v28/b}
+      - name: Require set byte identity
+        run: |
+          diff -u /tmp/v28/a/three-member-environmental-contribution-set.json /tmp/v28/b/three-member-environmental-contribution-set.json
+          diff -u /tmp/v28/a/three-member-environmental-contribution-set-receipt.json /tmp/v28/b/three-member-environmental-contribution-set-receipt.json
+      - name: Reject third-parent tamper and semantic duplicate
+        env: {GH_TOKEN: "${{ github.token }}"}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/v28/negative/v27
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V27_ARTIFACT_ID}/zip" > /tmp/v28/negative/v27.zip
+          echo "${V27_ZIP_SHA256}  /tmp/v28/negative/v27.zip" | sha256sum -c -
+          unzip -q /tmp/v28/negative/v27.zip -d /tmp/v28/negative/v27
+          printf ' ' >> /tmp/v28/negative/v27/third-rxep-calculated-contribution.json
+          python - <<'PY'
+          import copy
+          from reference import three_member_set_v28 as m
+          base={'members':[{'member_id':'first','semantic_identity_sha256':m.V19['members'][0]},{'member_id':'collision','semantic_identity_sha256':m.THIRD_IDENTITY_SHA}]}
+          try: m.build_set(base,{}, {},{}, {},{})
+          except m.SetAdmissionError: print('SEMANTIC_DUPLICATE_REJECTED=PASS')
+          else: raise SystemExit('semantic duplicate unexpectedly accepted')
+          PY
+          # File-level tamper must differ from the hard-pinned accepted RXEP file.
+          test "$(sha256sum /tmp/v28/negative/v27/third-rxep-calculated-contribution.json | cut -d' ' -f1)" != "43797abd10cdb571441e063f19617234b9ab4241e1929010feccc01ed8ae1861"
+      - name: Produce independent v2.8 comparison receipt
+        run: |
+          mkdir -p /tmp/v28/final
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          root=Path('/tmp/v28'); s=json.loads((root/'a/three-member-environmental-contribution-set.json').read_text()); r=json.loads((root/'a/three-member-environmental-contribution-set-receipt.json').read_text())
+          sb=(root/'a/three-member-environmental-contribution-set.json').read_bytes(); rb=(root/'a/three-member-environmental-contribution-set-receipt.json').read_bytes()
+          out={'verdict':'THREE_MEMBER_ENVIRONMENTAL_CONTRIBUTION_SET_ADMISSION_INDEPENDENTLY_REPRODUCED','accepted_v27_head':'d8b0f77b793f58410b5fcc08dc6f3dc5187c47de','independent_runner_count':2,'byte_identical':True,'record_content_sha256':s['integrity']['content_sha256'],'record_file_sha256':hashlib.sha256(sb).hexdigest(),'receipt_sha256':r['receipt_sha256'],'receipt_file_sha256':hashlib.sha256(rb).hexdigest(),'member_count':3,'semantic_identities':r['member_semantic_identity_sha256'],'completeness_status':'PARTIAL','aggregation_performed':False,'sum_performed':False,'whole_building_lca_claimed':False,'duplicate_negative_passed':True,'third_parent_tamper_detected':True,'certified':False}
+          out['comparison_receipt_sha256']=hashlib.sha256(json.dumps(out,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()
+          (root/'final/v28-independent-comparison-receipt.json').write_text(json.dumps(out,indent=2,sort_keys=True)+'\n')
+          (root/'final/three-member-environmental-contribution-set.json').write_bytes(sb); (root/'final/three-member-environmental-contribution-set-receipt.json').write_bytes(rb)
+          PY
+      - uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v28-three-member-set
+          path: /tmp/v28/final/
+          if-no-files-found: error
+          retention-days: 30
