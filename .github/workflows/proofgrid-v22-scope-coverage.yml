@@ -1,0 +1,228 @@
+name: ProofGrid v2.2 Declared Scope Coverage
+
+on:
+  pull_request:
+    paths:
+      - "reference/scope_coverage_v22.py"
+      - "tests/test_scope_coverage_v22.py"
+      - "conformance/scope-coverage-v22/**"
+      - ".github/workflows/proofgrid-v22-scope-coverage.yml"
+      - "requirements-proofgrid.txt"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  reproduce-coverage:
+    strategy:
+      fail-fast: false
+      matrix:
+        replica: [a, b]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      V19_ARTIFACT_ID: "9464236551"
+      V19_ZIP_SHA256: "38e24b2bcfcfcc227eeee5ac6cbaf79966aa838d27c7dc6b027637aad7b3297c"
+      V21_ARTIFACT_ID: "9471587160"
+      V21_ZIP_SHA256: "bf6ac1956787190b2aeda73f4ee4af6b004cc225e00310378d4be4b64bd99e59"
+
+    steps:
+      - uses: actions/checkout@v6.1.0
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.11.16"
+          check-latest: false
+
+      - name: Install exact ProofGrid dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -r requirements-proofgrid.txt
+          python -m pip check
+
+      - name: Run v2.2 fail-closed unit suite
+        run: |
+          set -euo pipefail
+          python -m unittest -v tests.test_scope_coverage_v22
+
+      - name: Download and SHA-verify accepted parent artifacts independently
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ROOT="/tmp/proofgrid-v22-${{ matrix.replica }}"
+          mkdir -p "${ROOT}"/{v19,v21,out}
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V19_ARTIFACT_ID}/zip" > "${ROOT}/v19.zip"
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V21_ARTIFACT_ID}/zip" > "${ROOT}/v21.zip"
+          echo "${V19_ZIP_SHA256}  ${ROOT}/v19.zip" | sha256sum -c -
+          echo "${V21_ZIP_SHA256}  ${ROOT}/v21.zip" | sha256sum -c -
+          unzip -q "${ROOT}/v19.zip" -d "${ROOT}/v19"
+          unzip -q "${ROOT}/v21.zip" -d "${ROOT}/v21"
+
+      - name: Build declared synthetic scope coverage ledger
+        run: |
+          set -euo pipefail
+          ROOT="/tmp/proofgrid-v22-${{ matrix.replica }}"
+          python reference/scope_coverage_v22.py \
+            --manifest conformance/scope-coverage-v22/scope-manifest.json \
+            --v19-set "${ROOT}/v19/set/out-a/environmental-contribution-set.json" \
+            --v19-receipt "${ROOT}/v19/set/out-a/environmental-contribution-set-receipt.json" \
+            --v21-rxep "${ROOT}/v21/rxep-exact-decimal-partial-aggregate.json" \
+            --v21-receipt "${ROOT}/v21/rxep-exact-decimal-partial-aggregate-receipt.json" \
+            --output-dir "${ROOT}/out"
+
+      - name: Assert bounded coverage state
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path('/tmp/proofgrid-v22-${{ matrix.replica }}/out')
+          r=json.loads((root/'declared-evidence-scope-coverage.json').read_text())
+          assert r['coverage']['declared_scope_coverage_status']=='COVERED'
+          assert r['coverage']['covered_member_count']==2
+          assert r['coverage']['uncovered_member_count']==0
+          assert r['coverage']['declared_scope_coverage_fraction_decimal']=='1'
+          assert r['scope']['whole_building_scope'] is False
+          assert r['whole_building_completeness_evaluated'] is False
+          assert r['whole_building_lca_claimed'] is False
+          assert r['declared_scope_complete_claimed'] is False
+          assert r['missing_contributions_are_zero'] is False
+          assert r['aggregation_recomputed'] is False
+          assert r['certified'] is False
+          print('DECLARED_SCOPE_COVERAGE=COVERED')
+          print('WHOLE_BUILDING_COMPLETENESS_EVALUATED=false')
+          PY
+
+      - name: Upload replica coverage evidence
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v22-scope-replica-${{ matrix.replica }}
+          path: |
+            /tmp/proofgrid-v22-${{ matrix.replica }}/out/declared-evidence-scope-coverage.json
+            /tmp/proofgrid-v22-${{ matrix.replica }}/out/declared-evidence-scope-coverage-receipt.json
+          if-no-files-found: error
+          retention-days: 30
+
+  compare:
+    needs: reproduce-coverage
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      V19_ARTIFACT_ID: "9464236551"
+      V19_ZIP_SHA256: "38e24b2bcfcfcc227eeee5ac6cbaf79966aa838d27c7dc6b027637aad7b3297c"
+      V21_ARTIFACT_ID: "9471587160"
+      V21_ZIP_SHA256: "bf6ac1956787190b2aeda73f4ee4af6b004cc225e00310378d4be4b64bd99e59"
+
+    steps:
+      - uses: actions/checkout@v6.1.0
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.11.16"
+          check-latest: false
+      - name: Install exact ProofGrid dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -r requirements-proofgrid.txt
+          python -m pip check
+
+      - name: Download replica A
+        uses: actions/download-artifact@v4.3.0
+        with:
+          name: proofgrid-v22-scope-replica-a
+          path: /tmp/v22/a
+      - name: Download replica B
+        uses: actions/download-artifact@v4.3.0
+        with:
+          name: proofgrid-v22-scope-replica-b
+          path: /tmp/v22/b
+
+      - name: Require coverage ledger byte identity
+        run: |
+          set -euo pipefail
+          diff -u /tmp/v22/a/declared-evidence-scope-coverage.json /tmp/v22/b/declared-evidence-scope-coverage.json
+          diff -u /tmp/v22/a/declared-evidence-scope-coverage-receipt.json /tmp/v22/b/declared-evidence-scope-coverage-receipt.json
+
+      - name: Download exact parents for fail-closed negatives
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/v22/parents/{v19,v21}
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V19_ARTIFACT_ID}/zip" > /tmp/v22/parents/v19.zip
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V21_ARTIFACT_ID}/zip" > /tmp/v22/parents/v21.zip
+          echo "${V19_ZIP_SHA256}  /tmp/v22/parents/v19.zip" | sha256sum -c -
+          echo "${V21_ZIP_SHA256}  /tmp/v22/parents/v21.zip" | sha256sum -c -
+          unzip -q /tmp/v22/parents/v19.zip -d /tmp/v22/parents/v19
+          unzip -q /tmp/v22/parents/v21.zip -d /tmp/v22/parents/v21
+
+      - name: Reject whole-building scope promotion
+        run: |
+          set -euo pipefail
+          cp conformance/scope-coverage-v22/scope-manifest.json /tmp/v22/whole-building.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('/tmp/v22/whole-building.json'); o=json.loads(p.read_text()); o['whole_building_scope']=True
+          p.write_text(json.dumps(o,indent=2,sort_keys=True)+'\n',encoding='utf-8',newline='\n')
+          PY
+          set +e
+          python reference/scope_coverage_v22.py \
+            --manifest /tmp/v22/whole-building.json \
+            --v19-set /tmp/v22/parents/v19/set/out-a/environmental-contribution-set.json \
+            --v19-receipt /tmp/v22/parents/v19/set/out-a/environmental-contribution-set-receipt.json \
+            --v21-rxep /tmp/v22/parents/v21/rxep-exact-decimal-partial-aggregate.json \
+            --v21-receipt /tmp/v22/parents/v21/rxep-exact-decimal-partial-aggregate-receipt.json \
+            --output-dir /tmp/v22/negative-whole
+          code=$?
+          set -e
+          test "$code" -ne 0
+
+      - name: Reject missing declared member
+        run: |
+          set -euo pipefail
+          cp conformance/scope-coverage-v22/scope-manifest.json /tmp/v22/missing-member.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('/tmp/v22/missing-member.json'); o=json.loads(p.read_text()); o['expected_members']=o['expected_members'][:1]; o['expected_member_count']=1
+          p.write_text(json.dumps(o,indent=2,sort_keys=True)+'\n',encoding='utf-8',newline='\n')
+          PY
+          set +e
+          python reference/scope_coverage_v22.py \
+            --manifest /tmp/v22/missing-member.json \
+            --v19-set /tmp/v22/parents/v19/set/out-a/environmental-contribution-set.json \
+            --v19-receipt /tmp/v22/parents/v19/set/out-a/environmental-contribution-set-receipt.json \
+            --v21-rxep /tmp/v22/parents/v21/rxep-exact-decimal-partial-aggregate.json \
+            --v21-receipt /tmp/v22/parents/v21/rxep-exact-decimal-partial-aggregate-receipt.json \
+            --output-dir /tmp/v22/negative-missing
+          code=$?
+          set -e
+          test "$code" -ne 0
+
+      - name: Produce independent v2.2 comparison receipt
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/v22/final
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          root=Path('/tmp/v22')
+          r=json.loads((root/'a/declared-evidence-scope-coverage.json').read_text())
+          q=json.loads((root/'a/declared-evidence-scope-coverage-receipt.json').read_text())
+          rb=(root/'a/declared-evidence-scope-coverage.json').read_bytes(); qb=(root/'a/declared-evidence-scope-coverage-receipt.json').read_bytes()
+          report={'verdict':'DECLARED_EVIDENCE_SCOPE_COVERAGE_INDEPENDENTLY_REPRODUCED','accepted_v21_head':'92550ba7f1d19e2bee27dffa546127d7e6f93fbe','replicas':['a','b'],'independent_runner_count':2,'byte_identical':True,'record_content_sha256':r['integrity']['content_sha256'],'record_file_sha256':hashlib.sha256(rb).hexdigest(),'receipt_sha256':q['receipt_sha256'],'receipt_file_sha256':hashlib.sha256(qb).hexdigest(),'scope_id':r['scope']['scope_id'],'declared_scope_coverage_status':'COVERED','covered_member_count':2,'uncovered_member_count':0,'declared_scope_coverage_fraction_decimal':'1','whole_building_scope':False,'whole_building_completeness_evaluated':False,'whole_building_lca_claimed':False,'declared_scope_complete_claimed':False,'whole_building_promotion_rejected':True,'missing_member_rejected':True,'certified':False}
+          report['comparison_receipt_sha256']=hashlib.sha256(json.dumps(report,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()
+          out=root/'final/v22-independent-comparison-receipt.json'; out.write_text(json.dumps(report,indent=2,sort_keys=True)+'\n',encoding='utf-8',newline='\n')
+          (root/'final/declared-evidence-scope-coverage.json').write_bytes(rb)
+          (root/'final/declared-evidence-scope-coverage-receipt.json').write_bytes(qb)
+          print(json.dumps(report,indent=2,sort_keys=True))
+          PY
+
+      - name: Retain bounded v2.2 evidence only
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v22-declared-scope-coverage
+          path: /tmp/v22/final/
+          if-no-files-found: error
+          retention-days: 30
