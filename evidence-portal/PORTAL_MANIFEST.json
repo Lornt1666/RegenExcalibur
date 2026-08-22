@@ -1,0 +1,9 @@
+{
+  "product": "RegenExcalibur Evidence Portal",
+  "version": "0.1",
+  "attribution": "1JGM",
+  "mode": "local-first/no-egress",
+  "network_dependencies": [],
+  "production_write_authority": false,
+  "regulator_endorsement_claimed": false
+}
