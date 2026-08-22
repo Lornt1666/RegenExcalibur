@@ -1,0 +1,190 @@
+name: ProofGrid v2.5 Remediated Explicit Mapping
+
+on:
+  pull_request:
+    paths:
+      - "reference/remediated_explicit_mapping_v25.py"
+      - "tests/test_remediated_explicit_mapping_v25.py"
+      - "conformance/remediated-explicit-mapping-v25/**"
+      - ".github/workflows/proofgrid-v25-remediated-explicit-mapping.yml"
+      - "requirements-proofgrid.txt"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  reproduce-mapping:
+    strategy:
+      fail-fast: false
+      matrix:
+        replica: [a, b]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      V24_FINAL_ARTIFACT_ID: "9474326775"
+      V24_FINAL_ZIP_SHA256: "d8376a2bd2ecdcd190d6af85da6955e5e03ef928c794f08ce4cc6ca42dfdc88d"
+      V24_SOURCE_ARTIFACT_ID: "9474322428"
+      V24_SOURCE_ZIP_SHA256: "d82dc3710c466e63bf0891685d22e1814fe21edda879221f43e51672e2db1ea9"
+      V141_ARTIFACT_ID: "9450726883"
+      V141_ZIP_SHA256: "ab104603beb2e8643360ac45935ba82a189028a3c9e7319788153fa261fdb262"
+    steps:
+      - uses: actions/checkout@v6.1.0
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.11.16"
+      - name: Install exact ProofGrid dependencies
+        run: |
+          python -m pip install --disable-pip-version-check -r requirements-proofgrid.txt
+          python -m pip check
+      - name: Run v2.5 fail-closed unit suite
+        run: python -m unittest -v tests.test_remediated_explicit_mapping_v25
+      - name: Download and SHA-verify exact accepted parents independently
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ROOT="/tmp/v25-${{ matrix.replica }}"
+          mkdir -p "${ROOT}"/{v24,v24source,v141,out}
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V24_FINAL_ARTIFACT_ID}/zip" > "${ROOT}/v24.zip"
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V24_SOURCE_ARTIFACT_ID}/zip" > "${ROOT}/v24source.zip"
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V141_ARTIFACT_ID}/zip" > "${ROOT}/v141.zip"
+          echo "${V24_FINAL_ZIP_SHA256}  ${ROOT}/v24.zip" | sha256sum -c -
+          echo "${V24_SOURCE_ZIP_SHA256}  ${ROOT}/v24source.zip" | sha256sum -c -
+          echo "${V141_ZIP_SHA256}  ${ROOT}/v141.zip" | sha256sum -c -
+          unzip -q "${ROOT}/v24.zip" -d "${ROOT}/v24"
+          unzip -q "${ROOT}/v24source.zip" -d "${ROOT}/v24source"
+          unzip -q "${ROOT}/v141.zip" -d "${ROOT}/v141"
+      - name: Build explicit reviewed mapping decision
+        run: |
+          set -euo pipefail
+          ROOT="/tmp/v25-${{ matrix.replica }}"
+          python -m reference.remediated_explicit_mapping_v25 \
+            --v24-record "${ROOT}/v24/uncovered-remediation-readiness.json" \
+            --v24-receipt "${ROOT}/v24/uncovered-remediation-readiness-receipt.json" \
+            --v24-comparison "${ROOT}/v24/v24-independent-comparison-receipt.json" \
+            --successor-ifc "${ROOT}/v24source/successor.ifc" \
+            --closure "${ROOT}/v141/v13/a/declaration-product-identity-closure.json" \
+            --closure-receipt "${ROOT}/v141/v13/a/declaration-product-identity-closure-receipt.json" \
+            --output-dir "${ROOT}/out"
+      - name: Assert bounded mapping state
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.loads(Path('/tmp/v25-${{ matrix.replica }}/out/remediated-explicit-environmental-mapping.json').read_text())
+          assert r['mapping_state']=='EXPLICIT_REVIEWED_MAPPING'
+          assert r['mapping_decision']['review']['state']=='REVIEWED_MAPPING_DECISION'
+          assert r['source_identity']['ifc_source_sha256']=='ae74ee2db97b6257dc6983ccdf8eacaff7b0998212ce569ad844f6c4600ea31d'
+          assert r['source_identity']['element_global_id']=='1DXL7DJx51bvggyIPU2Xi7'
+          assert r['source_identity']['quantity_decimal']=='250'
+          assert r['declaration_identity']['product_flow_uuid']=='a7432abd-0881-4977-a817-f8aaf627fb91'
+          assert r['declaration_identity']['product_flow_version']=='00.00.001'
+          assert r['environmental_mapping_performed'] is True
+          assert r['environmental_source_identity_selected'] is True
+          assert r['environmental_factor_selected'] is False
+          assert r['impact_calculation_performed'] is False
+          assert r['environmental_coverage_status']=='EVIDENCE_UNCOVERED'
+          assert r['fuzzy_mapping_performed'] is False
+          assert r['professional_review_performed'] is False
+          assert r['certified'] is False
+          PY
+      - uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v25-mapping-replica-${{ matrix.replica }}
+          path: |
+            /tmp/v25-${{ matrix.replica }}/out/remediated-explicit-environmental-mapping.json
+            /tmp/v25-${{ matrix.replica }}/out/remediated-explicit-environmental-mapping-receipt.json
+          if-no-files-found: error
+          retention-days: 30
+
+  compare:
+    needs: reproduce-mapping
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      V24_FINAL_ARTIFACT_ID: "9474326775"
+      V24_FINAL_ZIP_SHA256: "d8376a2bd2ecdcd190d6af85da6955e5e03ef928c794f08ce4cc6ca42dfdc88d"
+      V24_SOURCE_ARTIFACT_ID: "9474322428"
+      V24_SOURCE_ZIP_SHA256: "d82dc3710c466e63bf0891685d22e1814fe21edda879221f43e51672e2db1ea9"
+      V141_ARTIFACT_ID: "9450726883"
+      V141_ZIP_SHA256: "ab104603beb2e8643360ac45935ba82a189028a3c9e7319788153fa261fdb262"
+    steps:
+      - uses: actions/checkout@v6.1.0
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.11.16"
+      - name: Install exact ProofGrid dependencies
+        run: |
+          python -m pip install --disable-pip-version-check -r requirements-proofgrid.txt
+          python -m pip check
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          name: proofgrid-v25-mapping-replica-a
+          path: /tmp/v25/a
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          name: proofgrid-v25-mapping-replica-b
+          path: /tmp/v25/b
+      - name: Require mapping byte identity
+        run: |
+          diff -u /tmp/v25/a/remediated-explicit-environmental-mapping.json /tmp/v25/b/remediated-explicit-environmental-mapping.json
+          diff -u /tmp/v25/a/remediated-explicit-environmental-mapping-receipt.json /tmp/v25/b/remediated-explicit-environmental-mapping-receipt.json
+      - name: Reject fuzzy/name-only and impact promotions
+        run: |
+          python - <<'PY'
+          import copy,json
+          from pathlib import Path
+          from reference import remediated_explicit_mapping_v25 as v25
+          r=json.loads(Path('/tmp/v25/a/remediated-explicit-environmental-mapping.json').read_text())
+          for key in ('fuzzy_mapping_performed','name_only_mapping_performed','impact_calculation_performed','environmental_factor_selected'):
+              x=copy.deepcopy(r); x[key]=True
+              try: v25.validate_record(x)
+              except v25.MappingV25Error: pass
+              else: raise SystemExit(f'{key} promotion not rejected')
+          PY
+      - name: Download exact parents for tamper negatives
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ROOT=/tmp/v25/parents
+          mkdir -p "${ROOT}"/{v24,v24source,v141,out}
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V24_FINAL_ARTIFACT_ID}/zip" > "${ROOT}/v24.zip"
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V24_SOURCE_ARTIFACT_ID}/zip" > "${ROOT}/v24source.zip"
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V141_ARTIFACT_ID}/zip" > "${ROOT}/v141.zip"
+          echo "${V24_FINAL_ZIP_SHA256}  ${ROOT}/v24.zip" | sha256sum -c -
+          echo "${V24_SOURCE_ZIP_SHA256}  ${ROOT}/v24source.zip" | sha256sum -c -
+          echo "${V141_ZIP_SHA256}  ${ROOT}/v141.zip" | sha256sum -c -
+          unzip -q "${ROOT}/v24.zip" -d "${ROOT}/v24"; unzip -q "${ROOT}/v24source.zip" -d "${ROOT}/v24source"; unzip -q "${ROOT}/v141.zip" -d "${ROOT}/v141"
+      - name: Reject tampered v2.4 and declaration closure parents
+        run: |
+          set -euo pipefail
+          ROOT=/tmp/v25/parents
+          cp "${ROOT}/v24/uncovered-remediation-readiness.json" "${ROOT}/bad-v24.json"
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('/tmp/v25/parents/bad-v24.json'); r=json.loads(p.read_text()); r['environmental_coverage_status']='EVIDENCE_COVERED'; p.write_text(json.dumps(r,indent=2,sort_keys=True)+'\n')
+          p=Path('/tmp/v25/parents/v141/v13/a/declaration-product-identity-closure.json'); r=json.loads(p.read_text()); r['product_flow']['uuid']='00000000-0000-0000-0000-000000000000'; Path('/tmp/v25/parents/bad-closure.json').write_text(json.dumps(r,indent=2,sort_keys=True)+'\n')
+          PY
+          if python -m reference.remediated_explicit_mapping_v25 --v24-record "${ROOT}/bad-v24.json" --v24-receipt "${ROOT}/v24/uncovered-remediation-readiness-receipt.json" --v24-comparison "${ROOT}/v24/v24-independent-comparison-receipt.json" --successor-ifc "${ROOT}/v24source/successor.ifc" --closure "${ROOT}/v141/v13/a/declaration-product-identity-closure.json" --closure-receipt "${ROOT}/v141/v13/a/declaration-product-identity-closure-receipt.json" --output-dir "${ROOT}/out"; then exit 1; fi
+          if python -m reference.remediated_explicit_mapping_v25 --v24-record "${ROOT}/v24/uncovered-remediation-readiness.json" --v24-receipt "${ROOT}/v24/uncovered-remediation-readiness-receipt.json" --v24-comparison "${ROOT}/v24/v24-independent-comparison-receipt.json" --successor-ifc "${ROOT}/v24source/successor.ifc" --closure "${ROOT}/bad-closure.json" --closure-receipt "${ROOT}/v141/v13/a/declaration-product-identity-closure-receipt.json" --output-dir "${ROOT}/out"; then exit 1; fi
+      - name: Produce independent v2.5 comparison receipt
+        run: |
+          mkdir -p /tmp/v25/final
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          rec=Path('/tmp/v25/a/remediated-explicit-environmental-mapping.json').read_bytes(); rr=Path('/tmp/v25/a/remediated-explicit-environmental-mapping-receipt.json').read_bytes(); r=json.loads(rec); x=json.loads(rr)
+          out={'verdict':'REMEDIATED_INVENTORY_EXPLICIT_ENVIRONMENTAL_MAPPING_INDEPENDENTLY_REPRODUCED','accepted_v24_head':'c0766420a8b1ae12fc47d27adbb5be7e374f1c32','independent_runner_count':2,'byte_identical':True,'record_content_sha256':r['integrity']['content_sha256'],'record_file_sha256':hashlib.sha256(rec).hexdigest(),'receipt_sha256':x['receipt_sha256'],'receipt_file_sha256':hashlib.sha256(rr).hexdigest(),'ifc_source_sha256':r['source_identity']['ifc_source_sha256'],'element_global_id':r['source_identity']['element_global_id'],'quantity_decimal':'250','product_flow_uuid':r['declaration_identity']['product_flow_uuid'],'product_flow_version':r['declaration_identity']['product_flow_version'],'environmental_mapping_performed':True,'environmental_factor_selected':False,'impact_calculation_performed':False,'environmental_coverage_status':'EVIDENCE_UNCOVERED','fuzzy_mapping_rejected':True,'name_only_mapping_rejected':True,'parent_tamper_rejected':True,'professional_review_performed':False,'certified':False}
+          raw=json.dumps(out,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode(); out['comparison_receipt_sha256']=hashlib.sha256(raw).hexdigest()
+          Path('/tmp/v25/final/v25-independent-comparison-receipt.json').write_text(json.dumps(out,indent=2,sort_keys=True)+'\n',encoding='utf-8',newline='\n'); Path('/tmp/v25/final/remediated-explicit-environmental-mapping.json').write_bytes(rec); Path('/tmp/v25/final/remediated-explicit-environmental-mapping-receipt.json').write_bytes(rr)
+          print(json.dumps(out,indent=2,sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v25-remediated-explicit-mapping
+          path: /tmp/v25/final/**
+          if-no-files-found: error
+          retention-days: 30
