@@ -1,0 +1,193 @@
+name: ProofGrid v2.2 Partial Scope Obligations
+
+on:
+  pull_request:
+    paths:
+      - "reference/declared_scope_coverage_v22.py"
+      - "tests/test_declared_scope_coverage_v22.py"
+      - "schemas/declared-scope-coverage-manifest-v22.schema.json"
+      - "conformance/declared-scope-coverage-v22/**"
+      - ".github/workflows/proofgrid-v22-partial-scope-obligations.yml"
+      - "requirements-proofgrid.txt"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  reproduce:
+    strategy:
+      fail-fast: false
+      matrix:
+        replica: [a, b]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      V21_ARTIFACT_ID: "9471598609"
+      V21_ZIP_SHA256: "fae329c5960875f6b372f6e610cffce82070930a98ec9ca31010cb7d2cfdd885"
+      V20_ARTIFACT_ID: "9464376763"
+      V20_ZIP_SHA256: "9b63ae70c4db86e2b01577bcc433471ad705a3aedcc590cf028fd874d95e677b"
+    steps:
+      - uses: actions/checkout@v6.1.0
+      - uses: actions/setup-python@v6.0.0
+        with:
+          python-version: "3.11.16"
+          check-latest: false
+      - name: Install exact ProofGrid dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-proofgrid.txt
+          python -m pip check
+      - name: Run v2.2 fail-closed unit suite
+        run: |
+          set -euo pipefail
+          python -m unittest -v tests.test_declared_scope_coverage_v22
+      - name: Download and SHA-verify accepted parents independently
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ROOT="/tmp/proofgrid-v22-${{ matrix.replica }}"
+          mkdir -p "${ROOT}"/{v21,v20,out}
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V21_ARTIFACT_ID}/zip" > "${ROOT}/v21.zip"
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V20_ARTIFACT_ID}/zip" > "${ROOT}/v20.zip"
+          echo "${V21_ZIP_SHA256}  ${ROOT}/v21.zip" | sha256sum -c -
+          echo "${V20_ZIP_SHA256}  ${ROOT}/v20.zip" | sha256sum -c -
+          unzip -q "${ROOT}/v21.zip" -d "${ROOT}/v21"
+          unzip -q "${ROOT}/v20.zip" -d "${ROOT}/v20"
+      - name: Evaluate exact three-slot declared scope
+        run: |
+          set -euo pipefail
+          ROOT="/tmp/proofgrid-v22-${{ matrix.replica }}"
+          python reference/declared_scope_coverage_v22.py \
+            --manifest conformance/declared-scope-coverage-v22/synthetic-scope-manifest.json \
+            --v21-record "${ROOT}/v21/proofgrid-v21-rxep-partial-total-a/rxep-partial-set-exact-decimal-total.json" \
+            --v21-receipt "${ROOT}/v21/proofgrid-v21-rxep-partial-total-a/rxep-partial-set-exact-decimal-total-receipt.json" \
+            --v21-comparison "${ROOT}/v21/v21-independent-comparison-receipt.json" \
+            --v20-record "${ROOT}/v20/a/partial-contribution-set-exact-decimal-total.json" \
+            --v20-receipt "${ROOT}/v20/a/partial-contribution-set-exact-decimal-total-receipt.json" \
+            --output-dir "${ROOT}/out"
+      - name: Assert exact coverage and non-claims
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('/tmp/proofgrid-v22-${{ matrix.replica }}/out/declared-scope-coverage.json')
+          d=json.loads(p.read_text())
+          assert d['verdict']=='DECLARED_SCOPE_COVERAGE_PARTIAL_VERIFIABLE'
+          assert (d['declared_scope_slot_count'],d['covered_slot_count'],d['unresolved_slot_count'])==(3,2,1)
+          assert d['coverage_status']=='PARTIAL'
+          assert d['coverage_percentage_calculated'] is False
+          assert d['completeness_promotion_permitted'] is False
+          assert d['environmental_arithmetic_performed'] is False
+          assert d['additional_sum_performed'] is False
+          assert d['unresolved_slots_are_zero'] is False
+          assert d['missing_contributions_are_zero'] is False
+          assert d['whole_building_lca_claimed'] is False
+          assert d['declared_scope_complete_claimed'] is False
+          assert d['scientific_validation_performed'] is False
+          assert d['professional_review_performed'] is False
+          assert d['certified'] is False
+          u=[s for s in d['slots'] if s['coverage_status']=='UNRESOLVED']
+          assert len(u)==1 and u[0]['slot_id']=='proofgrid:v22:unresolved-required-slot-1'
+          assert u[0]['environmental_value_present'] is False
+          print('DECLARED_SCOPE_COVERAGE=2_COVERED_1_UNRESOLVED')
+          PY
+      - name: Upload replica coverage evidence
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v22-partial-scope-${{ matrix.replica }}
+          path: |
+            /tmp/proofgrid-v22-${{ matrix.replica }}/out/declared-scope-coverage.json
+            /tmp/proofgrid-v22-${{ matrix.replica }}/out/declared-scope-coverage-receipt.json
+          if-no-files-found: error
+          retention-days: 30
+
+  compare:
+    needs: reproduce
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      V21_ARTIFACT_ID: "9471598609"
+      V21_ZIP_SHA256: "fae329c5960875f6b372f6e610cffce82070930a98ec9ca31010cb7d2cfdd885"
+      V20_ARTIFACT_ID: "9464376763"
+      V20_ZIP_SHA256: "9b63ae70c4db86e2b01577bcc433471ad705a3aedcc590cf028fd874d95e677b"
+    steps:
+      - uses: actions/checkout@v6.1.0
+      - uses: actions/setup-python@v6.0.0
+        with:
+          python-version: "3.11.16"
+          check-latest: false
+      - name: Install exact ProofGrid dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-proofgrid.txt
+          python -m pip check
+      - name: Download replica artifacts
+        uses: actions/download-artifact@v4.3.0
+        with:
+          pattern: proofgrid-v22-partial-scope-*
+          path: /tmp/v22
+          merge-multiple: false
+      - name: Require byte identity across replicas
+        run: |
+          set -euo pipefail
+          A=/tmp/v22/proofgrid-v22-partial-scope-a
+          B=/tmp/v22/proofgrid-v22-partial-scope-b
+          diff -u "$A/declared-scope-coverage.json" "$B/declared-scope-coverage.json"
+          diff -u "$A/declared-scope-coverage-receipt.json" "$B/declared-scope-coverage-receipt.json"
+      - name: Require manifest tamper to fail closed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ROOT=/tmp/v22-negative
+          mkdir -p "${ROOT}"/{v21,v20,out}
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V21_ARTIFACT_ID}/zip" > "${ROOT}/v21.zip"
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V20_ARTIFACT_ID}/zip" > "${ROOT}/v20.zip"
+          echo "${V21_ZIP_SHA256}  ${ROOT}/v21.zip" | sha256sum -c -
+          echo "${V20_ZIP_SHA256}  ${ROOT}/v20.zip" | sha256sum -c -
+          unzip -q "${ROOT}/v21.zip" -d "${ROOT}/v21"
+          unzip -q "${ROOT}/v20.zip" -d "${ROOT}/v20"
+          cp conformance/declared-scope-coverage-v22/synthetic-scope-manifest.json "${ROOT}/tampered-manifest.json"
+          printf ' ' >> "${ROOT}/tampered-manifest.json"
+          if python reference/declared_scope_coverage_v22.py \
+            --manifest "${ROOT}/tampered-manifest.json" \
+            --v21-record "${ROOT}/v21/proofgrid-v21-rxep-partial-total-a/rxep-partial-set-exact-decimal-total.json" \
+            --v21-receipt "${ROOT}/v21/proofgrid-v21-rxep-partial-total-a/rxep-partial-set-exact-decimal-total-receipt.json" \
+            --v21-comparison "${ROOT}/v21/v21-independent-comparison-receipt.json" \
+            --v20-record "${ROOT}/v20/a/partial-contribution-set-exact-decimal-total.json" \
+            --v20-receipt "${ROOT}/v20/a/partial-contribution-set-exact-decimal-total-receipt.json" \
+            --output-dir "${ROOT}/out"; then
+            echo 'tampered declared-scope manifest unexpectedly accepted' >&2
+            exit 1
+          else
+            echo 'MANIFEST_TAMPER_REJECTED=PASS'
+          fi
+      - name: Produce independent v2.2 comparison receipt
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          root=Path('/tmp/v22'); a=root/'proofgrid-v22-partial-scope-a'
+          r=json.loads((a/'declared-scope-coverage.json').read_text()); p=json.loads((a/'declared-scope-coverage-receipt.json').read_text())
+          sha=lambda q:hashlib.sha256(q.read_bytes()).hexdigest()
+          out={'verdict':'DECLARED_SCOPE_COVERAGE_PARTIAL_INDEPENDENTLY_REPRODUCED','accepted_v21_head':'81b5ef6af8ec40b17071086a7af67365e5e92f8f','replicas':['a','b'],'independent_runner_count':2,'byte_identical':True,'record_content_sha256':r['integrity']['content_sha256'],'record_file_sha256':sha(a/'declared-scope-coverage.json'),'receipt_sha256':p['receipt_sha256'],'receipt_file_sha256':sha(a/'declared-scope-coverage-receipt.json'),'declared_scope_slot_count':3,'covered_slot_count':2,'unresolved_slot_count':1,'coverage_status':'PARTIAL','manifest_tamper_rejected':True,'environmental_arithmetic_performed':False,'whole_building_lca_claimed':False,'declared_scope_complete_claimed':False,'scientific_validation_performed':False,'professional_review_performed':False,'certified':False}
+          out['comparison_receipt_sha256']=hashlib.sha256(json.dumps(out,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()
+          q=root/'v22-independent-comparison-receipt.json'; q.write_text(json.dumps(out,indent=2,sort_keys=True)+'\n',encoding='utf-8',newline='\n'); print(json.dumps(out,indent=2,sort_keys=True))
+          PY
+      - name: Retain bounded v2.2 evidence only
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v22-partial-scope-obligations
+          path: |
+            /tmp/v22/proofgrid-v22-partial-scope-a/declared-scope-coverage.json
+            /tmp/v22/proofgrid-v22-partial-scope-a/declared-scope-coverage-receipt.json
+            /tmp/v22/v22-independent-comparison-receipt.json
+          if-no-files-found: error
+          retention-days: 30
