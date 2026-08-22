@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://regenexcalibur.example/schemas/model-admission-v30.schema.json",
+  "title": "ProofGrid v3.0 model admission",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "record_type", "verdict", "source_sha256", "source_size_bytes",
+    "ifc_schema", "adapter", "inventory_policy_sha256", "authorization_manifest_sha256",
+    "network_resolution", "source_path_is_authority", "synthetic_input", "acceptance_eligible", "integrity"
+  ],
+  "properties": {
+    "schema_version": {"const": "3.0"},
+    "record_type": {"const": "ProofGridModelAdmission"},
+    "verdict": {"enum": ["MODEL_BYTES_PINNED_TEST_ONLY", "MODEL_BYTES_PINNED"]},
+    "source_sha256": {"$ref": "#/$defs/sha"},
+    "source_size_bytes": {"type": "integer", "minimum": 1},
+    "ifc_schema": {"type": "string", "minLength": 1},
+    "adapter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": {"const": "ifcopenshell"},
+        "version": {"type": "string", "minLength": 1}
+      }
+    },
+    "inventory_policy_sha256": {"$ref": "#/$defs/sha"},
+    "authorization_manifest_sha256": {"oneOf": [{"$ref": "#/$defs/sha"}, {"type": "null"}]},
+    "network_resolution": {"const": "FORBIDDEN"},
+    "source_path_is_authority": {"const": false},
+    "synthetic_input": {"type": "boolean"},
+    "acceptance_eligible": {"type": "boolean"},
+    "integrity": {"$ref": "#/$defs/integrity"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"synthetic_input": {"const": true}}},
+      "then": {
+        "properties": {
+          "verdict": {"const": "MODEL_BYTES_PINNED_TEST_ONLY"},
+          "acceptance_eligible": {"const": false},
+          "authorization_manifest_sha256": {"type": "null"}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"synthetic_input": {"const": false}}},
+      "then": {
+        "properties": {
+          "verdict": {"const": "MODEL_BYTES_PINNED"},
+          "acceptance_eligible": {"const": true},
+          "authorization_manifest_sha256": {"$ref": "#/$defs/sha"}
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "sha": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["content_sha256", "canonicalization", "signature"],
+      "properties": {
+        "content_sha256": {"$ref": "#/$defs/sha"},
+        "canonicalization": {"const": "UTF-8 JSON; sorted keys; compact separators; ensure_ascii=false"},
+        "signature": {"type": "null"}
+      }
+    }
+  }
+}

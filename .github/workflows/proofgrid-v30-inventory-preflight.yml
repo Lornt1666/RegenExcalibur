@@ -1,0 +1,86 @@
+name: ProofGrid v3.0 Inventory Preflight
+
+on:
+  pull_request:
+    paths:
+      - "conformance/real-ifc-v30/inventory-policy.json"
+      - "conformance/real-ifc-v30/README.md"
+      - "schemas/model-admission-v30.schema.json"
+      - "schemas/model-inventory-basis-v30.schema.json"
+      - "schemas/real-ifc-authorization-v30.schema.json"
+      - "reference/model_inventory_basis_v30.py"
+      - "tests/test_model_inventory_basis_v30.py"
+      - ".github/workflows/proofgrid-v30-inventory-preflight.yml"
+      - "requirements-proofgrid.txt"
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6.1.0
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.11.16"
+          check-latest: false
+
+      - name: Install exact ProofGrid dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -r requirements-proofgrid.txt
+          python -m pip check
+
+      - name: Syntax-check v3.0 engine
+        run: |
+          set -euo pipefail
+          python -m py_compile reference/model_inventory_basis_v30.py tests/test_model_inventory_basis_v30.py
+
+      - name: Run v3.0 adversarial synthetic mechanics suite
+        run: |
+          set -euo pipefail
+          python -m unittest -v tests.test_model_inventory_basis_v30
+
+      - name: Require real acceptance source to remain absent from preflight-only PR
+        run: |
+          set -euo pipefail
+          test ! -e conformance/real-ifc-v30/authorized-real-model.ifc
+          test ! -e conformance/real-ifc-v30/source-authorization.json
+
+      - name: Emit bounded preflight receipt
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/proofgrid-v30-preflight
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          policy=Path('conformance/real-ifc-v30/inventory-policy.json').read_bytes()
+          engine=Path('reference/model_inventory_basis_v30.py').read_bytes()
+          report={
+            'verdict':'V30_INVENTORY_IMPLEMENTATION_PREFLIGHT_GREEN_REAL_SOURCE_BLOCKED',
+            'inventory_policy_file_sha256':hashlib.sha256(policy).hexdigest(),
+            'engine_file_sha256':hashlib.sha256(engine).hexdigest(),
+            'synthetic_mechanics_tests_passed':True,
+            'real_ifc_present':False,
+            'real_source_authorization_present':False,
+            'v30_acceptance_eligible':False,
+            'issue_98_must_remain_open':True,
+            'whole_building_lca_claimed':False,
+            'scientific_validation_performed':False,
+            'professional_review_performed':False,
+            'certified':False,
+          }
+          report['receipt_sha256']=hashlib.sha256(json.dumps(report,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+          Path('/tmp/proofgrid-v30-preflight/v30-preflight-receipt.json').write_text(json.dumps(report,indent=2,sort_keys=True)+'\n',encoding='utf-8',newline='\n')
+          print(json.dumps(report,indent=2,sort_keys=True))
+          PY
+
+      - name: Retain preflight receipt
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v30-inventory-preflight
+          path: /tmp/proofgrid-v30-preflight/v30-preflight-receipt.json
+          if-no-files-found: error
+          retention-days: 30
