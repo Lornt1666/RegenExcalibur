@@ -1,0 +1,182 @@
+name: ProofGrid v2.7 Third RXEP Binding
+
+on:
+  pull_request:
+    paths:
+      - "reference/third_rxep_binding_v27.py"
+      - "tests/test_third_rxep_binding_v27.py"
+      - "conformance/third-rxep-binding-v27/**"
+      - "specs/rxep/**"
+      - ".github/workflows/proofgrid-v27-third-rxep-binding.yml"
+      - "requirements-proofgrid.txt"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  reproduce-rxep:
+    strategy:
+      fail-fast: false
+      matrix:
+        replica: [a, b]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      V26_ARTIFACT_ID: "9474464410"
+      V26_ZIP_SHA256: "ea0226b482e74bceda2afc0cdbe34a79295c28b442b45f96601ce2a7f303f90e"
+    steps:
+      - uses: actions/checkout@v6.1.0
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.11.16"
+          check-latest: false
+      - name: Install exact ProofGrid dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -r requirements-proofgrid.txt
+          python -m pip check
+      - name: Run v2.7 fail-closed unit suite
+        run: python -m unittest -v tests.test_third_rxep_binding_v27
+      - name: Download and SHA-verify exact accepted v2.6 parent independently
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ROOT="/tmp/proofgrid-v27-${{ matrix.replica }}"
+          mkdir -p "${ROOT}"/{v26,out}
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V26_ARTIFACT_ID}/zip" > "${ROOT}/v26.zip"
+          echo "${V26_ZIP_SHA256}  ${ROOT}/v26.zip" | sha256sum -c -
+          unzip -q "${ROOT}/v26.zip" -d "${ROOT}/v26"
+      - name: Bind accepted third contribution into RXEP
+        run: |
+          set -euo pipefail
+          ROOT="/tmp/proofgrid-v27-${{ matrix.replica }}"
+          python reference/third_rxep_binding_v27.py \
+            --record "${ROOT}/v26/third-mapped-declared-result-calculation.json" \
+            --receipt "${ROOT}/v26/third-mapped-declared-result-calculation-receipt.json" \
+            --comparison "${ROOT}/v26/v26-independent-comparison-receipt.json" \
+            --output-dir "${ROOT}/out"
+      - name: Assert exact RXEP bounded state
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          e=json.loads(Path('/tmp/proofgrid-v27-${{ matrix.replica }}/out/third-rxep-calculated-contribution.json').read_text())
+          assert e['measurement']['value_decimal']=='3889.86991929092475'
+          assert e['measurement']['decimal_value_is_authority'] is True
+          assert e['measurement']['numeric_value_is_authority'] is False
+          assert e['review']=={'state':'CALCULATED','reviewer':None}
+          assert e['rxep_binding_performed'] is True
+          assert e['contribution_set_admission_performed'] is False
+          assert e['aggregate_recomputed'] is False
+          assert e['whole_building_completeness_evaluated'] is False
+          assert e['certified'] is False
+          PY
+      - name: Upload replica RXEP evidence
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v27-rxep-replica-${{ matrix.replica }}
+          path: |
+            /tmp/proofgrid-v27-${{ matrix.replica }}/out/third-rxep-calculated-contribution.json
+            /tmp/proofgrid-v27-${{ matrix.replica }}/out/third-rxep-calculated-contribution-receipt.json
+          if-no-files-found: error
+          retention-days: 30
+
+  compare:
+    needs: reproduce-rxep
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      V26_ARTIFACT_ID: "9474464410"
+      V26_ZIP_SHA256: "ea0226b482e74bceda2afc0cdbe34a79295c28b442b45f96601ce2a7f303f90e"
+    steps:
+      - uses: actions/checkout@v6.1.0
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.11.16"
+          check-latest: false
+      - name: Install exact ProofGrid dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -r requirements-proofgrid.txt
+          python -m pip check
+      - name: Download replica A
+        uses: actions/download-artifact@v4.3.0
+        with:
+          name: proofgrid-v27-rxep-replica-a
+          path: /tmp/v27/a
+      - name: Download replica B
+        uses: actions/download-artifact@v4.3.0
+        with:
+          name: proofgrid-v27-rxep-replica-b
+          path: /tmp/v27/b
+      - name: Require RXEP byte identity
+        run: |
+          diff -u /tmp/v27/a/third-rxep-calculated-contribution.json /tmp/v27/b/third-rxep-calculated-contribution.json
+          diff -u /tmp/v27/a/third-rxep-calculated-contribution-receipt.json /tmp/v27/b/third-rxep-calculated-contribution-receipt.json
+      - name: Reject self-consistent tampered v2.6 parent
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/v27/parent
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V26_ARTIFACT_ID}/zip" > /tmp/v27/parent/v26.zip
+          echo "${V26_ZIP_SHA256}  /tmp/v27/parent/v26.zip" | sha256sum -c -
+          unzip -q /tmp/v27/parent/v26.zip -d /tmp/v27/parent/v26
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          p=Path('/tmp/v27/parent/v26/third-mapped-declared-result-calculation.json')
+          o=json.loads(p.read_text())
+          o['calculation']['scaled_result_decimal']='3890.86991929092475'
+          o['integrity']['content_sha256']='0'*64
+          o['integrity']['content_sha256']=hashlib.sha256(json.dumps(o,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()
+          p.write_text(json.dumps(o,indent=2,sort_keys=True)+'\n',encoding='utf-8',newline='\n')
+          PY
+          set +e
+          python reference/third_rxep_binding_v27.py \
+            --record /tmp/v27/parent/v26/third-mapped-declared-result-calculation.json \
+            --receipt /tmp/v27/parent/v26/third-mapped-declared-result-calculation-receipt.json \
+            --comparison /tmp/v27/parent/v26/v26-independent-comparison-receipt.json \
+            --output-dir /tmp/v27/tampered
+          code=$?
+          set -e
+          test "$code" -ne 0
+      - name: Produce independent v2.7 comparison receipt
+        run: |
+          mkdir -p /tmp/v27/final
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          root=Path('/tmp/v27')
+          e=json.loads((root/'a/third-rxep-calculated-contribution.json').read_text())
+          r=json.loads((root/'a/third-rxep-calculated-contribution-receipt.json').read_text())
+          eb=(root/'a/third-rxep-calculated-contribution.json').read_bytes()
+          rb=(root/'a/third-rxep-calculated-contribution-receipt.json').read_bytes()
+          out={
+            'verdict':'THIRD_RXEP_EXACT_DECIMAL_CALCULATION_EVIDENCE_INDEPENDENTLY_REPRODUCED',
+            'accepted_v26_head':'bca64726c75345841eca27ba3135ad8febdf429a',
+            'independent_runner_count':2,'byte_identical':True,
+            'record_content_sha256':e['integrity']['content_sha256'],
+            'record_file_sha256':hashlib.sha256(eb).hexdigest(),
+            'receipt_sha256':r['receipt_sha256'],
+            'receipt_file_sha256':hashlib.sha256(rb).hexdigest(),
+            'value_decimal':'3889.86991929092475','unit':'kg CO2 eqv.','element_global_id':'1DXL7DJx51bvggyIPU2Xi7',
+            'review_state':'CALCULATED','rxep_binding_performed':True,
+            'contribution_set_admission_performed':False,'aggregate_recomputed':False,
+            'whole_building_completeness_evaluated':False,'scientific_validation_performed':False,
+            'professional_review_performed':False,'certified':False,'tampered_parent_rejected':True
+          }
+          out['comparison_receipt_sha256']=hashlib.sha256(json.dumps(out,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()
+          (root/'final/v27-independent-comparison-receipt.json').write_text(json.dumps(out,indent=2,sort_keys=True)+'\n',encoding='utf-8',newline='\n')
+          (root/'final/third-rxep-calculated-contribution.json').write_bytes(eb)
+          (root/'final/third-rxep-calculated-contribution-receipt.json').write_bytes(rb)
+          PY
+      - name: Retain bounded v2.7 evidence only
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v27-third-rxep-binding
+          path: /tmp/v27/final/
+          if-no-files-found: error
+          retention-days: 30
