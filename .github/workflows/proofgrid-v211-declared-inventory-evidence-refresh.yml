@@ -1,0 +1,184 @@
+name: ProofGrid v2.11 Declared Inventory Evidence Refresh
+
+on:
+  pull_request:
+    paths:
+      - "reference/source_inventory_refresh_v211.py"
+      - "tests/test_source_inventory_refresh_v211.py"
+      - "conformance/declared-inventory-evidence-refresh-v211/**"
+      - ".github/workflows/proofgrid-v211-declared-inventory-evidence-refresh.yml"
+      - "requirements-proofgrid.txt"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  reproduce-refresh:
+    strategy:
+      fail-fast: false
+      matrix: {replica: [a, b]}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      V23_ARTIFACT_ID: "9474251900"
+      V23_ZIP_SHA256: "996093cba7c37d703f123fe8346fb32fbba2e0f8403d8e86c37b6843ed6656a5"
+      V24_ARTIFACT_ID: "9474326775"
+      V24_ZIP_SHA256: "d8376a2bd2ecdcd190d6af85da6955e5e03ef928c794f08ce4cc6ca42dfdc88d"
+      V28_ARTIFACT_ID: "9475137439"
+      V28_ZIP_SHA256: "b57beec3721e7ce92b4b68350ac5e9d589c527d36743009a223fe0949c6eea25"
+      V210_ARTIFACT_ID: "9476452721"
+      V210_ZIP_SHA256: "9390de900ac8fcd808e1900e74b85bf4188f3de62d56c282ba78919eabcfdd08"
+    steps:
+      - uses: actions/checkout@v6.1.0
+      - uses: actions/setup-python@v6.2.0
+        with: {python-version: "3.11.16", check-latest: false}
+      - name: Install exact ProofGrid dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -r requirements-proofgrid.txt
+          python -m pip check
+      - name: Run v2.11 fail-closed unit suite
+        run: python -m unittest -v tests.test_source_inventory_refresh_v211
+      - name: Download and SHA-verify all exact accepted parents independently
+        env: {GH_TOKEN: "${{ github.token }}"}
+        run: |
+          set -euo pipefail
+          ROOT="/tmp/proofgrid-v211-${{ matrix.replica }}"; mkdir -p "${ROOT}"/{v23,v24,v28,v210,out}
+          for ITEM in "v23:${V23_ARTIFACT_ID}:${V23_ZIP_SHA256}" "v24:${V24_ARTIFACT_ID}:${V24_ZIP_SHA256}" "v28:${V28_ARTIFACT_ID}:${V28_ZIP_SHA256}" "v210:${V210_ARTIFACT_ID}:${V210_ZIP_SHA256}"; do
+            IFS=: read NAME ID DIGEST <<< "${ITEM}"
+            gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${ID}/zip" > "${ROOT}/${NAME}.zip"
+            echo "${DIGEST}  ${ROOT}/${NAME}.zip" | sha256sum -c -
+            unzip -q "${ROOT}/${NAME}.zip" -d "${ROOT}/${NAME}"
+          done
+      - name: Refresh declared synthetic inventory evidence to exact 3-of-3
+        run: |
+          ROOT="/tmp/proofgrid-v211-${{ matrix.replica }}"
+          python reference/source_inventory_refresh_v211.py \
+            --v23-dir "${ROOT}/v23" \
+            --v24-dir "${ROOT}/v24" \
+            --v28-dir "${ROOT}/v28" \
+            --v210-dir "${ROOT}/v210" \
+            --output-dir "${ROOT}/out"
+      - name: Assert exact bounded 3-of-3 state
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          o=json.loads(Path('/tmp/proofgrid-v211-${{ matrix.replica }}/out/declared-inventory-evidence-refresh.json').read_text())
+          r=json.loads(Path('/tmp/proofgrid-v211-${{ matrix.replica }}/out/declared-inventory-evidence-refresh-receipt.json').read_text())
+          assert o['coverage']['covered_entry_count']==3
+          assert o['coverage']['uncovered_entry_count']==0
+          assert o['coverage']['coverage_ratio_rational']=={'numerator':'3','denominator':'3'}
+          assert o['coverage']['declared_inventory_evidence_coverage_complete'] is True
+          assert o['coverage']['whole_building_completeness_evaluated'] is False
+          assert o['whole_building_lca_claimed'] is False
+          assert o['declared_scope_complete_claimed'] is False
+          assert o['missing_contributions_are_zero'] is False
+          assert o['aggregation_recomputed'] is False
+          third=[e for e in o['entries'] if e['inventory_entry_id']=='uncovered-third'][0]
+          assert third['predecessor_inventory_source_sha256']=='42443f2f45f9bc122814a07c711cd67e6fc5d9033a7c17bf5ce20be70a24dcd3'
+          assert third['covered_successor_source_sha256']=='ae74ee2db97b6257dc6983ccdf8eacaff7b0998212ce569ad844f6c4600ea31d'
+          assert third['semantic_identity_sha256']=='2a67655f18b9cd8d776335e886dc324c9911dd9e1090e8852752235ecb958905'
+          assert third['source_revision_continuity_verified'] is True
+          assert r['declared_inventory_evidence_coverage_complete'] is True
+          print('DECLARED_INVENTORY_COVERAGE=3/3')
+          print('WHOLE_BUILDING_COMPLETENESS_EVALUATED=false')
+          PY
+      - name: Upload replica refresh evidence
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v211-refresh-replica-${{ matrix.replica }}
+          path: /tmp/proofgrid-v211-${{ matrix.replica }}/out/
+          if-no-files-found: error
+          retention-days: 30
+
+  compare:
+    needs: reproduce-refresh
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      V23_ARTIFACT_ID: "9474251900"
+      V23_ZIP_SHA256: "996093cba7c37d703f123fe8346fb32fbba2e0f8403d8e86c37b6843ed6656a5"
+      V24_ARTIFACT_ID: "9474326775"
+      V24_ZIP_SHA256: "d8376a2bd2ecdcd190d6af85da6955e5e03ef928c794f08ce4cc6ca42dfdc88d"
+      V28_ARTIFACT_ID: "9475137439"
+      V28_ZIP_SHA256: "b57beec3721e7ce92b4b68350ac5e9d589c527d36743009a223fe0949c6eea25"
+      V210_ARTIFACT_ID: "9476452721"
+      V210_ZIP_SHA256: "9390de900ac8fcd808e1900e74b85bf4188f3de62d56c282ba78919eabcfdd08"
+    steps:
+      - uses: actions/checkout@v6.1.0
+      - uses: actions/setup-python@v6.2.0
+        with: {python-version: "3.11.16", check-latest: false}
+      - name: Install exact ProofGrid dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -r requirements-proofgrid.txt
+          python -m pip check
+      - uses: actions/download-artifact@v4.3.0
+        with: {name: proofgrid-v211-refresh-replica-a, path: /tmp/v211/a}
+      - uses: actions/download-artifact@v4.3.0
+        with: {name: proofgrid-v211-refresh-replica-b, path: /tmp/v211/b}
+      - name: Require refresh record and receipt byte identity
+        run: |
+          diff -u /tmp/v211/a/declared-inventory-evidence-refresh.json /tmp/v211/b/declared-inventory-evidence-refresh.json
+          diff -u /tmp/v211/a/declared-inventory-evidence-refresh-receipt.json /tmp/v211/b/declared-inventory-evidence-refresh-receipt.json
+      - name: Reject source-continuity tamper and whole-building promotion
+        env: {GH_TOKEN: "${{ github.token }}"}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/v211/parents/{v23,v24,v28,v210}
+          for ITEM in "v23:${V23_ARTIFACT_ID}:${V23_ZIP_SHA256}" "v24:${V24_ARTIFACT_ID}:${V24_ZIP_SHA256}" "v28:${V28_ARTIFACT_ID}:${V28_ZIP_SHA256}" "v210:${V210_ARTIFACT_ID}:${V210_ZIP_SHA256}"; do
+            IFS=: read NAME ID DIGEST <<< "${ITEM}"
+            gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${ID}/zip" > "/tmp/v211/parents/${NAME}.zip"
+            echo "${DIGEST}  /tmp/v211/parents/${NAME}.zip" | sha256sum -c -
+            unzip -q "/tmp/v211/parents/${NAME}.zip" -d "/tmp/v211/parents/${NAME}"
+          done
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          p=Path('/tmp/v211/parents/v24/uncovered-remediation-readiness.json')
+          o=json.loads(p.read_text())
+          o['successor_source']['successor_source_sha256']='0'*64
+          o['integrity']['content_sha256']='0'*64
+          o['integrity']['content_sha256']=hashlib.sha256(json.dumps(o,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()
+          p.write_text(json.dumps(o,indent=2,sort_keys=True)+'\n',encoding='utf-8',newline='\n')
+          PY
+          set +e
+          python reference/source_inventory_refresh_v211.py --v23-dir /tmp/v211/parents/v23 --v24-dir /tmp/v211/parents/v24 --v28-dir /tmp/v211/parents/v28 --v210-dir /tmp/v211/parents/v210 --output-dir /tmp/v211/negative-parent
+          code=$?
+          set -e
+          test "$code" -ne 0
+          python - <<'PY'
+          import copy,json
+          from pathlib import Path
+          import reference.source_inventory_refresh_v211 as m
+          o=json.loads(Path('/tmp/v211/a/declared-inventory-evidence-refresh.json').read_text())
+          p=copy.deepcopy(o); p['whole_building_lca_claimed']=True
+          try: m.verify_output(p)
+          except m.InventoryRefreshError: print('WHOLE_BUILDING_PROMOTION_REJECTED=PASS')
+          else: raise SystemExit('whole-building promotion unexpectedly accepted')
+          PY
+      - name: Produce independent v2.11 comparison receipt
+        run: |
+          mkdir -p /tmp/v211/final
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          root=Path('/tmp/v211')
+          o=json.loads((root/'a/declared-inventory-evidence-refresh.json').read_text())
+          r=json.loads((root/'a/declared-inventory-evidence-refresh-receipt.json').read_text())
+          ob=(root/'a/declared-inventory-evidence-refresh.json').read_bytes(); rb=(root/'a/declared-inventory-evidence-refresh-receipt.json').read_bytes()
+          report={'verdict':'DECLARED_SYNTHETIC_INVENTORY_EVIDENCE_REFRESH_3_OF_3_INDEPENDENTLY_REPRODUCED','accepted_v210_head':'1e8647a968c5a79c19443465f3e1b30a4556c339','independent_runner_count':2,'byte_identical':True,'record_content_sha256':o['integrity']['content_sha256'],'record_file_sha256':hashlib.sha256(ob).hexdigest(),'receipt_sha256':r['receipt_sha256'],'receipt_file_sha256':hashlib.sha256(rb).hexdigest(),'inventory_entry_count':3,'covered_entry_count':3,'uncovered_entry_count':0,'coverage_ratio_rational':{'numerator':'3','denominator':'3'},'declared_inventory_evidence_coverage_complete':True,'whole_building_completeness_evaluated':False,'whole_building_lca_claimed':False,'source_continuity_tamper_rejected':True,'whole_building_promotion_rejected':True,'certified':False}
+          report['comparison_receipt_sha256']=hashlib.sha256(json.dumps(report,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()
+          (root/'final/v211-independent-comparison-receipt.json').write_text(json.dumps(report,indent=2,sort_keys=True)+'\n',encoding='utf-8',newline='\n')
+          (root/'final/declared-inventory-evidence-refresh.json').write_bytes(ob); (root/'final/declared-inventory-evidence-refresh-receipt.json').write_bytes(rb)
+          print(json.dumps(report,indent=2,sort_keys=True))
+          PY
+      - name: Retain bounded v2.11 evidence only
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v211-declared-inventory-evidence-refresh
+          path: /tmp/v211/final/
+          if-no-files-found: error
+          retention-days: 30
