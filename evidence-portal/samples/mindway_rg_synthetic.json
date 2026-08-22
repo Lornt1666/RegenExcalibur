@@ -1,0 +1,92 @@
+{
+  "rx_schema": "RegenExcalibur.RGEvidenceEvent/0.1",
+  "environment": "synthetic-demo",
+  "jurisdiction": "CA-AB",
+  "subject": {
+    "type": "synthetic_player",
+    "subject_ref": "SYNTH-P0001",
+    "contains_real_pii": false
+  },
+  "source_system": {
+    "provider": "Mindway AI",
+    "product": "GameScanner",
+    "integration_mode": "read-only-demo",
+    "event_source_ref": "GS-SYNTH-2026-0001"
+  },
+  "risk_event": {
+    "event_type": "responsible_gambling_risk_signal",
+    "event_time": "2026-08-20T15:00:00Z",
+    "model_ref": "gamescanner-demo-model",
+    "model_version": "synthetic-v1",
+    "control_profile_version": "rg-profile-demo-1",
+    "risk_band": "elevated",
+    "risk_score": 0.82,
+    "explanation_codes": [
+      "synthetic_session_duration_change",
+      "synthetic_loss_velocity_change"
+    ],
+    "automated_enforcement_performed": false
+  },
+  "human_review": {
+    "required": true,
+    "review_state": "completed",
+    "reviewer_role": "Responsible Gambling Analyst",
+    "reviewer_ref": "SYNTH-REVIEWER-01",
+    "review_time": "2026-08-20T15:07:00Z",
+    "decision": "contact_recommended",
+    "decision_basis": [
+      "risk_signal_reviewed",
+      "synthetic_account_history_reviewed"
+    ]
+  },
+  "operator_action": {
+    "action_type": "responsible_gambling_outreach",
+    "action_state": "completed",
+    "action_time": "2026-08-20T15:12:00Z",
+    "action_ref": "SYNTH-ACT-0001",
+    "player_access_changed": false,
+    "financial_transaction_changed": false,
+    "aml_kyc_output_changed": false,
+    "security_control_changed": false
+  },
+  "authority_boundary": {
+    "regenexcalibur_mode": "advisory_evidence_only",
+    "production_write_access": false,
+    "autonomous_allow_block": false,
+    "game_integrity_control": false,
+    "player_account_control": false,
+    "payment_processing_control": false,
+    "aml_kyc_decision_control": false
+  },
+  "evidence": [
+    {
+      "evidence_type": "risk_event_snapshot",
+      "evidence_ref": "SYNTH-EV-001",
+      "content_hash": "d210821eae4ad98267e7cee127e2c8f577d22c61a26da4ce2e548d4692c196aa"
+    },
+    {
+      "evidence_type": "human_review_receipt",
+      "evidence_ref": "SYNTH-EV-002",
+      "content_hash": "24681b9f793759f22c2bc0da5191d82ed2de78fd8e039af0dde23cfe51951fd6"
+    },
+    {
+      "evidence_type": "operator_action_receipt",
+      "evidence_ref": "SYNTH-EV-003",
+      "content_hash": "a3dc91102390223fb845ef3cef745e26e0dad13e5410276a8f488c44c21a86e3"
+    }
+  ],
+  "provenance": {
+    "created_by": "RegenExcalibur",
+    "created_at": "2026-08-20T15:20:00Z",
+    "synthetic": true,
+    "canonicalization": "JSON UTF-8 sorted-keys compact",
+    "hash_algorithm": "SHA-256"
+  },
+  "tamper_evident_receipt": {
+    "receipt_id": "RX-RECEIPT-SYNTH-0001",
+    "hash_algorithm": "SHA-256",
+    "record_hash": "6c5ed4c43ada00a2c4d1af8b5a68e31b7db9a460b8361995fe700c6e079e95c6",
+    "signature_state": "unsigned-demo",
+    "verification_note": "Recompute SHA-256 over the canonical record excluding tamper_evident_receipt."
+  }
+}
