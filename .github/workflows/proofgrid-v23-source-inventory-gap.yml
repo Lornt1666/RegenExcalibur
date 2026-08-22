@@ -1,0 +1,193 @@
+name: ProofGrid v2.3 Source Inventory Gap Ledger
+
+on:
+  pull_request:
+    paths:
+      - "reference/source_inventory_gap_v23.py"
+      - "tests/test_source_inventory_gap_v23.py"
+      - "conformance/source-inventory-gap-v23/**"
+      - ".github/workflows/proofgrid-v23-source-inventory-gap.yml"
+      - "requirements-proofgrid.txt"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  reproduce-inventory:
+    strategy:
+      fail-fast: false
+      matrix:
+        replica: [a, b]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      V22_ARTIFACT_ID: "9474134943"
+      V22_ZIP_SHA256: "9cda369559bf77d1ac1dd89c9a4e688249b5b65fc546414dc401e560117e90e1"
+      V19_ARTIFACT_ID: "9464236551"
+      V19_ZIP_SHA256: "38e24b2bcfcfcc227eeee5ac6cbaf79966aa838d27c7dc6b027637aad7b3297c"
+    steps:
+      - uses: actions/checkout@v6.1.0
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.11.16"
+      - name: Install exact ProofGrid dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -r requirements-proofgrid.txt
+          python -m pip check
+      - name: Run v2.3 fail-closed unit suite
+        run: python -m unittest -v tests.test_source_inventory_gap_v23
+      - name: Download and SHA-verify accepted parents independently
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ROOT="/tmp/v23-${{ matrix.replica }}"
+          mkdir -p "${ROOT}"/{v22,v19,out}
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V22_ARTIFACT_ID}/zip" > "${ROOT}/v22.zip"
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V19_ARTIFACT_ID}/zip" > "${ROOT}/v19.zip"
+          echo "${V22_ZIP_SHA256}  ${ROOT}/v22.zip" | sha256sum -c -
+          echo "${V19_ZIP_SHA256}  ${ROOT}/v19.zip" | sha256sum -c -
+          unzip -q "${ROOT}/v22.zip" -d "${ROOT}/v22"
+          unzip -q "${ROOT}/v19.zip" -d "${ROOT}/v19"
+      - name: Build deterministic uncovered IFC inventory entry
+        run: |
+          set -euo pipefail
+          ROOT="/tmp/v23-${{ matrix.replica }}"
+          python -m reference.source_inventory_gap_v23 build-uncovered-ifc --output "${ROOT}/out/uncovered.ifc"
+      - name: Build exact inventory gap ledger
+        run: |
+          set -euo pipefail
+          ROOT="/tmp/v23-${{ matrix.replica }}"
+          python -m reference.source_inventory_gap_v23 ledger \
+            --v22-ledger "${ROOT}/v22/declared-evidence-scope-coverage.json" \
+            --v22-receipt "${ROOT}/v22/declared-evidence-scope-coverage-receipt.json" \
+            --v22-comparison "${ROOT}/v22/v22-independent-comparison-receipt.json" \
+            --v19-set "${ROOT}/v19/set/out-a/environmental-contribution-set.json" \
+            --v19-receipt "${ROOT}/v19/set/out-a/environmental-contribution-set-receipt.json" \
+            --uncovered-ifc "${ROOT}/out/uncovered.ifc" \
+            --output-dir "${ROOT}/out"
+      - name: Assert explicit uncovered state
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('/tmp/v23-${{ matrix.replica }}/out/declared-source-inventory-gap-ledger.json')
+          r=json.loads(p.read_text())
+          assert r['inventory_scope']['inventory_entry_count']==3
+          assert r['coverage']['covered_entry_count']==2
+          assert r['coverage']['uncovered_entry_count']==1
+          assert r['coverage']['coverage_ratio_rational']=={'numerator':'2','denominator':'3'}
+          u=[x for x in r['entries'] if x['evidence_status']=='EVIDENCE_UNCOVERED']
+          assert len(u)==1 and u[0]['assumed_zero'] is False
+          assert r['whole_building_scope'] is False
+          assert r['whole_model_inventory_claimed'] is False
+          assert r['whole_building_completeness_evaluated'] is False
+          assert r['whole_building_lca_claimed'] is False
+          assert r['uncovered_inventory_is_zero'] is False
+          print('UNCOVERED_SOURCE_SHA='+u[0]['ifc_source_sha256'])
+          print('UNCOVERED_GLOBAL_ID='+u[0]['element_global_id'])
+          PY
+      - name: Upload replica inventory evidence
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v23-inventory-replica-${{ matrix.replica }}
+          path: |
+            /tmp/v23-${{ matrix.replica }}/out/uncovered.ifc
+            /tmp/v23-${{ matrix.replica }}/out/declared-source-inventory-gap-ledger.json
+            /tmp/v23-${{ matrix.replica }}/out/declared-source-inventory-gap-ledger-receipt.json
+          if-no-files-found: error
+          retention-days: 30
+
+  compare:
+    needs: reproduce-inventory
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6.1.0
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.11.16"
+      - name: Install exact ProofGrid dependencies
+        run: |
+          python -m pip install --disable-pip-version-check -r requirements-proofgrid.txt
+          python -m pip check
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          name: proofgrid-v23-inventory-replica-a
+          path: /tmp/v23/a
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          name: proofgrid-v23-inventory-replica-b
+          path: /tmp/v23/b
+      - name: Require byte identity
+        run: |
+          diff -u /tmp/v23/a/uncovered.ifc /tmp/v23/b/uncovered.ifc
+          diff -u /tmp/v23/a/declared-source-inventory-gap-ledger.json /tmp/v23/b/declared-source-inventory-gap-ledger.json
+          diff -u /tmp/v23/a/declared-source-inventory-gap-ledger-receipt.json /tmp/v23/b/declared-source-inventory-gap-ledger-receipt.json
+      - name: Reject uncovered-as-zero and fake-covered promotions
+        run: |
+          python - <<'PY'
+          import copy,json
+          from pathlib import Path
+          from reference import source_inventory_gap_v23 as v23
+          r=json.loads(Path('/tmp/v23/a/declared-source-inventory-gap-ledger.json').read_text())
+          entries=copy.deepcopy(r['entries'])
+          u=next(x for x in entries if x['evidence_status']=='EVIDENCE_UNCOVERED')
+          u['assumed_zero']=True
+          try: v23.validate_entries(entries)
+          except v23.InventoryGapError: pass
+          else: raise SystemExit('uncovered-as-zero was not rejected')
+          entries=copy.deepcopy(r['entries']); u=next(x for x in entries if x['evidence_status']=='EVIDENCE_UNCOVERED')
+          u['evidence_status']='EVIDENCE_COVERED'; u['semantic_identity_sha256']='c'*64
+          try: v23.validate_entries(entries)
+          except v23.InventoryGapError: pass
+          else: raise SystemExit('fake-covered promotion was not rejected')
+          PY
+      - name: Produce independent v2.3 comparison receipt
+        run: |
+          mkdir -p /tmp/v23/final
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          root=Path('/tmp/v23')
+          record=(root/'a/declared-source-inventory-gap-ledger.json').read_bytes()
+          receipt=(root/'a/declared-source-inventory-gap-ledger-receipt.json').read_bytes()
+          r=json.loads(record); rr=json.loads(receipt)
+          uncovered=next(x for x in r['entries'] if x['evidence_status']=='EVIDENCE_UNCOVERED')
+          out={
+            'verdict':'DECLARED_SOURCE_INVENTORY_GAP_LEDGER_INDEPENDENTLY_REPRODUCED',
+            'accepted_v22_head':'ecd795041765edd5edd9830b04afe3ba9e63eb84',
+            'independent_runner_count':2,
+            'byte_identical':True,
+            'record_content_sha256':r['integrity']['content_sha256'],
+            'record_file_sha256':hashlib.sha256(record).hexdigest(),
+            'receipt_sha256':rr['receipt_sha256'],
+            'receipt_file_sha256':hashlib.sha256(receipt).hexdigest(),
+            'inventory_entry_count':3,
+            'covered_entry_count':2,
+            'uncovered_entry_count':1,
+            'coverage_ratio_rational':{'numerator':'2','denominator':'3'},
+            'uncovered_ifc_source_sha256':uncovered['ifc_source_sha256'],
+            'uncovered_element_global_id':uncovered['element_global_id'],
+            'uncovered_assumed_zero':False,
+            'uncovered_as_zero_rejected':True,
+            'fake_covered_rejected':True,
+            'whole_building_completeness_evaluated':False,
+            'whole_building_lca_claimed':False,
+            'certified':False,
+          }
+          raw=json.dumps(out,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode(); out['comparison_receipt_sha256']=hashlib.sha256(raw).hexdigest()
+          Path('/tmp/v23/final/v23-independent-comparison-receipt.json').write_text(json.dumps(out,indent=2,sort_keys=True)+'\n',encoding='utf-8',newline='\n')
+          Path('/tmp/v23/final/declared-source-inventory-gap-ledger.json').write_bytes(record)
+          Path('/tmp/v23/final/declared-source-inventory-gap-ledger-receipt.json').write_bytes(receipt)
+          print(json.dumps(out,indent=2,sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v23-declared-source-inventory-gap
+          path: /tmp/v23/final/**
+          if-no-files-found: error
+          retention-days: 30
