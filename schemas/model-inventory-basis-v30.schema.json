@@ -6,8 +6,8 @@
   "additionalProperties": false,
   "required": [
     "schema_version", "record_type", "verdict", "source", "inventory_policy_sha256",
-    "inventory_summary", "entries", "identity_set_sha256", "zero_silent_drops",
-    "synthetic_input", "acceptance_eligible", "whole_building_lca_claimed",
+    "authorization_manifest_sha256", "inventory_summary", "entries", "identity_set_sha256",
+    "zero_silent_drops", "synthetic_input", "acceptance_eligible", "whole_building_lca_claimed",
     "scientific_validation_performed", "professional_review_performed", "certified",
     "limitations", "integrity"
   ],
@@ -28,6 +28,7 @@
       }
     },
     "inventory_policy_sha256": {"$ref": "#/$defs/sha"},
+    "authorization_manifest_sha256": {"oneOf": [{"$ref": "#/$defs/sha"}, {"type": "null"}]},
     "inventory_summary": {
       "type": "object",
       "additionalProperties": false,
@@ -40,11 +41,7 @@
         "out_of_declared_scope_count": {"type": "integer", "minimum": 0}
       }
     },
-    "entries": {
-      "type": "array",
-      "minItems": 1,
-      "items": {"$ref": "#/$defs/entry"}
-    },
+    "entries": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/entry"}},
     "identity_set_sha256": {"$ref": "#/$defs/sha"},
     "zero_silent_drops": {"const": true},
     "synthetic_input": {"type": "boolean"},
@@ -62,7 +59,8 @@
       "then": {
         "properties": {
           "verdict": {"const": "MODEL_INVENTORY_BASIS_TEST_ONLY"},
-          "acceptance_eligible": {"const": false}
+          "acceptance_eligible": {"const": false},
+          "authorization_manifest_sha256": {"type": "null"}
         }
       }
     },
@@ -71,14 +69,14 @@
       "then": {
         "properties": {
           "verdict": {"const": "MODEL_INVENTORY_BASIS_CLOSED_FOR_POLICY"},
-          "acceptance_eligible": {"const": true}
+          "acceptance_eligible": {"const": true},
+          "authorization_manifest_sha256": {"$ref": "#/$defs/sha"}
         }
       }
     }
   ],
   "$defs": {
     "sha": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
-    "nullable_sha": {"oneOf": [{"$ref": "#/$defs/sha"}, {"type": "null"}]},
     "relationship_ref": {
       "type": "object",
       "additionalProperties": false,
