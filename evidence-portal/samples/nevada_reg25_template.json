@@ -1,0 +1,83 @@
+{
+  "rx_schema": "RegenExcalibur.NevadaReg25IndependentAgentEvidence/0.1",
+  "jurisdiction": "US-NV",
+  "effective_date": "2026-08-21",
+  "regulatory_basis": "NGCB Notice 2026-35 / NGC Regulation 25",
+  "licensee": {
+    "legal_name": "",
+    "license_id": ""
+  },
+  "independent_agent": {
+    "legal_name": "",
+    "registration_id": "",
+    "agreement_binding_date": ""
+  },
+  "due_diligence": {
+    "completed": false,
+    "completion_date": "",
+    "outcome": "",
+    "evidence_refs": []
+  },
+  "aml_training": {
+    "contract_start_training_date": "",
+    "annual_cycle_due_date": "",
+    "training_version": "",
+    "agent_acknowledgement_received": false,
+    "secondary_representative_acknowledgements": [],
+    "retain_acknowledgements_five_years": true,
+    "evidence_refs": []
+  },
+  "form_25": {
+    "required_for_each_applicable_form_1r_individual": true,
+    "completed": false,
+    "signed_date": "",
+    "evidence_ref": ""
+  },
+  "form_26": {
+    "required_for_new_and_renewal_applications": true,
+    "required_for_new_agreement_notification": true,
+    "completed": false,
+    "aml_training_date": "",
+    "due_diligence_date": "",
+    "due_diligence_outcome": "",
+    "agreement_binding_date": "",
+    "executed_agreement_attached": false,
+    "no_attachment_reason": "",
+    "evidence_ref": ""
+  },
+  "secondary_representatives": [],
+  "agreement_controls": {
+    "secondary_rep_notice_and_written_approval": false,
+    "gaming_transactions_on_behalf_of_client_prohibited": false,
+    "source_of_funds_compensation_withholding_clause": false,
+    "annual_aml_training_clause": false,
+    "agreement_version": "",
+    "evidence_ref": ""
+  },
+  "source_of_funds_and_compensation": {
+    "patron_ref": "",
+    "legitimate_source_of_funds_verified": null,
+    "evidence_refs": [],
+    "compensation_decision": "",
+    "decision_owner_role": ""
+  },
+  "board_submission": {
+    "submission_type": "new_registration|renewal|new_agreement_notification",
+    "submission_date": "",
+    "recipient": "AgentReports@gcb.nv.gov",
+    "submission_receipt_ref": "",
+    "form_26_included": false,
+    "form_25_set_included_if_applicable": false
+  },
+  "retention": {
+    "retain_until": "",
+    "policy_version": "",
+    "evidence_refs": []
+  },
+  "authority_boundary": {
+    "regenexcalibur_mode": "advisory_evidence_only",
+    "production_write_access": false,
+    "legal_advice_provided": false,
+    "regulator_endorsement_claimed": false
+  }
+}
