@@ -6,8 +6,8 @@
   "additionalProperties": false,
   "required": [
     "schema_version", "record_type", "verdict", "source_sha256", "source_size_bytes",
-    "ifc_schema", "adapter", "inventory_policy_sha256", "network_resolution",
-    "source_path_is_authority", "synthetic_input", "acceptance_eligible", "integrity"
+    "ifc_schema", "adapter", "inventory_policy_sha256", "authorization_manifest_sha256",
+    "network_resolution", "source_path_is_authority", "synthetic_input", "acceptance_eligible", "integrity"
   ],
   "properties": {
     "schema_version": {"const": "3.0"},
@@ -26,6 +26,7 @@
       }
     },
     "inventory_policy_sha256": {"$ref": "#/$defs/sha"},
+    "authorization_manifest_sha256": {"oneOf": [{"$ref": "#/$defs/sha"}, {"type": "null"}]},
     "network_resolution": {"const": "FORBIDDEN"},
     "source_path_is_authority": {"const": false},
     "synthetic_input": {"type": "boolean"},
@@ -38,7 +39,8 @@
       "then": {
         "properties": {
           "verdict": {"const": "MODEL_BYTES_PINNED_TEST_ONLY"},
-          "acceptance_eligible": {"const": false}
+          "acceptance_eligible": {"const": false},
+          "authorization_manifest_sha256": {"type": "null"}
         }
       }
     },
@@ -47,7 +49,8 @@
       "then": {
         "properties": {
           "verdict": {"const": "MODEL_BYTES_PINNED"},
-          "acceptance_eligible": {"const": true}
+          "acceptance_eligible": {"const": true},
+          "authorization_manifest_sha256": {"$ref": "#/$defs/sha"}
         }
       }
     }
