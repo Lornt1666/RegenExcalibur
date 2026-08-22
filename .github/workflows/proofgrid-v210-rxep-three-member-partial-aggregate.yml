@@ -1,0 +1,156 @@
+name: ProofGrid v2.10 RXEP Three Member Partial Aggregate
+
+on:
+  pull_request:
+    paths:
+      - "reference/rxep_three_member_partial_aggregate_v210.py"
+      - "tests/test_rxep_three_member_partial_aggregate_v210.py"
+      - "conformance/rxep-three-member-partial-aggregate-v210/**"
+      - ".github/workflows/proofgrid-v210-rxep-three-member-partial-aggregate.yml"
+      - "requirements-proofgrid.txt"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  reproduce-rxep:
+    strategy:
+      fail-fast: false
+      matrix: {replica: [a, b]}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      V29_ARTIFACT_ID: "9475187559"
+      V29_ZIP_SHA256: "def19004ac2d4b732b36a46eb9c67f113bfcf1a782d9b5edd6103812712a1f06"
+    steps:
+      - uses: actions/checkout@v6.1.0
+      - uses: actions/setup-python@v6.2.0
+        with: {python-version: "3.11.16", check-latest: false}
+      - name: Install exact ProofGrid dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -r requirements-proofgrid.txt
+          python -m pip check
+      - name: Run v2.10 fail-closed unit suite
+        run: python -m unittest -v tests.test_rxep_three_member_partial_aggregate_v210
+      - name: Download and SHA-verify exact accepted v2.9 parent independently
+        env: {GH_TOKEN: "${{ github.token }}"}
+        run: |
+          set -euo pipefail
+          ROOT="/tmp/proofgrid-v210-${{ matrix.replica }}"; mkdir -p "${ROOT}"/{v29,out}
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V29_ARTIFACT_ID}/zip" > "${ROOT}/v29.zip"
+          echo "${V29_ZIP_SHA256}  ${ROOT}/v29.zip" | sha256sum -c -
+          unzip -q "${ROOT}/v29.zip" -d "${ROOT}/v29"
+      - name: Bind accepted three-member PARTIAL aggregate into RXEP
+        run: |
+          ROOT="/tmp/proofgrid-v210-${{ matrix.replica }}"
+          python reference/rxep_three_member_partial_aggregate_v210.py \
+            --aggregate-record "${ROOT}/v29/three-member-partial-set-exact-decimal-total.json" \
+            --aggregate-receipt "${ROOT}/v29/three-member-partial-set-exact-decimal-total-receipt.json" \
+            --comparison-receipt "${ROOT}/v29/v29-independent-comparison-receipt.json" \
+            --output-dir "${ROOT}/out"
+      - name: Assert exact Decimal authority and bounded state
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          e=json.loads(Path('/tmp/proofgrid-v210-${{ matrix.replica }}/out/rxep-three-member-partial-aggregate.json').read_text())
+          r=json.loads(Path('/tmp/proofgrid-v210-${{ matrix.replica }}/out/rxep-three-member-partial-aggregate-receipt.json').read_text())
+          assert e['measurement']['value_decimal']=='27229.08943503647325'
+          assert e['measurement']['decimal_value_is_authority'] is True
+          assert e['measurement']['numeric_value_is_authority'] is False
+          assert e['review']=={'state':'CALCULATED','reviewer':None}
+          assert e['member_count']==3 and e['completeness_status']=='PARTIAL'
+          assert e['aggregation_performed'] is True and e['sum_performed'] is True
+          assert e['aggregation_scope']=='ADMITTED_SET_MEMBERS_ONLY'
+          assert e['whole_building_lca_claimed'] is False and e['declared_scope_complete_claimed'] is False
+          assert e['missing_contributions_are_zero'] is False and e['missing_modules_are_zero'] is False
+          assert e['certified'] is False
+          assert r['verdict']=='RXEP_EXACT_DECIMAL_THREE_MEMBER_PARTIAL_AGGREGATE_EVIDENCE_VERIFIABLE'
+          assert r['value_decimal']=='27229.08943503647325'
+          print('RXEP_V210_EXACT_DECIMAL='+e['measurement']['value_decimal'])
+          print('RXEP_V210_DISPLAY_VALUE='+str(e['measurement']['value']))
+          PY
+      - name: Upload replica RXEP evidence
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v210-rxep-replica-${{ matrix.replica }}
+          path: /tmp/proofgrid-v210-${{ matrix.replica }}/out/
+          if-no-files-found: error
+          retention-days: 30
+
+  compare:
+    needs: reproduce-rxep
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      V29_ARTIFACT_ID: "9475187559"
+      V29_ZIP_SHA256: "def19004ac2d4b732b36a46eb9c67f113bfcf1a782d9b5edd6103812712a1f06"
+    steps:
+      - uses: actions/checkout@v6.1.0
+      - uses: actions/setup-python@v6.2.0
+        with: {python-version: "3.11.16", check-latest: false}
+      - name: Install exact ProofGrid dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -r requirements-proofgrid.txt
+          python -m pip check
+      - uses: actions/download-artifact@v4.3.0
+        with: {name: proofgrid-v210-rxep-replica-a, path: /tmp/v210/a}
+      - uses: actions/download-artifact@v4.3.0
+        with: {name: proofgrid-v210-rxep-replica-b, path: /tmp/v210/b}
+      - name: Require RXEP record and receipt byte identity
+        run: |
+          diff -u /tmp/v210/a/rxep-three-member-partial-aggregate.json /tmp/v210/b/rxep-three-member-partial-aggregate.json
+          diff -u /tmp/v210/a/rxep-three-member-partial-aggregate-receipt.json /tmp/v210/b/rxep-three-member-partial-aggregate-receipt.json
+      - name: Reject self-consistent tampered v2.9 parent
+        env: {GH_TOKEN: "${{ github.token }}"}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/v210/parent
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V29_ARTIFACT_ID}/zip" > /tmp/v210/parent/v29.zip
+          echo "${V29_ZIP_SHA256}  /tmp/v210/parent/v29.zip" | sha256sum -c -
+          unzip -q /tmp/v210/parent/v29.zip -d /tmp/v210/parent/v29
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          p=Path('/tmp/v210/parent/v29/three-member-partial-set-exact-decimal-total.json')
+          o=json.loads(p.read_text())
+          o['aggregation']['total_value_decimal']='27230.08943503647325'
+          o['integrity']['content_sha256']='0'*64
+          o['integrity']['content_sha256']=hashlib.sha256(json.dumps(o,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()
+          p.write_text(json.dumps(o,indent=2,sort_keys=True)+'\n',encoding='utf-8',newline='\n')
+          PY
+          set +e
+          python reference/rxep_three_member_partial_aggregate_v210.py \
+            --aggregate-record /tmp/v210/parent/v29/three-member-partial-set-exact-decimal-total.json \
+            --aggregate-receipt /tmp/v210/parent/v29/three-member-partial-set-exact-decimal-total-receipt.json \
+            --comparison-receipt /tmp/v210/parent/v29/v29-independent-comparison-receipt.json \
+            --output-dir /tmp/v210/tampered
+          code=$?
+          set -e
+          test "$code" -ne 0
+      - name: Produce independent v2.10 comparison receipt
+        run: |
+          mkdir -p /tmp/v210/final
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          root=Path('/tmp/v210')
+          e=json.loads((root/'a/rxep-three-member-partial-aggregate.json').read_text())
+          r=json.loads((root/'a/rxep-three-member-partial-aggregate-receipt.json').read_text())
+          eb=(root/'a/rxep-three-member-partial-aggregate.json').read_bytes(); rb=(root/'a/rxep-three-member-partial-aggregate-receipt.json').read_bytes()
+          out={'verdict':'RXEP_EXACT_DECIMAL_THREE_MEMBER_PARTIAL_AGGREGATE_EVIDENCE_INDEPENDENTLY_REPRODUCED','accepted_v29_head':'7c0b701e39140b9ad1f0e978f356bd6e81c3bddc','independent_runner_count':2,'byte_identical':True,'record_content_sha256':e['integrity']['content_sha256'],'record_file_sha256':hashlib.sha256(eb).hexdigest(),'receipt_sha256':r['receipt_sha256'],'receipt_file_sha256':hashlib.sha256(rb).hexdigest(),'value_decimal':'27229.08943503647325','unit':'kg CO2 eqv.','review_state':'CALCULATED','member_count':3,'completeness_status':'PARTIAL','aggregation_performed':True,'sum_performed':True,'whole_building_lca_claimed':False,'declared_scope_complete_claimed':False,'tampered_parent_rejected':True,'certified':False}
+          out['comparison_receipt_sha256']=hashlib.sha256(json.dumps(out,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()
+          (root/'final/v210-independent-comparison-receipt.json').write_text(json.dumps(out,indent=2,sort_keys=True)+'\n',encoding='utf-8',newline='\n')
+          (root/'final/rxep-three-member-partial-aggregate.json').write_bytes(eb); (root/'final/rxep-three-member-partial-aggregate-receipt.json').write_bytes(rb)
+          print(json.dumps(out,indent=2,sort_keys=True))
+          PY
+      - name: Retain bounded v2.10 evidence only
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v210-rxep-three-member-partial-aggregate
+          path: /tmp/v210/final/
+          if-no-files-found: error
+          retention-days: 30
