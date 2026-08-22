@@ -1,0 +1,128 @@
+name: ProofGrid v2.9 Three Member Partial Total
+
+on:
+  pull_request:
+    paths:
+      - "reference/three_member_partial_total_v29.py"
+      - "schemas/three-member-partial-set-total-v29.schema.json"
+      - "tests/test_three_member_partial_total_v29.py"
+      - "conformance/three-member-partial-total-v29/**"
+      - ".github/workflows/proofgrid-v29-three-member-total.yml"
+      - "requirements-proofgrid.txt"
+
+permissions: {contents: read, actions: read}
+
+jobs:
+  reproduce-total:
+    strategy: {fail-fast: false, matrix: {replica: [a, b]}}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      V28_ARTIFACT_ID: "9475137439"
+      V28_ZIP_SHA256: "b57beec3721e7ce92b4b68350ac5e9d589c527d36743009a223fe0949c6eea25"
+    steps:
+      - uses: actions/checkout@v6.1.0
+      - uses: actions/setup-python@v6.2.0
+        with: {python-version: "3.11.16", check-latest: false}
+      - name: Install exact ProofGrid dependencies
+        run: |
+          python -m pip install --disable-pip-version-check -r requirements-proofgrid.txt
+          python -m pip check
+      - name: Run v2.9 unit suite
+        run: python -m unittest -v tests.test_three_member_partial_total_v29
+      - name: Download and SHA-verify exact accepted v2.8 parent
+        env: {GH_TOKEN: "${{ github.token }}"}
+        run: |
+          ROOT="/tmp/proofgrid-v29-${{ matrix.replica }}"; mkdir -p "${ROOT}"/{v28,out}
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V28_ARTIFACT_ID}/zip" > "${ROOT}/v28.zip"
+          echo "${V28_ZIP_SHA256}  ${ROOT}/v28.zip" | sha256sum -c -
+          unzip -q "${ROOT}/v28.zip" -d "${ROOT}/v28"
+      - name: Calculate exact three-member PARTIAL total
+        run: |
+          ROOT="/tmp/proofgrid-v29-${{ matrix.replica }}"
+          python reference/three_member_partial_total_v29.py \
+            --set-record "${ROOT}/v28/three-member-environmental-contribution-set.json" \
+            --set-receipt "${ROOT}/v28/three-member-environmental-contribution-set-receipt.json" \
+            --output-dir "${ROOT}/out"
+      - name: Assert exact bounded aggregate
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          o=json.loads(Path('/tmp/proofgrid-v29-${{ matrix.replica }}/out/three-member-partial-set-exact-decimal-total.json').read_text())
+          assert o['aggregation']['total_value_decimal']=='27229.08943503647325'
+          assert o['member_count']==3 and o['completeness_status']=='PARTIAL'
+          assert o['aggregation_performed'] is True and o['sum_performed'] is True
+          assert o['whole_building_lca_claimed'] is False and o['declared_scope_complete_claimed'] is False
+          assert o['missing_contributions_are_zero'] is False and o['missing_modules_are_zero'] is False
+          assert o['unit_conversion_performed'] is False and o['scenario_inference_performed'] is False
+          assert o['certified'] is False
+          PY
+      - uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v29-total-replica-${{ matrix.replica }}
+          path: /tmp/proofgrid-v29-${{ matrix.replica }}/out/
+          if-no-files-found: error
+          retention-days: 30
+
+  compare:
+    needs: reproduce-total
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      V28_ARTIFACT_ID: "9475137439"
+      V28_ZIP_SHA256: "b57beec3721e7ce92b4b68350ac5e9d589c527d36743009a223fe0949c6eea25"
+    steps:
+      - uses: actions/checkout@v6.1.0
+      - uses: actions/setup-python@v6.2.0
+        with: {python-version: "3.11.16", check-latest: false}
+      - name: Install exact ProofGrid dependencies
+        run: |
+          python -m pip install --disable-pip-version-check -r requirements-proofgrid.txt
+          python -m pip check
+      - uses: actions/download-artifact@v4.3.0
+        with: {name: proofgrid-v29-total-replica-a, path: /tmp/v29/a}
+      - uses: actions/download-artifact@v4.3.0
+        with: {name: proofgrid-v29-total-replica-b, path: /tmp/v29/b}
+      - name: Require aggregate byte identity
+        run: |
+          diff -u /tmp/v29/a/three-member-partial-set-exact-decimal-total.json /tmp/v29/b/three-member-partial-set-exact-decimal-total.json
+          diff -u /tmp/v29/a/three-member-partial-set-exact-decimal-total-receipt.json /tmp/v29/b/three-member-partial-set-exact-decimal-total-receipt.json
+      - name: Reject self-consistent tampered v2.8 parent
+        env: {GH_TOKEN: "${{ github.token }}"}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/v29/negative/v28
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V28_ARTIFACT_ID}/zip" > /tmp/v29/negative/v28.zip
+          echo "${V28_ZIP_SHA256}  /tmp/v29/negative/v28.zip" | sha256sum -c -
+          unzip -q /tmp/v29/negative/v28.zip -d /tmp/v29/negative/v28
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          p=Path('/tmp/v29/negative/v28/three-member-environmental-contribution-set.json'); o=json.loads(p.read_text())
+          o['members'][0]['semantic_identity']['value_decimal']='15560.479677163699'
+          o['members'][0]['semantic_identity_sha256']=hashlib.sha256(json.dumps(o['members'][0]['semantic_identity'],sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()
+          o['integrity']['content_sha256']='0'*64
+          o['integrity']['content_sha256']=hashlib.sha256(json.dumps(o,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()
+          p.write_text(json.dumps(o,indent=2,sort_keys=True)+'\n')
+          PY
+          set +e
+          python reference/three_member_partial_total_v29.py --set-record /tmp/v29/negative/v28/three-member-environmental-contribution-set.json --set-receipt /tmp/v29/negative/v28/three-member-environmental-contribution-set-receipt.json --output-dir /tmp/v29/negative/out
+          code=$?; set -e; test "$code" -ne 0
+      - name: Produce independent v2.9 comparison receipt
+        run: |
+          mkdir -p /tmp/v29/final
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          root=Path('/tmp/v29'); o=json.loads((root/'a/three-member-partial-set-exact-decimal-total.json').read_text()); r=json.loads((root/'a/three-member-partial-set-exact-decimal-total-receipt.json').read_text()); ob=(root/'a/three-member-partial-set-exact-decimal-total.json').read_bytes(); rb=(root/'a/three-member-partial-set-exact-decimal-total-receipt.json').read_bytes()
+          x={'verdict':'THREE_MEMBER_PARTIAL_SET_EXACT_DECIMAL_TOTAL_INDEPENDENTLY_REPRODUCED','accepted_v28_head':'45e0191d4c21b13bd394ddcebddee547c4eee650','independent_runner_count':2,'byte_identical':True,'record_content_sha256':o['integrity']['content_sha256'],'record_file_sha256':hashlib.sha256(ob).hexdigest(),'receipt_sha256':r['receipt_sha256'],'receipt_file_sha256':hashlib.sha256(rb).hexdigest(),'member_count':3,'total_value_decimal':'27229.08943503647325','unit':'kg CO2 eqv.','completeness_status':'PARTIAL','whole_building_lca_claimed':False,'tampered_parent_rejected':True,'certified':False}
+          x['comparison_receipt_sha256']=hashlib.sha256(json.dumps(x,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()
+          (root/'final/v29-independent-comparison-receipt.json').write_text(json.dumps(x,indent=2,sort_keys=True)+'\n'); (root/'final/three-member-partial-set-exact-decimal-total.json').write_bytes(ob); (root/'final/three-member-partial-set-exact-decimal-total-receipt.json').write_bytes(rb)
+          PY
+      - uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v29-three-member-partial-total
+          path: /tmp/v29/final/
+          if-no-files-found: error
+          retention-days: 30
