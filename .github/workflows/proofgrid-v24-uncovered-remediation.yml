@@ -1,0 +1,151 @@
+name: ProofGrid v2.4 Uncovered Remediation Readiness
+
+on:
+  pull_request:
+    paths:
+      - "reference/uncovered_remediation_v24.py"
+      - "tests/test_uncovered_remediation_v24.py"
+      - "conformance/uncovered-remediation-v24/**"
+      - ".github/workflows/proofgrid-v24-uncovered-remediation.yml"
+      - "requirements-proofgrid.txt"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  reproduce-remediation:
+    strategy:
+      fail-fast: false
+      matrix:
+        replica: [a, b]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      V23_ARTIFACT_ID: "9474251900"
+      V23_ZIP_SHA256: "996093cba7c37d703f123fe8346fb32fbba2e0f8403d8e86c37b6843ed6656a5"
+    steps:
+      - uses: actions/checkout@v6.1.0
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.11.16"
+      - name: Install exact ProofGrid dependencies
+        run: |
+          python -m pip install --disable-pip-version-check -r requirements-proofgrid.txt
+          python -m pip check
+      - name: Run v2.4 fail-closed unit suite
+        run: python -m unittest -v tests.test_uncovered_remediation_v24
+      - name: Download and SHA-verify accepted v2.3 parent independently
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ROOT="/tmp/v24-${{ matrix.replica }}"
+          mkdir -p "${ROOT}"/{v23,out}
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V23_ARTIFACT_ID}/zip" > "${ROOT}/v23.zip"
+          echo "${V23_ZIP_SHA256}  ${ROOT}/v23.zip" | sha256sum -c -
+          unzip -q "${ROOT}/v23.zip" -d "${ROOT}/v23"
+      - name: Build deterministic successor IFC
+        run: |
+          ROOT="/tmp/v24-${{ matrix.replica }}"
+          python -m reference.uncovered_remediation_v24 build-successor --output "${ROOT}/out/successor.ifc"
+      - name: Build remediation readiness record
+        run: |
+          ROOT="/tmp/v24-${{ matrix.replica }}"
+          python -m reference.uncovered_remediation_v24 record \
+            --v23-ledger "${ROOT}/v23/declared-source-inventory-gap-ledger.json" \
+            --v23-receipt "${ROOT}/v23/declared-source-inventory-gap-ledger-receipt.json" \
+            --v23-comparison "${ROOT}/v23/v23-independent-comparison-receipt.json" \
+            --successor-ifc "${ROOT}/out/successor.ifc" \
+            --output-dir "${ROOT}/out"
+      - name: Assert bounded readiness state
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.loads(Path('/tmp/v24-${{ matrix.replica }}/out/uncovered-remediation-readiness.json').read_text())
+          assert r['remediation_state']=='READY_FOR_EXPLICIT_MAPPING'
+          assert r['environmental_coverage_status']=='EVIDENCE_UNCOVERED'
+          assert r['quantity_evidence']['quantity_decimal']=='250'
+          assert r['quantity_evidence']['source_token_is_authority'] is True
+          assert r['quantity_evidence']['parser_numeric_value_is_authority'] is False
+          assert r['quantity_evidence']['unit']=='kg'
+          assert r['environmental_mapping_performed'] is False
+          assert r['environmental_factor_selected'] is False
+          assert r['impact_calculation_performed'] is False
+          assert r['assumed_zero'] is False
+          print('SUCCESSOR_SOURCE_SHA='+r['successor_source']['successor_source_sha256'])
+          print('QUANTITY_TOKEN='+r['quantity_evidence']['quantity_lexical'])
+          PY
+      - uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v24-remediation-replica-${{ matrix.replica }}
+          path: |
+            /tmp/v24-${{ matrix.replica }}/out/successor.ifc
+            /tmp/v24-${{ matrix.replica }}/out/uncovered-remediation-readiness.json
+            /tmp/v24-${{ matrix.replica }}/out/uncovered-remediation-readiness-receipt.json
+          if-no-files-found: error
+          retention-days: 30
+
+  compare:
+    needs: reproduce-remediation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6.1.0
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.11.16"
+      - name: Install exact ProofGrid dependencies
+        run: |
+          python -m pip install --disable-pip-version-check -r requirements-proofgrid.txt
+          python -m pip check
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          name: proofgrid-v24-remediation-replica-a
+          path: /tmp/v24/a
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          name: proofgrid-v24-remediation-replica-b
+          path: /tmp/v24/b
+      - name: Require byte identity
+        run: |
+          diff -u /tmp/v24/a/successor.ifc /tmp/v24/b/successor.ifc
+          diff -u /tmp/v24/a/uncovered-remediation-readiness.json /tmp/v24/b/uncovered-remediation-readiness.json
+          diff -u /tmp/v24/a/uncovered-remediation-readiness-receipt.json /tmp/v24/b/uncovered-remediation-readiness-receipt.json
+      - name: Reject mapping promotion and element mutation
+        run: |
+          python - <<'PY'
+          import copy,json
+          from pathlib import Path
+          from reference import uncovered_remediation_v24 as v24
+          r=json.loads(Path('/tmp/v24/a/uncovered-remediation-readiness.json').read_text())
+          x=copy.deepcopy(r); x['environmental_mapping_performed']=True
+          try: v24.validate_record(x)
+          except v24.RemediationError: pass
+          else: raise SystemExit('mapping promotion not rejected')
+          x=copy.deepcopy(r); x['successor_source']['element_global_id']='wrong'
+          try: v24.validate_record(x)
+          except v24.RemediationError: pass
+          else: raise SystemExit('element mutation not rejected')
+          PY
+      - name: Produce independent v2.4 comparison receipt
+        run: |
+          mkdir -p /tmp/v24/final
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          root=Path('/tmp/v24')
+          rec=(root/'a/uncovered-remediation-readiness.json').read_bytes(); rr=(root/'a/uncovered-remediation-readiness-receipt.json').read_bytes(); r=json.loads(rec); x=json.loads(rr)
+          out={'verdict':'UNCOVERED_INVENTORY_REMEDIATION_READY_FOR_MAPPING_INDEPENDENTLY_REPRODUCED','accepted_v23_head':'c8ff576fe2146ec5e67f16b6214ddb95101aaa35','independent_runner_count':2,'byte_identical':True,'record_content_sha256':r['integrity']['content_sha256'],'record_file_sha256':hashlib.sha256(rec).hexdigest(),'receipt_sha256':x['receipt_sha256'],'receipt_file_sha256':hashlib.sha256(rr).hexdigest(),'predecessor_source_sha256':r['successor_source']['predecessor_source_sha256'],'successor_source_sha256':r['successor_source']['successor_source_sha256'],'element_global_id':r['successor_source']['element_global_id'],'quantity_lexical':r['quantity_evidence']['quantity_lexical'],'quantity_decimal':r['quantity_evidence']['quantity_decimal'],'material_name':r['material_evidence']['declared_name'],'environmental_coverage_status':'EVIDENCE_UNCOVERED','mapping_promotion_rejected':True,'element_mutation_rejected':True,'impact_calculation_performed':False,'assumed_zero':False,'certified':False}
+          raw=json.dumps(out,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode(); out['comparison_receipt_sha256']=hashlib.sha256(raw).hexdigest()
+          Path('/tmp/v24/final/v24-independent-comparison-receipt.json').write_text(json.dumps(out,indent=2,sort_keys=True)+'\n',encoding='utf-8',newline='\n')
+          Path('/tmp/v24/final/uncovered-remediation-readiness.json').write_bytes(rec); Path('/tmp/v24/final/uncovered-remediation-readiness-receipt.json').write_bytes(rr)
+          print(json.dumps(out,indent=2,sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v24-uncovered-remediation-readiness
+          path: /tmp/v24/final/**
+          if-no-files-found: error
+          retention-days: 30
