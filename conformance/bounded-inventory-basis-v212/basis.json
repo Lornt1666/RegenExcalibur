@@ -1,0 +1,40 @@
+{
+  "schema_version": "1.0",
+  "manifest_id": "proofgrid:v212:bounded-synthetic-test-inventory",
+  "basis_scope_type": "BOUNDED_SYNTHETIC_TEST_INVENTORY",
+  "membership_closed": true,
+  "member_count": 3,
+  "members": [
+    {
+      "inventory_entry_id": "covered-first",
+      "element_global_id": "1BXL7DJx51bvggyIPU2Xi5",
+      "predecessor_inventory_source_sha256": "23046f33df40fae4354fd085c2d72c6c9eaab3a45b2d46e77d8f9531041954c6",
+      "covered_successor_source_sha256": "23046f33df40fae4354fd085c2d72c6c9eaab3a45b2d46e77d8f9531041954c6",
+      "semantic_identity_sha256": "b0c85f4123a5dbc6206cf3dc2ac08aed7626633c0a901a29e9fad395c67cf0dc"
+    },
+    {
+      "inventory_entry_id": "covered-second",
+      "element_global_id": "1CXL7DJx51bvggyIPU2Xi6",
+      "predecessor_inventory_source_sha256": "14c4be5561131bd6213d45dd0e00064ac916da28f825450133b5dd48d1fcd54d",
+      "covered_successor_source_sha256": "14c4be5561131bd6213d45dd0e00064ac916da28f825450133b5dd48d1fcd54d",
+      "semantic_identity_sha256": "75eff1d5c89afbb44db7a709f8958c10bc6c46c52b96e7b6b56aab4ff8a5b950"
+    },
+    {
+      "inventory_entry_id": "uncovered-third",
+      "element_global_id": "1DXL7DJx51bvggyIPU2Xi7",
+      "predecessor_inventory_source_sha256": "42443f2f45f9bc122814a07c711cd67e6fc5d9033a7c17bf5ce20be70a24dcd3",
+      "covered_successor_source_sha256": "ae74ee2db97b6257dc6983ccdf8eacaff7b0998212ce569ad844f6c4600ea31d",
+      "semantic_identity_sha256": "2a67655f18b9cd8d776335e886dc324c9911dd9e1090e8852752235ecb958905"
+    }
+  ],
+  "whole_model_inventory_claimed": false,
+  "whole_model_completeness_evaluated": false,
+  "whole_building_scope": false,
+  "whole_building_completeness_evaluated": false,
+  "whole_building_lca_claimed": false,
+  "limitations": [
+    "This manifest defines only the complete membership of a bounded synthetic test inventory.",
+    "It does not establish that these three entries are a complete real IFC model or whole-building inventory.",
+    "It does not establish scientific validity, professional review, regulatory approval, or certification."
+  ]
+}
