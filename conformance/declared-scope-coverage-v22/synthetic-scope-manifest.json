@@ -1,0 +1,41 @@
+{
+  "schema_version": "1.0",
+  "manifest_id": "proofgrid-v22-synthetic-three-slot-declared-scope",
+  "synthetic": true,
+  "real_project": false,
+  "scope_kind": "SYNTHETIC_DECLARED_SCOPE_TEST",
+  "required_slots": [
+    {
+      "slot_id": "ifc:1BXL7DJx51bvggyIPU2Xi5",
+      "kind": "IFC_ELEMENT",
+      "expected_element_global_id": "1BXL7DJx51bvggyIPU2Xi5",
+      "binding": {
+        "status": "COVERED",
+        "semantic_identity_sha256": "b0c85f4123a5dbc6206cf3dc2ac08aed7626633c0a901a29e9fad395c67cf0dc"
+      }
+    },
+    {
+      "slot_id": "ifc:1CXL7DJx51bvggyIPU2Xi6",
+      "kind": "IFC_ELEMENT",
+      "expected_element_global_id": "1CXL7DJx51bvggyIPU2Xi6",
+      "binding": {
+        "status": "COVERED",
+        "semantic_identity_sha256": "75eff1d5c89afbb44db7a709f8958c10bc6c46c52b96e7b6b56aab4ff8a5b950"
+      }
+    },
+    {
+      "slot_id": "proofgrid:v22:unresolved-required-slot-1",
+      "kind": "SYNTHETIC_REQUIRED_SLOT",
+      "expected_element_global_id": null,
+      "binding": {
+        "status": "UNRESOLVED",
+        "semantic_identity_sha256": null
+      }
+    }
+  ],
+  "limitations": [
+    "This is a synthetic declared-scope control and does not represent a real building or project.",
+    "The unresolved slot exists to prove fail-closed completeness semantics and has no environmental value.",
+    "No missing or unresolved slot may be treated as zero."
+  ]
+}
