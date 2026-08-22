@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://regenexcalibur.example/schemas/real-ifc-authorization-v30.schema.json",
+  "title": "ProofGrid v3.0 exact real IFC authorization manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "record_type", "authorization_type", "source_sha256",
+    "source_kind", "authorized_scope", "proofgrid_v30_authorized", "synthetic",
+    "authority_actor", "limitations"
+  ],
+  "properties": {
+    "schema_version": {"const": "3.0"},
+    "record_type": {"const": "ProofGridRealIFCAuthorization"},
+    "authorization_type": {"const": "USER_AUTHORIZED_REAL_IFC"},
+    "source_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "source_kind": {"const": "REAL_IFC_MODEL_REVISION"},
+    "authorized_scope": {"const": "PROOFGRID_V30_MODEL_INVENTORY_BASIS"},
+    "proofgrid_v30_authorized": {"const": true},
+    "synthetic": {"const": false},
+    "authority_actor": {"type": "string", "minLength": 1},
+    "limitations": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}
+  }
+}
