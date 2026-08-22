@@ -1,0 +1,185 @@
+name: ProofGrid v3.0 Real IFC Inventory Basis
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "conformance/real-ifc-v30/authorized-real-model.ifc"
+      - "conformance/real-ifc-v30/source-authorization.json"
+
+permissions:
+  contents: read
+
+jobs:
+  reproduce-real-inventory:
+    strategy:
+      fail-fast: false
+      matrix:
+        replica: [a, b]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6.1.0
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.11.16"
+          check-latest: false
+
+      - name: Install exact ProofGrid dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -r requirements-proofgrid.txt
+          python -m pip check
+
+      - name: Require intentionally supplied real source and authorization
+        run: |
+          set -euo pipefail
+          test -f conformance/real-ifc-v30/authorized-real-model.ifc
+          test -f conformance/real-ifc-v30/source-authorization.json
+
+      - name: Run exact real IFC inventory basis
+        run: |
+          set -euo pipefail
+          ROOT="/tmp/proofgrid-v30-${{ matrix.replica }}"
+          mkdir -p "${ROOT}/out"
+          python reference/model_inventory_basis_v30.py \
+            --ifc conformance/real-ifc-v30/authorized-real-model.ifc \
+            --policy conformance/real-ifc-v30/inventory-policy.json \
+            --real-authorized-input \
+            --authorization-manifest conformance/real-ifc-v30/source-authorization.json \
+            --output-dir "${ROOT}/out"
+
+      - name: Assert exact real-source acceptance state
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path('/tmp/proofgrid-v30-${{ matrix.replica }}/out')
+          admission=json.loads((root/'model-admission.json').read_text())
+          basis=json.loads((root/'model-inventory-basis.json').read_text())
+          receipt=json.loads((root/'model-inventory-basis-receipt.json').read_text())
+          assert admission['verdict']=='MODEL_BYTES_PINNED'
+          assert admission['synthetic_input'] is False
+          assert admission['acceptance_eligible'] is True
+          assert admission['authorization_manifest_sha256']
+          assert basis['verdict']=='MODEL_INVENTORY_BASIS_CLOSED_FOR_POLICY'
+          assert basis['synthetic_input'] is False
+          assert basis['acceptance_eligible'] is True
+          assert basis['zero_silent_drops'] is True
+          assert basis['inventory_summary']['enumerated_count']==basis['inventory_summary']['classified_count']
+          assert basis['inventory_summary']['enumerated_count']==len(basis['entries'])
+          assert basis['whole_building_lca_claimed'] is False
+          assert basis['scientific_validation_performed'] is False
+          assert basis['professional_review_performed'] is False
+          assert basis['certified'] is False
+          assert receipt['acceptance_eligible'] is True
+          assert receipt['zero_silent_drops'] is True
+          print('MODEL_SOURCE_SHA256='+basis['source']['sha256'])
+          print('INVENTORY_COUNT='+str(basis['inventory_summary']['enumerated_count']))
+          print('IDENTITY_SET_SHA256='+basis['identity_set_sha256'])
+          PY
+
+      - name: Upload replica evidence
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v30-real-inventory-${{ matrix.replica }}
+          path: /tmp/proofgrid-v30-${{ matrix.replica }}/out/
+          if-no-files-found: error
+          retention-days: 30
+
+  compare:
+    needs: reproduce-real-inventory
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6.1.0
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.11.16"
+          check-latest: false
+      - name: Install exact ProofGrid dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -r requirements-proofgrid.txt
+          python -m pip check
+
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          name: proofgrid-v30-real-inventory-a
+          path: /tmp/v30/a
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          name: proofgrid-v30-real-inventory-b
+          path: /tmp/v30/b
+
+      - name: Require byte-identical real model evidence
+        run: |
+          set -euo pipefail
+          diff -u /tmp/v30/a/model-admission.json /tmp/v30/b/model-admission.json
+          diff -u /tmp/v30/a/model-inventory-basis.json /tmp/v30/b/model-inventory-basis.json
+          diff -u /tmp/v30/a/model-inventory-basis-receipt.json /tmp/v30/b/model-inventory-basis-receipt.json
+
+      - name: Reject tampered IFC bytes against exact authorization
+        run: |
+          set -euo pipefail
+          cp conformance/real-ifc-v30/authorized-real-model.ifc /tmp/v30/tampered.ifc
+          printf ' ' >> /tmp/v30/tampered.ifc
+          set +e
+          python reference/model_inventory_basis_v30.py \
+            --ifc /tmp/v30/tampered.ifc \
+            --policy conformance/real-ifc-v30/inventory-policy.json \
+            --real-authorized-input \
+            --authorization-manifest conformance/real-ifc-v30/source-authorization.json \
+            --output-dir /tmp/v30/tampered-out
+          code=$?
+          set -e
+          test "$code" -ne 0
+
+      - name: Produce final real v3.0 comparison receipt
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/v30/final
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          root=Path('/tmp/v30/a')
+          admission=json.loads((root/'model-admission.json').read_text())
+          basis=json.loads((root/'model-inventory-basis.json').read_text())
+          receipt=json.loads((root/'model-inventory-basis-receipt.json').read_text())
+          report={
+            'verdict':'MODEL_INVENTORY_BASIS_CLOSED_FOR_POLICY_INDEPENDENTLY_REPRODUCED',
+            'independent_runner_count':2,
+            'byte_identical':True,
+            'source_sha256':basis['source']['sha256'],
+            'inventory_policy_sha256':basis['inventory_policy_sha256'],
+            'authorization_manifest_sha256':basis['authorization_manifest_sha256'],
+            'model_admission_content_sha256':admission['integrity']['content_sha256'],
+            'inventory_content_sha256':basis['integrity']['content_sha256'],
+            'inventory_file_sha256':hashlib.sha256((root/'model-inventory-basis.json').read_bytes()).hexdigest(),
+            'inventory_receipt_sha256':receipt['receipt_sha256'],
+            'identity_set_sha256':basis['identity_set_sha256'],
+            'enumerated_count':basis['inventory_summary']['enumerated_count'],
+            'classified_count':basis['inventory_summary']['classified_count'],
+            'zero_silent_drops':True,
+            'tampered_source_rejected':True,
+            'whole_building_lca_claimed':False,
+            'scientific_validation_performed':False,
+            'professional_review_performed':False,
+            'certified':False,
+          }
+          report['comparison_receipt_sha256']=hashlib.sha256(json.dumps(report,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+          out=Path('/tmp/v30/final/v30-real-inventory-comparison-receipt.json')
+          out.write_text(json.dumps(report,indent=2,sort_keys=True)+'\n',encoding='utf-8',newline='\n')
+          for name in ('model-admission.json','model-inventory-basis.json','model-inventory-basis-receipt.json'):
+              (Path('/tmp/v30/final')/name).write_bytes((root/name).read_bytes())
+          print(json.dumps(report,indent=2,sort_keys=True))
+          PY
+
+      - name: Retain real v3.0 acceptance evidence
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v30-real-ifc-inventory-basis
+          path: /tmp/v30/final/
+          if-no-files-found: error
+          retention-days: 30
