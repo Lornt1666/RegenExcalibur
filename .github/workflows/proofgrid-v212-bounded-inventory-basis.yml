@@ -1,0 +1,153 @@
+name: ProofGrid v2.12 Bounded Inventory Basis Closure
+
+on:
+  pull_request:
+    paths:
+      - "reference/bounded_inventory_basis_v212.py"
+      - "tests/test_bounded_inventory_basis_v212.py"
+      - "conformance/bounded-inventory-basis-v212/**"
+      - ".github/workflows/proofgrid-v212-bounded-inventory-basis.yml"
+      - "requirements-proofgrid.txt"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  reproduce-closure:
+    strategy:
+      fail-fast: false
+      matrix: {replica: [a, b]}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      V211_ARTIFACT_ID: "9476565721"
+      V211_ZIP_SHA256: "2e550566b89fc07604fcb455832fcb89e1d51eb0a7773e60f04ee9a697e11ca7"
+    steps:
+      - uses: actions/checkout@v6.1.0
+      - uses: actions/setup-python@v6.2.0
+        with: {python-version: "3.11.16", check-latest: false}
+      - name: Install exact ProofGrid dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -r requirements-proofgrid.txt
+          python -m pip check
+      - name: Run v2.12 fail-closed unit suite
+        run: python -m unittest -v tests.test_bounded_inventory_basis_v212
+      - name: Download and SHA-verify exact accepted v2.11 parent independently
+        env: {GH_TOKEN: "${{ github.token }}"}
+        run: |
+          set -euo pipefail
+          ROOT="/tmp/proofgrid-v212-${{ matrix.replica }}"; mkdir -p "${ROOT}"/{v211,out}
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V211_ARTIFACT_ID}/zip" > "${ROOT}/v211.zip"
+          echo "${V211_ZIP_SHA256}  ${ROOT}/v211.zip" | sha256sum -c -
+          unzip -q "${ROOT}/v211.zip" -d "${ROOT}/v211"
+      - name: Close immutable bounded synthetic inventory basis
+        run: |
+          ROOT="/tmp/proofgrid-v212-${{ matrix.replica }}"
+          python reference/bounded_inventory_basis_v212.py \
+            --manifest conformance/bounded-inventory-basis-v212/basis.json \
+            --v211-dir "${ROOT}/v211" \
+            --output-dir "${ROOT}/out"
+      - name: Assert exact bounded closure state
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          o=json.loads(Path('/tmp/proofgrid-v212-${{ matrix.replica }}/out/bounded-inventory-basis-closure.json').read_text())
+          r=json.loads(Path('/tmp/proofgrid-v212-${{ matrix.replica }}/out/bounded-inventory-basis-closure-receipt.json').read_text())
+          assert o['basis']['basis_scope_type']=='BOUNDED_SYNTHETIC_TEST_INVENTORY'
+          assert o['basis']['manifest_member_count']==3
+          assert o['bounded_scope_membership_complete'] is True
+          assert o['bounded_scope_evidence_coverage_complete'] is True
+          assert o['one_to_one_membership_match'] is True
+          assert o['coverage_ratio_rational']=={'numerator':'3','denominator':'3'}
+          assert o['whole_model_inventory_claimed'] is False
+          assert o['whole_model_completeness_evaluated'] is False
+          assert o['whole_building_scope'] is False
+          assert o['whole_building_completeness_evaluated'] is False
+          assert o['whole_building_lca_claimed'] is False
+          assert o['declared_scope_complete_claimed'] is False
+          assert r['bounded_scope_membership_complete'] is True
+          print('BOUNDED_SCOPE_MEMBERSHIP=COMPLETE_3_OF_3')
+          print('WHOLE_MODEL_COMPLETENESS_EVALUATED=false')
+          PY
+      - name: Upload replica closure evidence
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v212-basis-replica-${{ matrix.replica }}
+          path: /tmp/proofgrid-v212-${{ matrix.replica }}/out/
+          if-no-files-found: error
+          retention-days: 30
+
+  compare:
+    needs: reproduce-closure
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      V211_ARTIFACT_ID: "9476565721"
+      V211_ZIP_SHA256: "2e550566b89fc07604fcb455832fcb89e1d51eb0a7773e60f04ee9a697e11ca7"
+    steps:
+      - uses: actions/checkout@v6.1.0
+      - uses: actions/setup-python@v6.2.0
+        with: {python-version: "3.11.16", check-latest: false}
+      - name: Install exact ProofGrid dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -r requirements-proofgrid.txt
+          python -m pip check
+      - uses: actions/download-artifact@v4.3.0
+        with: {name: proofgrid-v212-basis-replica-a, path: /tmp/v212/a}
+      - uses: actions/download-artifact@v4.3.0
+        with: {name: proofgrid-v212-basis-replica-b, path: /tmp/v212/b}
+      - name: Require closure byte identity
+        run: |
+          diff -u /tmp/v212/a/bounded-inventory-basis-closure.json /tmp/v212/b/bounded-inventory-basis-closure.json
+          diff -u /tmp/v212/a/bounded-inventory-basis-closure-receipt.json /tmp/v212/b/bounded-inventory-basis-closure-receipt.json
+      - name: Reject manifest membership tamper and whole-model promotion
+        env: {GH_TOKEN: "${{ github.token }}"}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/v212/parent/v211
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V211_ARTIFACT_ID}/zip" > /tmp/v212/parent/v211.zip
+          echo "${V211_ZIP_SHA256}  /tmp/v212/parent/v211.zip" | sha256sum -c -
+          unzip -q /tmp/v212/parent/v211.zip -d /tmp/v212/parent/v211
+          cp conformance/bounded-inventory-basis-v212/basis.json /tmp/v212/manifest-tampered.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('/tmp/v212/manifest-tampered.json'); o=json.loads(p.read_text()); o['members']=o['members'][:2]; o['member_count']=2; p.write_text(json.dumps(o,indent=2,sort_keys=True)+'\n')
+          PY
+          set +e
+          python reference/bounded_inventory_basis_v212.py --manifest /tmp/v212/manifest-tampered.json --v211-dir /tmp/v212/parent/v211 --output-dir /tmp/v212/negative-manifest
+          code=$?
+          set -e
+          test "$code" -ne 0
+          python - <<'PY'
+          import copy,json
+          from pathlib import Path
+          import reference.bounded_inventory_basis_v212 as m
+          o=json.loads(Path('/tmp/v212/a/bounded-inventory-basis-closure.json').read_text())
+          p=copy.deepcopy(o); p['whole_model_inventory_claimed']=True
+          try: m.verify_closure(p)
+          except m.BasisClosureError: print('WHOLE_MODEL_PROMOTION_REJECTED=PASS')
+          else: raise SystemExit('whole-model promotion unexpectedly accepted')
+          PY
+      - name: Produce independent v2.12 comparison receipt
+        run: |
+          mkdir -p /tmp/v212/final
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          root=Path('/tmp/v212'); o=json.loads((root/'a/bounded-inventory-basis-closure.json').read_text()); r=json.loads((root/'a/bounded-inventory-basis-closure-receipt.json').read_text()); ob=(root/'a/bounded-inventory-basis-closure.json').read_bytes(); rb=(root/'a/bounded-inventory-basis-closure-receipt.json').read_bytes()
+          report={'verdict':'BOUNDED_SYNTHETIC_INVENTORY_BASIS_CLOSURE_INDEPENDENTLY_REPRODUCED','accepted_v211_head':'0923d0731186f6140b32118e86925cec74a6e0b6','independent_runner_count':2,'byte_identical':True,'record_content_sha256':o['integrity']['content_sha256'],'record_file_sha256':hashlib.sha256(ob).hexdigest(),'receipt_sha256':r['receipt_sha256'],'receipt_file_sha256':hashlib.sha256(rb).hexdigest(),'manifest_file_sha256':o['basis']['manifest_file_sha256'],'manifest_member_count':3,'bounded_scope_membership_complete':True,'bounded_scope_evidence_coverage_complete':True,'whole_model_inventory_claimed':False,'whole_model_completeness_evaluated':False,'whole_building_lca_claimed':False,'manifest_tamper_rejected':True,'whole_model_promotion_rejected':True,'certified':False}
+          report['comparison_receipt_sha256']=hashlib.sha256(json.dumps(report,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()
+          (root/'final/v212-independent-comparison-receipt.json').write_text(json.dumps(report,indent=2,sort_keys=True)+'\n',encoding='utf-8',newline='\n'); (root/'final/bounded-inventory-basis-closure.json').write_bytes(ob); (root/'final/bounded-inventory-basis-closure-receipt.json').write_bytes(rb); print(json.dumps(report,indent=2,sort_keys=True))
+          PY
+      - name: Retain bounded v2.12 evidence only
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v212-bounded-inventory-basis
+          path: /tmp/v212/final/
+          if-no-files-found: error
+          retention-days: 30
