@@ -1,0 +1,155 @@
+name: ProofGrid v2.6 Third Exact Contribution
+
+on:
+  pull_request:
+    paths:
+      - "reference/third_contribution_v26.py"
+      - "tests/test_third_contribution_v26.py"
+      - "conformance/third-contribution-v26/**"
+      - ".github/workflows/proofgrid-v26-third-contribution.yml"
+      - "requirements-proofgrid.txt"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  reproduce-third:
+    strategy:
+      fail-fast: false
+      matrix:
+        replica: [a, b]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      V25_ARTIFACT_ID: "9474397119"
+      V25_ZIP_SHA256: "8cf25faff9b52e9bc0d2933d668d14d2e648d2877272792a6df8cceff99a1ecf"
+      V24_ARTIFACT_ID: "9474326775"
+      V24_ZIP_SHA256: "d8376a2bd2ecdcd190d6af85da6955e5e03ef928c794f08ce4cc6ca42dfdc88d"
+      V141_ARTIFACT_ID: "9450726883"
+      V141_ZIP_SHA256: "ab104603beb2e8643360ac45935ba82a189028a3c9e7319788153fa261fdb262"
+      V14_ARTIFACT_ID: "9450293777"
+      V14_ZIP_SHA256: "6bbc8efb8d762ce8171e94d27d5cffc42d34ab439bf5006cf6f79235cc7df4d2"
+    steps:
+      - uses: actions/checkout@v6.1.0
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.11.16"
+      - name: Install exact ProofGrid dependencies
+        run: |
+          python -m pip install --disable-pip-version-check -r requirements-proofgrid.txt
+          python -m pip check
+      - name: Run v2.6 fail-closed unit suite
+        run: python -m unittest -v tests.test_third_contribution_v26
+      - name: Download and SHA-verify exact accepted parents independently
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ROOT="/tmp/v26-${{ matrix.replica }}"; mkdir -p "${ROOT}"/{v25,v24,v141,v14,out}
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V25_ARTIFACT_ID}/zip" > "${ROOT}/v25.zip"
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V24_ARTIFACT_ID}/zip" > "${ROOT}/v24.zip"
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V141_ARTIFACT_ID}/zip" > "${ROOT}/v141.zip"
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V14_ARTIFACT_ID}/zip" > "${ROOT}/v14.zip"
+          echo "${V25_ZIP_SHA256}  ${ROOT}/v25.zip" | sha256sum -c -
+          echo "${V24_ZIP_SHA256}  ${ROOT}/v24.zip" | sha256sum -c -
+          echo "${V141_ZIP_SHA256}  ${ROOT}/v141.zip" | sha256sum -c -
+          echo "${V14_ZIP_SHA256}  ${ROOT}/v14.zip" | sha256sum -c -
+          unzip -q "${ROOT}/v25.zip" -d "${ROOT}/v25"; unzip -q "${ROOT}/v24.zip" -d "${ROOT}/v24"; unzip -q "${ROOT}/v141.zip" -d "${ROOT}/v141"; unzip -q "${ROOT}/v14.zip" -d "${ROOT}/v14"
+      - name: Calculate exact third contribution
+        run: |
+          ROOT="/tmp/v26-${{ matrix.replica }}"
+          python -m reference.third_contribution_v26 \
+            --v25-mapping "${ROOT}/v25/remediated-explicit-environmental-mapping.json" \
+            --v25-receipt "${ROOT}/v25/remediated-explicit-environmental-mapping-receipt.json" \
+            --v25-comparison "${ROOT}/v25/v25-independent-comparison-receipt.json" \
+            --v24-readiness "${ROOT}/v24/uncovered-remediation-readiness.json" \
+            --v24-receipt "${ROOT}/v24/uncovered-remediation-readiness-receipt.json" \
+            --closure "${ROOT}/v141/v13/a/declaration-product-identity-closure.json" \
+            --closure-receipt "${ROOT}/v141/v13/a/declaration-product-identity-closure-receipt.json" \
+            --bundle "${ROOT}/v14/v13/a/declaration-evidence-bundle.json" \
+            --bundle-receipt "${ROOT}/v14/v13/a/declaration-evidence-bundle-receipt.json" \
+            --output-dir "${ROOT}/out"
+      - name: Assert exact bounded calculation
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.loads(Path('/tmp/v26-${{ matrix.replica }}/out/third-mapped-declared-result-calculation.json').read_text())
+          assert r['calculation']['mapped_quantity']['value_decimal']=='250'
+          assert r['calculation']['mapped_quantity']['source_token_is_authority'] is True
+          assert r['calculation']['mapped_quantity']['parser_numeric_value_is_authority'] is False
+          assert r['calculation']['declared_result']['value_decimal']=='15.559479677163699'
+          assert r['calculation']['scaled_result_decimal']=='3889.86991929092475'
+          assert r['calculation']['scaled_result_unit']=='kg CO2 eqv.'
+          assert r['environmental_coverage_status']=='CALCULATED_CONTRIBUTION_NOT_YET_ADMITTED'
+          assert r['rxep_binding_performed'] is False
+          assert r['contribution_set_admission_performed'] is False
+          assert r['aggregate_recomputed'] is False
+          assert r['certified'] is False
+          PY
+      - uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v26-third-replica-${{ matrix.replica }}
+          path: |
+            /tmp/v26-${{ matrix.replica }}/out/third-mapped-declared-result-calculation.json
+            /tmp/v26-${{ matrix.replica }}/out/third-mapped-declared-result-calculation-receipt.json
+          if-no-files-found: error
+          retention-days: 30
+
+  compare:
+    needs: reproduce-third
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6.1.0
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.11.16"
+      - name: Install exact ProofGrid dependencies
+        run: |
+          python -m pip install --disable-pip-version-check -r requirements-proofgrid.txt
+          python -m pip check
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          name: proofgrid-v26-third-replica-a
+          path: /tmp/v26/a
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          name: proofgrid-v26-third-replica-b
+          path: /tmp/v26/b
+      - name: Require calculation byte identity
+        run: |
+          diff -u /tmp/v26/a/third-mapped-declared-result-calculation.json /tmp/v26/b/third-mapped-declared-result-calculation.json
+          diff -u /tmp/v26/a/third-mapped-declared-result-calculation-receipt.json /tmp/v26/b/third-mapped-declared-result-calculation-receipt.json
+      - name: Reject result/coverage promotions
+        run: |
+          python - <<'PY'
+          import copy,json
+          from pathlib import Path
+          from reference import third_contribution_v26 as v26
+          r=json.loads(Path('/tmp/v26/a/third-mapped-declared-result-calculation.json').read_text())
+          for key in ('rxep_binding_performed','contribution_set_admission_performed','aggregate_recomputed','certified'):
+              x=copy.deepcopy(r); x[key]=True
+              try: v26.validate_record(x)
+              except v26.V26Error: pass
+              else: raise SystemExit(f'{key} promotion not rejected')
+          PY
+      - name: Produce independent v2.6 comparison receipt
+        run: |
+          mkdir -p /tmp/v26/final
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          rec=Path('/tmp/v26/a/third-mapped-declared-result-calculation.json').read_bytes(); rr=Path('/tmp/v26/a/third-mapped-declared-result-calculation-receipt.json').read_bytes(); r=json.loads(rec); x=json.loads(rr)
+          out={'verdict':'THIRD_MAPPED_DECLARED_RESULT_EXACT_DECIMAL_INDEPENDENTLY_REPRODUCED','accepted_v25_head':'19c665b4d2ac0e58eb0f7853311a76228b180444','independent_runner_count':2,'byte_identical':True,'record_content_sha256':r['integrity']['content_sha256'],'record_file_sha256':hashlib.sha256(rec).hexdigest(),'receipt_sha256':x['receipt_sha256'],'receipt_file_sha256':hashlib.sha256(rr).hexdigest(),'element_global_id':'1DXL7DJx51bvggyIPU2Xi7','quantity_decimal':'250','declared_result_decimal':'15.559479677163699','scaled_result_decimal':'3889.86991929092475','scaled_result_unit':'kg CO2 eqv.','environmental_coverage_status':'CALCULATED_CONTRIBUTION_NOT_YET_ADMITTED','rxep_binding_performed':False,'contribution_set_admission_performed':False,'aggregate_recomputed':False,'promotion_rejected':True,'certified':False}
+          raw=json.dumps(out,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode(); out['comparison_receipt_sha256']=hashlib.sha256(raw).hexdigest()
+          Path('/tmp/v26/final/v26-independent-comparison-receipt.json').write_text(json.dumps(out,indent=2,sort_keys=True)+'\n',encoding='utf-8',newline='\n'); Path('/tmp/v26/final/third-mapped-declared-result-calculation.json').write_bytes(rec); Path('/tmp/v26/final/third-mapped-declared-result-calculation-receipt.json').write_bytes(rr)
+          print(json.dumps(out,indent=2,sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v26-third-exact-contribution
+          path: /tmp/v26/final/**
+          if-no-files-found: error
+          retention-days: 30
