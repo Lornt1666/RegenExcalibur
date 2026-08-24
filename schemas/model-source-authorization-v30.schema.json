@@ -1,0 +1,53 @@
+{
+  "$id": "https://regenexcalibur.example/schemas/model-source-authorization-v30.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "authorization_reference": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "authorization_version": {
+      "const": "3.0.0"
+    },
+    "authorized_purpose": {
+      "const": "ProofGrid v3.0 authoritative model inventory basis"
+    },
+    "notes": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "reconstructed": {
+      "type": "boolean"
+    },
+    "schema_version": {
+      "const": "1.0"
+    },
+    "source_classification": {
+      "enum": [
+        "USER_AUTHORIZED_REAL_IFC",
+        "SYNTHETIC_TEST_FIXTURE"
+      ]
+    },
+    "synthetic": {
+      "type": "boolean"
+    },
+    "user_authorized": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "schema_version",
+    "authorization_version",
+    "source_classification",
+    "user_authorized",
+    "synthetic",
+    "reconstructed",
+    "authorized_purpose",
+    "authorization_reference"
+  ],
+  "title": "ProofGrid v3.0 model source authorization",
+  "type": "object"
+}
