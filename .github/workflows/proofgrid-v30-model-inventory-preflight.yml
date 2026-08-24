@@ -187,11 +187,11 @@ jobs:
       - name: Require independent preflight byte identity
         run: |
           diff -u /tmp/v30/a/fixture.ifc /tmp/v30/b/fixture.ifc
-          diff -u /tmp/v30/a/model-admission-receipt.json /tmp/v30/b/model-admission-receipt.json
-          diff -u /tmp/v30/a/model-inventory-basis.json /tmp/v30/b/model-inventory-basis.json
-          diff -u /tmp/v30/a/model-inventory-basis-receipt.json /tmp/v30/b/model-inventory-basis-receipt.json
-          ! grep -q '"verdict": "MODEL_INVENTORY_BASIS_CLOSED_FOR_POLICY"' /tmp/v30/a/model-inventory-basis.json
-          grep -q '"production_gate_satisfied": false' /tmp/v30/a/model-inventory-basis.json
+          diff -u /tmp/v30/a/out-a/model-admission-receipt.json /tmp/v30/b/out-a/model-admission-receipt.json
+          diff -u /tmp/v30/a/out-a/model-inventory-basis.json /tmp/v30/b/out-a/model-inventory-basis.json
+          diff -u /tmp/v30/a/out-a/model-inventory-basis-receipt.json /tmp/v30/b/out-a/model-inventory-basis-receipt.json
+          ! grep -q '"verdict": "MODEL_INVENTORY_BASIS_CLOSED_FOR_POLICY"' /tmp/v30/a/out-a/model-inventory-basis.json
+          grep -q '"production_gate_satisfied": false' /tmp/v30/a/out-a/model-inventory-basis.json
 
   real-ifc-gate-status:
     runs-on: ubuntu-24.04
