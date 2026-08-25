@@ -15,10 +15,7 @@
     "registration_authority": "Institut Bauen und Umwelt e. V.",
     "format": "ILCD+EPD v1.2",
     "third_party_review_metadata": "ACCREDITED_THIRD_PARTY_REVIEW",
-    "declared_reference": {
-      "quantity": "1",
-      "unit": "m3"
-    },
+    "declared_reference": {"quantity": "1", "unit": "m3"},
     "expected_indicator_control": {
       "indicator": "GWP-total",
       "module": "A1-A3",
@@ -49,22 +46,26 @@
     "professional_suitability_inferred": false,
     "certification_authority_inferred": false
   },
-  "discovery": {
-    "source_sha256_state": "DISCOVERY_PENDING",
-    "zip_sha256": null,
-    "zip_size_bytes": null,
-    "terms_sha256": null,
-    "terms_size_bytes": null,
-    "extended_json_sha256": null,
-    "extended_json_size_bytes": null,
-    "process_xml_sha256": null,
-    "package_manifest_sha256": null
+  "frozen_source": {
+    "state": "FROZEN",
+    "canonical_package_manifest_path": "conformance/real-environmental-source-v31/CANONICAL_PACKAGE_CONTENT_MANIFEST.json",
+    "package_member_count": 33,
+    "package_content_manifest_sha256": "c858c2712243684b094d843bd688b5ee062b0d8005f2cd2cef93bd7e4902e3a3",
+    "target_process_path": "ILCD/processes/8347f9a7-f4ec-4a36-a266-a0281f5fd16d_00.02.000.xml",
+    "target_process_size_bytes": 60812,
+    "target_process_sha256": "18951c19002314adb6213d05783f8075553102a1bc57e22950d941a4804e445d",
+    "terms_page_size_bytes": 10371,
+    "terms_page_sha256": "88d6a4ad8c63d16c1e24a4cee38a9f696d825248ceef87de572403b80bf9ed2d",
+    "extended_view_size_bytes": 77663,
+    "extended_view_sha256": "19571f40b2516345efb09d5ca423cb2b7f6c06debc4a69ee2d6837da52183c16",
+    "zip_wrapper_sha256_authoritative": false,
+    "zip_wrapper_note": "ÖKOBAUDAT zipexport wrapper bytes vary by request; authority is the canonical uncompressed member path/size/SHA manifest."
   },
   "notes": [
     "This is a real external environmental dataset, not a synthetic ProofGrid fixture.",
-    "The v3.1 discovery run must freeze exact source bytes and package identities before final admission is eligible.",
+    "The native package substance is frozen through all 33 uncompressed member path/size/SHA-256 identities rather than volatile ZIP wrapper bytes.",
     "The source is not automatically mapped to any DigitalHub IFC element.",
     "Dataset-level third-party review metadata is preserved as source metadata; ProofGrid does not promote it into independent review of any future building result.",
-    "Modified/raw redistribution authority is deliberately left unknown pending stronger source-specific evidence."
+    "Modified/raw redistribution authority remains unknown pending stronger source-specific evidence."
   ]
 }
