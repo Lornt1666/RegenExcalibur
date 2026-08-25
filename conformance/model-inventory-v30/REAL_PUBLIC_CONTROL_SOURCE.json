@@ -28,7 +28,7 @@
     "publication_of_user_private_model_authorized": false
   },
   "source_sha256_state": "FROZEN",
-  "discovery_fingerprint": {
+  "stable_model_fingerprint": {
     "ifc_schema": "IFC4",
     "enumerated_product_count": 1026,
     "classification_counts": {
@@ -37,16 +37,13 @@
       "OUT_OF_DECLARED_EVIDENCE_SCOPE": 69
     },
     "silent_drop_count": 0,
-    "identity_set_sha256": "e7f1271f7a601caea4a52e246dcd70f0c3e29f0b6788e2111b4f5929b89b77d8",
-    "model_admission_receipt_sha256": "2532a2045abaa3f3c679c6d7898104ca122ac5a55cd83487ce7074456132d4c6",
-    "model_inventory_basis_content_sha256": "4680d564003dc9f4a73c02f2a13a2dff7ac31462be586d915dff17412c29e1b3",
-    "model_inventory_basis_receipt_sha256": "99f11bb152cb65203ef2a2e73e48310ea0a2377a60460c8e83593daf6308351e"
+    "identity_set_sha256": "e7f1271f7a601caea4a52e246dcd70f0c3e29f0b6788e2111b4f5929b89b77d8"
   },
   "notes": [
     "This is a public real office-building control model, not the user's own project model.",
     "The model remains in the upstream repository; RegenExcalibur CI fetches the exact immutable upstream bytes and retains evidence only.",
     "Source and license SHA-256 values were independently discovered by two hosted v3.0 real-model replicas before being frozen here.",
-    "The final acceptance workflow must verify the frozen SHA-256 values before invoking the inventory engine and must reject source-byte drift.",
+    "The final acceptance workflow verifies exact source/license SHA-256 and Git blob identities before invoking the inventory engine and rejects source-byte drift.",
     "No whole-building LCA, scientific validation, professional review, regulator acceptance, or certification claim follows from model-inventory closure."
   ]
 }
