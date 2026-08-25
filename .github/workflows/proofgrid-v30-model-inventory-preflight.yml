@@ -4,10 +4,12 @@ on:
   pull_request:
     paths:
       - "reference/model_inventory_v30.py"
+      - "reference/real_public_source_guard_v30.py"
       - "policies/inventory-policy-v30.json"
       - "schemas/model-source-authorization-v30.schema.json"
       - "schemas/model-inventory-basis-v30.schema.json"
       - "tests/test_model_inventory_v30.py"
+      - "tests/test_real_public_source_guard_v30.py"
       - "conformance/model-inventory-v30/**"
       - ".github/workflows/proofgrid-v30-model-inventory-preflight.yml"
       - "requirements-proofgrid.txt"
@@ -34,15 +36,17 @@ jobs:
           set -euo pipefail
           python -m pip install --disable-pip-version-check -r requirements-proofgrid.txt
           python -m pip check
-      - name: Run v3.0 fail-closed unit suite
-        run: python -m unittest -v tests.test_model_inventory_v30
-      - name: Build deterministic synthetic IFC preflight fixture
+      - name: Run v3.0 fail-closed unit suites
+        run: |
+          set -euo pipefail
+          python -m unittest -v tests.test_model_inventory_v30 tests.test_real_public_source_guard_v30
+      - name: Build deterministic synthetic firewall fixture
         run: |
           set -euo pipefail
           ROOT="/tmp/v30-${{ matrix.replica }}"
-          mkdir -p "${ROOT}/out"
+          mkdir -p "${ROOT}"
           python - <<'PY'
-          import ifcopenshell, re
+          import ifcopenshell,re
           from pathlib import Path
           root=Path('/tmp/v30-${{ matrix.replica }}')
           m=ifcopenshell.file(schema='IFC4')
@@ -59,8 +63,7 @@ jobs:
           q=m.create_entity('IfcQuantityWeight',Name='Mass',WeightValue=125.0)
           qset=m.create_entity('IfcElementQuantity',GlobalId='3nXL7DJx51bvggyIPU2Xj7',Name='Qto_WallBaseQuantities',Quantities=[q])
           m.create_entity('IfcRelDefinesByProperties',GlobalId='0oXL7DJx51bvggyIPU2Xj8',RelatedObjects=[wall],RelatingPropertyDefinition=qset)
-          path=root/'fixture.ifc'
-          m.write(str(path))
+          path=root/'fixture.ifc'; m.write(str(path))
           text=path.read_text(encoding='utf-8')
           text,count=re.subn(r"FILE_NAME\('[^']*','[^']*'","FILE_NAME('proofgrid-v30-preflight.ifc','2026-01-01T00:00:00'",text,count=1)
           assert count==1
@@ -71,7 +74,7 @@ jobs:
             "authorization_reference": "ci://proofgrid/v3.0/synthetic-preflight",
             "authorization_version": "3.0.0",
             "authorized_purpose": "ProofGrid v3.0 authoritative model inventory basis",
-            "notes": ["Synthetic CI fixture; cannot close the production v3.0 gate."],
+            "notes": ["Synthetic CI fixture; production verdict is forbidden."],
             "reconstructed": false,
             "schema_version": "1.0",
             "source_classification": "SYNTHETIC_TEST_FIXTURE",
@@ -79,7 +82,7 @@ jobs:
             "user_authorized": false
           }
           JSON
-      - name: Execute deterministic synthetic preflight twice
+      - name: Reproduce synthetic preflight twice and assert firewall
         run: |
           set -euo pipefail
           ROOT="/tmp/v30-${{ matrix.replica }}"
@@ -94,52 +97,43 @@ jobs:
           diff -u "${ROOT}/out-a/model-admission-receipt.json" "${ROOT}/out-b/model-admission-receipt.json"
           diff -u "${ROOT}/out-a/model-inventory-basis.json" "${ROOT}/out-b/model-inventory-basis.json"
           diff -u "${ROOT}/out-a/model-inventory-basis-receipt.json" "${ROOT}/out-b/model-inventory-basis-receipt.json"
-      - name: Assert bounded preflight semantics
-        run: |
           python - <<'PY'
           import json
           from pathlib import Path
-          basis=json.loads(Path('/tmp/v30-${{ matrix.replica }}/out-a/model-inventory-basis.json').read_text())
-          assert basis['verdict']=='V30_ENGINE_PREFLIGHT_VERIFIABLE'
-          assert basis['production_gate_satisfied'] is False
-          assert basis['inventory']['enumerated_count']==3
-          assert basis['inventory']['classification_counts']=={'EVIDENCE_NOT_APPLICABLE':1,'EVIDENCE_REQUIRED':1,'OUT_OF_DECLARED_EVIDENCE_SCOPE':1}
-          wall=next(x for x in basis['inventory']['entries'] if x['ifc_type']=='IfcWall')
+          b=json.loads(Path('/tmp/v30-${{ matrix.replica }}/out-a/model-inventory-basis.json').read_text())
+          assert b['verdict']=='V30_ENGINE_PREFLIGHT_VERIFIABLE'
+          assert b['production_gate_satisfied'] is False
+          assert b['inventory']['enumerated_count']==3
+          assert b['inventory']['classification_counts']=={'EVIDENCE_NOT_APPLICABLE':1,'EVIDENCE_REQUIRED':1,'OUT_OF_DECLARED_EVIDENCE_SCOPE':1}
+          wall=next(x for x in b['inventory']['entries'] if x['ifc_type']=='IfcWall')
           q=wall['declared_quantities'][0]
           assert q['quantity_lexical']=='125.'
           assert q['source_token_is_authority'] is True
           assert q['parser_numeric_value_is_authority'] is False
           assert q['parser_consistent_with_source'] is True
-          assert basis['closure']['silent_drop_count']==0
-          assert basis['claims']['model_inventory_basis_closed_for_policy'] is False
-          assert basis['claims']['whole_building_lca_claimed'] is False
-          assert basis['claims']['certified'] is False
-          print('PREFLIGHT_IDENTITY_SET_SHA='+basis['inventory']['identity_set_sha256'])
+          assert b['closure']['silent_drop_count']==0
+          assert b['claims']['model_inventory_basis_closed_for_policy'] is False
+          assert b['claims']['whole_building_lca_claimed'] is False
+          assert b['claims']['certified'] is False
           PY
-      - name: Reject synthetic source as production closure
+      - name: Reject synthetic production promotion, policy drift, duplicate GlobalId, and malformed IFC
         run: |
           set -euo pipefail
           ROOT="/tmp/v30-${{ matrix.replica }}"
           set +e
           python -m reference.model_inventory_v30 --ifc "${ROOT}/fixture.ifc" --policy policies/inventory-policy-v30.json --authorization "${ROOT}/authorization.json" --output-dir "${ROOT}/negative-real"
-          code=$?
+          A=$?
           set -e
-          test "$code" -ne 0
-      - name: Reject policy byte drift
-        run: |
-          set -euo pipefail
-          ROOT="/tmp/v30-${{ matrix.replica }}"
+          test "${A}" -ne 0
+
           cp policies/inventory-policy-v30.json "${ROOT}/drifted-policy.json"
           printf '\n' >> "${ROOT}/drifted-policy.json"
           set +e
           python -m reference.model_inventory_v30 --ifc "${ROOT}/fixture.ifc" --policy "${ROOT}/drifted-policy.json" --authorization "${ROOT}/authorization.json" --output-dir "${ROOT}/negative-policy" --preflight
-          code=$?
+          B=$?
           set -e
-          test "$code" -ne 0
-      - name: Reject duplicate non-empty GlobalId
-        run: |
-          set -euo pipefail
-          ROOT="/tmp/v30-${{ matrix.replica }}"
+          test "${B}" -ne 0
+
           python - <<'PY'
           from pathlib import Path
           p=Path('/tmp/v30-${{ matrix.replica }}/fixture.ifc')
@@ -148,19 +142,17 @@ jobs:
           PY
           set +e
           python -m reference.model_inventory_v30 --ifc "${ROOT}/duplicate-globalid.ifc" --policy policies/inventory-policy-v30.json --authorization "${ROOT}/authorization.json" --output-dir "${ROOT}/negative-globalid" --preflight
-          code=$?
+          C=$?
           set -e
-          test "$code" -ne 0
-      - name: Reject malformed IFC
-        run: |
-          ROOT="/tmp/v30-${{ matrix.replica }}"
+          test "${C}" -ne 0
+
           printf 'NOT AN IFC\n' > "${ROOT}/malformed.ifc"
           set +e
           python -m reference.model_inventory_v30 --ifc "${ROOT}/malformed.ifc" --policy policies/inventory-policy-v30.json --authorization "${ROOT}/authorization.json" --output-dir "${ROOT}/negative-malformed" --preflight
-          code=$?
+          D=$?
           set -e
-          test "$code" -ne 0
-      - name: Upload bounded preflight evidence
+          test "${D}" -ne 0
+      - name: Upload bounded synthetic firewall evidence
         uses: actions/upload-artifact@v4.6.2
         with:
           name: proofgrid-v30-engine-preflight-${{ matrix.replica }}
@@ -184,8 +176,9 @@ jobs:
         with:
           name: proofgrid-v30-engine-preflight-b
           path: /tmp/v30/b
-      - name: Require independent preflight byte identity
+      - name: Require independent synthetic-firewall byte identity
         run: |
+          set -euo pipefail
           diff -u /tmp/v30/a/fixture.ifc /tmp/v30/b/fixture.ifc
           diff -u /tmp/v30/a/out-a/model-admission-receipt.json /tmp/v30/b/out-a/model-admission-receipt.json
           diff -u /tmp/v30/a/out-a/model-inventory-basis.json /tmp/v30/b/out-a/model-inventory-basis.json
@@ -193,10 +186,20 @@ jobs:
           ! grep -q '"verdict": "MODEL_INVENTORY_BASIS_CLOSED_FOR_POLICY"' /tmp/v30/a/out-a/model-inventory-basis.json
           grep -q '"production_gate_satisfied": false' /tmp/v30/a/out-a/model-inventory-basis.json
 
-  real-ifc-gate-status:
+  real-ifc-source-status:
     runs-on: ubuntu-24.04
     steps:
-      - name: Report authoritative source blocker
+      - uses: actions/checkout@v6.1.0
+      - name: Report frozen real-control availability without duplicating acceptance authority
         run: |
-          echo "V30_REAL_IFC_GATE=BLOCKED_NO_USER_AUTHORIZED_NATIVE_IFC"
-          echo "Synthetic/reconstructed sources are prohibited from satisfying Issue #98."
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          m=json.loads(Path('conformance/model-inventory-v30/REAL_PUBLIC_CONTROL_SOURCE.json').read_text())
+          assert m['source_sha256_state']=='FROZEN'
+          assert m['upstream']['source_sha256']=='19d7d02d53c2b88e86890ee236297b12bbb0f7748030cd32ff6a22762e9966bb'
+          print('V30_REAL_IFC_SOURCE=AVAILABLE_FROZEN_PUBLIC_CONTROL')
+          print('V30_REAL_IFC_ACCEPTANCE_AUTHORITY=ProofGrid v3.0 Real Public Model Acceptance')
+          print('Synthetic/reconstructed sources remain prohibited from satisfying the production verdict.')
+          PY
