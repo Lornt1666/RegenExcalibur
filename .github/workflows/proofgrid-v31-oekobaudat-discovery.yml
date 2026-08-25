@@ -51,28 +51,24 @@ jobs:
           assert m['rights']['certification_authority_inferred'] is False
           assert m['discovery']['source_sha256_state']=='DISCOVERY_PENDING'
           PY
-      - name: Fetch exact official ZIP, extended API view, and data-user terms
+      - name: Fetch official ZIP transport, extended API view, and data-user terms
         run: |
           set -euo pipefail
           ROOT="/tmp/v31-${{ matrix.replica }}"
           mkdir -p "${ROOT}"
           curl --fail --location --retry 4 --retry-delay 2 \
             -H 'Accept: application/zip, application/octet-stream;q=0.9, */*;q=0.1' \
-            -D "${ROOT}/zip.headers" \
             "${ZIP_URL}" -o "${ROOT}/dataset.zip"
           curl --fail --location --retry 4 --retry-delay 2 \
             -H 'Accept: application/json, application/xml;q=0.8, */*;q=0.1' \
-            -D "${ROOT}/json.headers" \
             "${JSON_URL}" -o "${ROOT}/extended.json"
           curl --fail --location --retry 4 --retry-delay 2 \
-            -D "${ROOT}/terms.headers" \
             "${TERMS_URL}" -o "${ROOT}/terms.html"
-      - name: Require valid ZIP and target process identity
+      - name: Canonicalize uncompressed ILCD package identity and target process
         run: |
           set -euo pipefail
-          ROOT="/tmp/v31-${{ matrix.replica }}"
           python - <<'PY'
-          import hashlib,json,zipfile,re
+          import hashlib,json,zipfile
           from pathlib import Path
           root=Path('/tmp/v31-${{ matrix.replica }}')
           zpath=root/'dataset.zip'
@@ -84,45 +80,43 @@ jobs:
                   raise SystemExit('ÖKOBAUDAT ZIP is empty')
               if any(name.startswith('/') or '..' in Path(name).parts for name in names):
                   raise SystemExit('unsafe ZIP path detected')
-              process_candidates=[n for n in names if n.lower().endswith('.xml') and ('process' in n.lower() or 'processes/' in n.lower())]
+              members=[]
               target=[]
-              for name in process_candidates:
+              for name in names:
                   data=z.read(name)
-                  if b'8347f9a7-f4ec-4a36-a266-a0281f5fd16d' in data:
-                      target.append(name)
+                  members.append({
+                    'path':name,
+                    'size_bytes':len(data),
+                    'sha256':hashlib.sha256(data).hexdigest(),
+                  })
+                  if name.lower().endswith('.xml') and ('process' in name.lower() or 'processes/' in name.lower()):
+                      if b'8347f9a7-f4ec-4a36-a266-a0281f5fd16d' in data:
+                          target.append(name)
               if len(target)!=1:
                   raise SystemExit(f'expected one target process XML, found {len(target)}: {target[:10]}')
               process_bytes=z.read(target[0])
               text=process_bytes.decode('utf-8',errors='strict')
-              if '00.02.000' not in text and 'version="00.02.000"' not in text:
-                  # Some ILCD versions split version information into separate fields; record but do not infer silently.
-                  version_marker_found=False
-              else:
-                  version_marker_found=True
-              manifest={
+              version_marker_found='00.02.000' in text or 'version="00.02.000"' in text
+              canonical_members=json.dumps(members,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()
+              package_manifest={
                   'schema_version':'1.0',
-                  'verdict':'REAL_OEKOBAUDAT_SOURCE_DISCOVERY_VERIFIABLE',
+                  'verdict':'REAL_OEKOBAUDAT_CANONICAL_PACKAGE_DISCOVERY_VERIFIABLE',
                   'dataset_uuid':'8347f9a7-f4ec-4a36-a266-a0281f5fd16d',
                   'requested_version':'00.02.000',
-                  'zip_size_bytes':zpath.stat().st_size,
-                  'zip_sha256':hashlib.sha256(zpath.read_bytes()).hexdigest(),
-                  'zip_entry_count':len(names),
-                  'zip_entries':names,
+                  'member_count':len(members),
+                  'members':members,
+                  'package_content_manifest_sha256':hashlib.sha256(canonical_members).hexdigest(),
                   'target_process_path':target[0],
                   'target_process_size_bytes':len(process_bytes),
                   'target_process_sha256':hashlib.sha256(process_bytes).hexdigest(),
-                  'target_uuid_found':True,
                   'requested_version_marker_found_in_process_xml':version_marker_found,
               }
-              canonical=json.dumps(manifest,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()
-              manifest['package_manifest_sha256']=hashlib.sha256(canonical).hexdigest()
-              (root/'package-discovery.json').write_text(json.dumps(manifest,indent=2,sort_keys=True)+'\n',encoding='utf-8',newline='\n')
+              (root/'canonical-package-manifest.json').write_text(json.dumps(package_manifest,indent=2,sort_keys=True)+'\n',encoding='utf-8',newline='\n')
               (root/'target-process.xml').write_bytes(process_bytes)
           PY
-      - name: Freeze response-byte fingerprints and inspect transport metadata
+      - name: Freeze deterministic source fingerprints and separate volatile transport metadata
         run: |
           set -euo pipefail
-          ROOT="/tmp/v31-${{ matrix.replica }}"
           python - <<'PY'
           import hashlib,json
           from pathlib import Path
@@ -130,27 +124,32 @@ jobs:
           def fp(name):
               p=root/name
               return {'size_bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()}
-          package=json.loads((root/'package-discovery.json').read_text())
-          discovery={
-            'verdict':'REAL_OEKOBAUDAT_TRANSPORT_DISCOVERY_VERIFIABLE',
+          package=json.loads((root/'canonical-package-manifest.json').read_text())
+          deterministic={
+            'verdict':'REAL_OEKOBAUDAT_SOURCE_DISCOVERY_VERIFIABLE',
             'dataset_uuid':'8347f9a7-f4ec-4a36-a266-a0281f5fd16d',
             'requested_version':'00.02.000',
-            'zip':fp('dataset.zip'),
-            'extended_view':fp('extended.json'),
-            'terms_page':fp('terms.html'),
-            'zip_headers':fp('zip.headers'),
-            'extended_headers':fp('json.headers'),
-            'terms_headers':fp('terms.headers'),
+            'package_member_count':package['member_count'],
+            'package_content_manifest_sha256':package['package_content_manifest_sha256'],
             'target_process_path':package['target_process_path'],
             'target_process_sha256':package['target_process_sha256'],
-            'package_manifest_sha256':package['package_manifest_sha256'],
+            'target_process_size_bytes':package['target_process_size_bytes'],
+            'extended_view':fp('extended.json'),
+            'terms_page':fp('terms.html'),
             'final_admission_eligible':False,
             'reason':'DISCOVERY_ONLY_HASHES_NOT_YET_FROZEN_IN_SOURCE_MANIFEST',
           }
-          canonical=json.dumps(discovery,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()
-          discovery['receipt_sha256']=hashlib.sha256(canonical).hexdigest()
-          (root/'discovery-receipt.json').write_text(json.dumps(discovery,indent=2,sort_keys=True)+'\n',encoding='utf-8',newline='\n')
-          print(json.dumps(discovery,indent=2,sort_keys=True))
+          canonical=json.dumps(deterministic,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()
+          deterministic['receipt_sha256']=hashlib.sha256(canonical).hexdigest()
+          (root/'discovery-receipt.json').write_text(json.dumps(deterministic,indent=2,sort_keys=True)+'\n',encoding='utf-8',newline='\n')
+          transport={
+            'verdict':'NON_AUTHORITATIVE_TRANSPORT_METADATA',
+            'zip_wrapper':fp('dataset.zip'),
+            'note':'ÖKOBAUDAT zipexport wrapper bytes may vary by request; authority is the canonical uncompressed member manifest.'
+          }
+          (root/'transport-metadata.json').write_text(json.dumps(transport,indent=2,sort_keys=True)+'\n',encoding='utf-8',newline='\n')
+          print(json.dumps(deterministic,indent=2,sort_keys=True))
+          print(json.dumps(transport,indent=2,sort_keys=True))
           PY
       - name: Check published rights markers without promoting scientific authority
         run: |
@@ -166,9 +165,10 @@ jobs:
         with:
           name: proofgrid-v31-oekobaudat-discovery-${{ matrix.replica }}
           path: |
-            /tmp/v31-${{ matrix.replica }}/package-discovery.json
+            /tmp/v31-${{ matrix.replica }}/canonical-package-manifest.json
             /tmp/v31-${{ matrix.replica }}/target-process.xml
             /tmp/v31-${{ matrix.replica }}/discovery-receipt.json
+            /tmp/v31-${{ matrix.replica }}/transport-metadata.json
           if-no-files-found: error
           retention-days: 30
 
@@ -185,23 +185,19 @@ jobs:
         with:
           name: proofgrid-v31-oekobaudat-discovery-b
           path: /tmp/v31/b
-      - name: Require independent native-package identity
+      - name: Require independent native package-content identity
         run: |
           set -euo pipefail
-          diff -u /tmp/v31/a/package-discovery.json /tmp/v31/b/package-discovery.json
+          diff -u /tmp/v31/a/canonical-package-manifest.json /tmp/v31/b/canonical-package-manifest.json
           diff -u /tmp/v31/a/target-process.xml /tmp/v31/b/target-process.xml
+          diff -u /tmp/v31/a/discovery-receipt.json /tmp/v31/b/discovery-receipt.json
           python - <<'PY'
           import json
           from pathlib import Path
-          a=json.loads(Path('/tmp/v31/a/discovery-receipt.json').read_text())
-          b=json.loads(Path('/tmp/v31/b/discovery-receipt.json').read_text())
-          for key in ('zip','extended_view','terms_page','target_process_path','target_process_sha256','package_manifest_sha256'):
-              assert a[key]==b[key], (key,a[key],b[key])
-          assert a['final_admission_eligible'] is False
-          assert b['final_admission_eligible'] is False
-          print('DISCOVERY_ZIP_SHA256='+a['zip']['sha256'])
-          print('DISCOVERY_PROCESS_SHA256='+a['target_process_sha256'])
-          print('DISCOVERY_TERMS_SHA256='+a['terms_page']['sha256'])
-          print('DISCOVERY_EXTENDED_SHA256='+a['extended_view']['sha256'])
-          print('DISCOVERY_PACKAGE_MANIFEST_SHA256='+a['package_manifest_sha256'])
+          r=json.loads(Path('/tmp/v31/a/discovery-receipt.json').read_text())
+          assert r['final_admission_eligible'] is False
+          print('DISCOVERY_PACKAGE_CONTENT_MANIFEST_SHA256='+r['package_content_manifest_sha256'])
+          print('DISCOVERY_PROCESS_SHA256='+r['target_process_sha256'])
+          print('DISCOVERY_TERMS_SHA256='+r['terms_page']['sha256'])
+          print('DISCOVERY_EXTENDED_SHA256='+r['extended_view']['sha256'])
           PY
