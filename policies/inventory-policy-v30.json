@@ -1,0 +1,89 @@
+{
+  "capture": {
+    "containment": true,
+    "declared_element_quantities": true,
+    "decomposition": true,
+    "exact_step_quantity_lexical_tokens": true,
+    "material_associations": true,
+    "parser_numeric_values_are_authority": false,
+    "project_unit_identities": true,
+    "source_step_tokens_are_authority": true
+  },
+  "claims": {
+    "bounded_verdict": "MODEL_INVENTORY_BASIS_CLOSED_FOR_POLICY",
+    "certified": false,
+    "professional_review_performed": false,
+    "regulator_accepted": false,
+    "scientific_validation_performed": false,
+    "whole_building_lca_claimed": false
+  },
+  "classification": {
+    "allowed_states": [
+      "EVIDENCE_REQUIRED",
+      "EVIDENCE_NOT_APPLICABLE",
+      "OUT_OF_DECLARED_EVIDENCE_SCOPE"
+    ],
+    "evidence_not_applicable_types": [
+      "IfcOpeningElement"
+    ],
+    "evidence_required_roots": [
+      "IfcElement"
+    ],
+    "not_applicable_reason_by_type": {
+      "IfcOpeningElement": "OPENING_VOID_FEATURE"
+    },
+    "out_of_scope_reason_for_non_element_product": "NON_ELEMENT_PRODUCT",
+    "reason_required_for_non_required_states": true
+  },
+  "enumeration": {
+    "include_subtypes": true,
+    "roots": [
+      "IfcProduct"
+    ],
+    "sort_key": [
+      "step_id"
+    ],
+    "zero_silent_drops_required": true
+  },
+  "identity": {
+    "duplicate_nonempty_global_id_policy": "REJECT",
+    "duplicate_source_step_policy": "REJECT",
+    "required_fields": [
+      "source_sha256",
+      "step_id",
+      "global_id",
+      "ifc_type"
+    ]
+  },
+  "network_policy": {
+    "local_source_only": true,
+    "network_access_required": false,
+    "remote_resolution_allowed": false
+  },
+  "policy_id": "proofgrid-model-inventory-policy-v3.0",
+  "policy_version": "3.0.0",
+  "purpose": "Deterministic model-inventory basis for one exact admitted IFC revision.",
+  "resource_limits": {
+    "max_enumerated_products": 100000,
+    "max_file_bytes": 104857600,
+    "max_material_associations_per_product": 1000,
+    "max_quantities_per_product": 1000,
+    "max_step_record_chars": 1048576,
+    "max_total_entities": 250000
+  },
+  "schema_version": "1.0",
+  "source_requirements": {
+    "accepted_extensions": [
+      ".ifc"
+    ],
+    "allowed_schema_families": [
+      "IFC2X3",
+      "IFC4",
+      "IFC4X3"
+    ],
+    "native_ifc_required": true,
+    "reconstructed_source_may_close_gate": false,
+    "synthetic_source_may_close_gate": false,
+    "user_authorized_real_ifc_required": true
+  }
+}

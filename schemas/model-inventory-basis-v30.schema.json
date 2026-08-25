@@ -1,0 +1,84 @@
+{
+  "$id": "https://regenexcalibur.example/schemas/model-inventory-basis-v30.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "authorization": {
+      "type": "object"
+    },
+    "claims": {
+      "type": "object"
+    },
+    "closure": {
+      "type": "object"
+    },
+    "integrity": {
+      "additionalProperties": false,
+      "properties": {
+        "canonicalization": {
+          "type": "string"
+        },
+        "content_sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "type": "string"
+        },
+        "signature": {
+          "type": "null"
+        }
+      },
+      "required": [
+        "content_sha256",
+        "canonicalization",
+        "signature"
+      ],
+      "type": "object"
+    },
+    "inventory": {
+      "type": "object"
+    },
+    "limitations": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "policy": {
+      "type": "object"
+    },
+    "production_gate_satisfied": {
+      "type": "boolean"
+    },
+    "record_type": {
+      "const": "ProofGridModelInventoryBasis"
+    },
+    "schema_version": {
+      "const": "1.0"
+    },
+    "source": {
+      "type": "object"
+    },
+    "verdict": {
+      "enum": [
+        "MODEL_INVENTORY_BASIS_CLOSED_FOR_POLICY",
+        "V30_ENGINE_PREFLIGHT_VERIFIABLE"
+      ]
+    }
+  },
+  "required": [
+    "schema_version",
+    "record_type",
+    "verdict",
+    "production_gate_satisfied",
+    "source",
+    "policy",
+    "authorization",
+    "inventory",
+    "closure",
+    "claims",
+    "limitations",
+    "integrity"
+  ],
+  "title": "ProofGrid v3.0 ModelInventoryBasis",
+  "type": "object"
+}

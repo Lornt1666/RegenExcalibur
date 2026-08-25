@@ -1,0 +1,49 @@
+{
+  "schema_version": "1.0",
+  "manifest_version": "3.0.0",
+  "source_name": "RWTH DigitalHub FM-ARC v2",
+  "source_role": "PUBLIC_OPEN_REAL_IFC_CONTROL",
+  "source_is_user_project": false,
+  "upstream": {
+    "repository": "RWTH-E3D/DigitalHub",
+    "commit": "36565d529b4dadeca625de2b793d7e16700171e9",
+    "path": "Version_2/DigitalHub_FM-ARC_v2.ifc",
+    "git_blob_sha1": "c3951b5061cdabecdeaf7eaa0f957175221200f5",
+    "size_bytes": 9022255,
+    "source_sha256": "19d7d02d53c2b88e86890ee236297b12bbb0f7748030cd32ff6a22762e9966bb",
+    "raw_url": "https://raw.githubusercontent.com/RWTH-E3D/DigitalHub/36565d529b4dadeca625de2b793d7e16700171e9/Version_2/DigitalHub_FM-ARC_v2.ifc"
+  },
+  "license": {
+    "spdx": "MIT",
+    "path": "LICENSE",
+    "git_blob_sha1": "14122c2ad0ffd9bedb31b11eeeaab9df1541796c",
+    "license_sha256": "232af45af192ff1f35f230333091b2b222b559073e800849cb0f0e11092d924a",
+    "raw_url": "https://raw.githubusercontent.com/RWTH-E3D/DigitalHub/36565d529b4dadeca625de2b793d7e16700171e9/LICENSE",
+    "copyright": "2020 RWTH Aachen University - E3D Institute of Energy Efficiency and Sustainable Building"
+  },
+  "analysis_authorization": {
+    "user_directive_reference": "chat://2026-08-25/take-action-let-there-be-no-blockers",
+    "authorized_purpose": "ProofGrid v3.0 authoritative model inventory basis",
+    "public_license_required": true,
+    "publication_of_user_private_model_authorized": false
+  },
+  "source_sha256_state": "FROZEN",
+  "stable_model_fingerprint": {
+    "ifc_schema": "IFC4",
+    "enumerated_product_count": 1026,
+    "classification_counts": {
+      "EVIDENCE_REQUIRED": 713,
+      "EVIDENCE_NOT_APPLICABLE": 244,
+      "OUT_OF_DECLARED_EVIDENCE_SCOPE": 69
+    },
+    "silent_drop_count": 0,
+    "identity_set_sha256": "e7f1271f7a601caea4a52e246dcd70f0c3e29f0b6788e2111b4f5929b89b77d8"
+  },
+  "notes": [
+    "This is a public real office-building control model, not the user's own project model.",
+    "The model remains in the upstream repository; RegenExcalibur CI fetches the exact immutable upstream bytes and retains evidence only.",
+    "Source and license SHA-256 values were independently discovered by two hosted v3.0 real-model replicas before being frozen here.",
+    "The final acceptance workflow verifies exact source/license SHA-256 and Git blob identities before invoking the inventory engine and rejects source-byte drift.",
+    "No whole-building LCA, scientific validation, professional review, regulator acceptance, or certification claim follows from model-inventory closure."
+  ]
+}

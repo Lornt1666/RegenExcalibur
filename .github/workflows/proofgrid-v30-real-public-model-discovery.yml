@@ -1,0 +1,269 @@
+name: ProofGrid v3.0 Real Public Model Acceptance
+
+on:
+  pull_request:
+    paths:
+      - "reference/model_inventory_v30.py"
+      - "reference/real_public_source_guard_v30.py"
+      - "policies/inventory-policy-v30.json"
+      - "schemas/model-source-authorization-v30.schema.json"
+      - "schemas/model-inventory-basis-v30.schema.json"
+      - "tests/test_model_inventory_v30.py"
+      - "tests/test_real_public_source_guard_v30.py"
+      - "conformance/model-inventory-v30/REAL_PUBLIC_CONTROL_SOURCE.json"
+      - ".github/workflows/proofgrid-v30-real-public-model-discovery.yml"
+      - "requirements-proofgrid.txt"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  real-model-replica:
+    strategy:
+      fail-fast: false
+      matrix:
+        replica: [a, b]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6.1.0
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.11.16"
+      - name: Install exact ProofGrid dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -r requirements-proofgrid.txt
+          python -m pip check
+      - name: Run v3.0 model and real-source guard suites
+        run: |
+          set -euo pipefail
+          python -m unittest -v tests.test_model_inventory_v30 tests.test_real_public_source_guard_v30
+      - name: Fetch exact real IFC and license from immutable upstream commit
+        run: |
+          set -euo pipefail
+          ROOT="/tmp/v30-real-${{ matrix.replica }}"
+          mkdir -p "${ROOT}/guard" "${ROOT}/out-a" "${ROOT}/out-b"
+          curl --fail --location --retry 4 --retry-delay 2 \
+            "https://raw.githubusercontent.com/RWTH-E3D/DigitalHub/36565d529b4dadeca625de2b793d7e16700171e9/Version_2/DigitalHub_FM-ARC_v2.ifc" \
+            --output "${ROOT}/DigitalHub_FM-ARC_v2.ifc"
+          curl --fail --location --retry 4 --retry-delay 2 \
+            "https://raw.githubusercontent.com/RWTH-E3D/DigitalHub/36565d529b4dadeca625de2b793d7e16700171e9/LICENSE" \
+            --output "${ROOT}/LICENSE"
+      - name: Enforce frozen source, license, manifest, and user-analysis authorization
+        run: |
+          set -euo pipefail
+          ROOT="/tmp/v30-real-${{ matrix.replica }}"
+          python -m reference.real_public_source_guard_v30 \
+            --manifest conformance/model-inventory-v30/REAL_PUBLIC_CONTROL_SOURCE.json \
+            --ifc "${ROOT}/DigitalHub_FM-ARC_v2.ifc" \
+            --license "${ROOT}/LICENSE" \
+            --output-dir "${ROOT}/guard"
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path('/tmp/v30-real-${{ matrix.replica }}')
+          p=json.loads((root/'guard/source-provenance.json').read_text())
+          r=json.loads((root/'guard/source-guard-receipt.json').read_text())
+          assert p['source_sha256']=='19d7d02d53c2b88e86890ee236297b12bbb0f7748030cd32ff6a22762e9966bb'
+          assert p['source_size_bytes']==9022255
+          assert p['upstream_git_blob_sha1']=='c3951b5061cdabecdeaf7eaa0f957175221200f5'
+          assert p['license_sha256']=='232af45af192ff1f35f230333091b2b222b559073e800849cb0f0e11092d924a'
+          assert p['license_git_blob_sha1']=='14122c2ad0ffd9bedb31b11eeeaab9df1541796c'
+          assert p['source_is_user_project'] is False
+          assert p['synthetic'] is False and p['reconstructed'] is False
+          assert r['source_byte_identity_verified'] is True
+          assert r['license_identity_verified'] is True
+          assert r['user_analysis_authorization_bound'] is True
+          PY
+      - name: Reject real source and license byte tampering before inventory engine
+        run: |
+          set -euo pipefail
+          ROOT="/tmp/v30-real-${{ matrix.replica }}"
+          cp "${ROOT}/DigitalHub_FM-ARC_v2.ifc" "${ROOT}/tampered.ifc"
+          printf '\n' >> "${ROOT}/tampered.ifc"
+          set +e
+          python -m reference.real_public_source_guard_v30 \
+            --manifest conformance/model-inventory-v30/REAL_PUBLIC_CONTROL_SOURCE.json \
+            --ifc "${ROOT}/tampered.ifc" \
+            --license "${ROOT}/LICENSE" \
+            --output-dir "${ROOT}/negative-source"
+          SOURCE_CODE=$?
+          set -e
+          test "${SOURCE_CODE}" -ne 0
+
+          cp "${ROOT}/LICENSE" "${ROOT}/tampered-license"
+          printf 'tamper\n' >> "${ROOT}/tampered-license"
+          set +e
+          python -m reference.real_public_source_guard_v30 \
+            --manifest conformance/model-inventory-v30/REAL_PUBLIC_CONTROL_SOURCE.json \
+            --ifc "${ROOT}/DigitalHub_FM-ARC_v2.ifc" \
+            --license "${ROOT}/tampered-license" \
+            --output-dir "${ROOT}/negative-license"
+          LICENSE_CODE=$?
+          set -e
+          test "${LICENSE_CODE}" -ne 0
+      - name: Execute production v3.0 inventory twice in each clean runner
+        run: |
+          set -euo pipefail
+          ROOT="/tmp/v30-real-${{ matrix.replica }}"
+          for RUN in a b; do
+            python -m reference.model_inventory_v30 \
+              --ifc "${ROOT}/DigitalHub_FM-ARC_v2.ifc" \
+              --policy policies/inventory-policy-v30.json \
+              --authorization "${ROOT}/guard/authorization.json" \
+              --output-dir "${ROOT}/out-${RUN}"
+          done
+          diff -u "${ROOT}/out-a/model-admission-receipt.json" "${ROOT}/out-b/model-admission-receipt.json"
+          diff -u "${ROOT}/out-a/model-inventory-basis.json" "${ROOT}/out-b/model-inventory-basis.json"
+          diff -u "${ROOT}/out-a/model-inventory-basis-receipt.json" "${ROOT}/out-b/model-inventory-basis-receipt.json"
+      - name: Assert frozen real-model production inventory fingerprint
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path('/tmp/v30-real-${{ matrix.replica }}')
+          basis=json.loads((root/'out-a/model-inventory-basis.json').read_text())
+          admission=json.loads((root/'out-a/model-admission-receipt.json').read_text())
+          receipt=json.loads((root/'out-a/model-inventory-basis-receipt.json').read_text())
+          guard=json.loads((root/'guard/source-guard-receipt.json').read_text())
+          expected_source='19d7d02d53c2b88e86890ee236297b12bbb0f7748030cd32ff6a22762e9966bb'
+          assert basis['verdict']=='MODEL_INVENTORY_BASIS_CLOSED_FOR_POLICY'
+          assert basis['production_gate_satisfied'] is True
+          assert basis['source']['sha256']==expected_source
+          assert basis['source']['file_bytes']==9022255
+          assert basis['source']['ifc_schema_family']=='IFC4'
+          assert basis['source']['network_access_performed'] is False
+          assert basis['inventory']['enumerated_count']==1026
+          assert basis['inventory']['classification_counts']=={
+            'EVIDENCE_REQUIRED':713,
+            'EVIDENCE_NOT_APPLICABLE':244,
+            'OUT_OF_DECLARED_EVIDENCE_SCOPE':69,
+          }
+          assert basis['inventory']['identity_set_sha256']=='e7f1271f7a601caea4a52e246dcd70f0c3e29f0b6788e2111b4f5929b89b77d8'
+          assert basis['closure']['silent_drop_count']==0
+          assert basis['claims']['model_inventory_basis_closed_for_policy'] is True
+          assert basis['claims']['whole_building_lca_claimed'] is False
+          assert basis['claims']['scientific_validation_performed'] is False
+          assert basis['claims']['professional_review_performed'] is False
+          assert basis['claims']['regulator_accepted'] is False
+          assert basis['claims']['certified'] is False
+          assert admission['source_sha256']==expected_source
+          assert admission['production_gate_satisfied'] is True
+          assert receipt['source_sha256']==expected_source
+          assert receipt['production_gate_satisfied'] is True
+          assert receipt['inventory_count']==1026
+          assert receipt['inventory_identity_set_sha256']==basis['inventory']['identity_set_sha256']
+          assert receipt['silent_drop_count']==0
+          assert guard['source_sha256']==expected_source
+          print('REAL_SOURCE_SHA256='+expected_source)
+          print('REAL_ENUMERATED_COUNT=1026')
+          print('REAL_IDENTITY_SET_SHA256='+basis['inventory']['identity_set_sha256'])
+          print('REAL_ADMISSION_RECEIPT_SHA256='+admission['receipt_sha256'])
+          print('REAL_BASIS_CONTENT_SHA256='+basis['integrity']['content_sha256'])
+          print('REAL_BASIS_RECEIPT_SHA256='+receipt['receipt_sha256'])
+          print('REAL_SOURCE_GUARD_RECEIPT_SHA256='+guard['receipt_sha256'])
+          PY
+      - name: Upload production inventory evidence only
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v30-real-model-${{ matrix.replica }}
+          path: |
+            /tmp/v30-real-${{ matrix.replica }}/guard/source-provenance.json
+            /tmp/v30-real-${{ matrix.replica }}/guard/authorization.json
+            /tmp/v30-real-${{ matrix.replica }}/guard/source-guard-receipt.json
+            /tmp/v30-real-${{ matrix.replica }}/out-a/model-admission-receipt.json
+            /tmp/v30-real-${{ matrix.replica }}/out-a/model-inventory-basis.json
+            /tmp/v30-real-${{ matrix.replica }}/out-a/model-inventory-basis-receipt.json
+          if-no-files-found: error
+          retention-days: 30
+
+  compare-real-model:
+    needs: real-model-replica
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          name: proofgrid-v30-real-model-a
+          path: /tmp/v30/a
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          name: proofgrid-v30-real-model-b
+          path: /tmp/v30/b
+      - name: Require independent production evidence byte identity
+        run: |
+          set -euo pipefail
+          diff -u /tmp/v30/a/guard/source-provenance.json /tmp/v30/b/guard/source-provenance.json
+          diff -u /tmp/v30/a/guard/authorization.json /tmp/v30/b/guard/authorization.json
+          diff -u /tmp/v30/a/guard/source-guard-receipt.json /tmp/v30/b/guard/source-guard-receipt.json
+          diff -u /tmp/v30/a/out-a/model-admission-receipt.json /tmp/v30/b/out-a/model-admission-receipt.json
+          diff -u /tmp/v30/a/out-a/model-inventory-basis.json /tmp/v30/b/out-a/model-inventory-basis.json
+          diff -u /tmp/v30/a/out-a/model-inventory-basis-receipt.json /tmp/v30/b/out-a/model-inventory-basis-receipt.json
+      - name: Produce independent real-model closure receipt
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/v30/final
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          root=Path('/tmp/v30/a')
+          provenance=json.loads((root/'guard/source-provenance.json').read_text())
+          guard=json.loads((root/'guard/source-guard-receipt.json').read_text())
+          admission=json.loads((root/'out-a/model-admission-receipt.json').read_text())
+          basis_path=root/'out-a/model-inventory-basis.json'
+          basis=json.loads(basis_path.read_text())
+          basis_receipt_path=root/'out-a/model-inventory-basis-receipt.json'
+          basis_receipt=json.loads(basis_receipt_path.read_text())
+          out={
+            'verdict':'MODEL_INVENTORY_BASIS_CLOSED_FOR_POLICY_INDEPENDENTLY_REPRODUCED',
+            'source_name':'RWTH DigitalHub FM-ARC v2',
+            'source_is_user_project':False,
+            'upstream_repository':'RWTH-E3D/DigitalHub',
+            'upstream_commit':'36565d529b4dadeca625de2b793d7e16700171e9',
+            'upstream_path':'Version_2/DigitalHub_FM-ARC_v2.ifc',
+            'source_sha256':provenance['source_sha256'],
+            'source_size_bytes':provenance['source_size_bytes'],
+            'license_spdx':'MIT',
+            'license_sha256':provenance['license_sha256'],
+            'source_manifest_sha256':provenance['source_manifest_sha256'],
+            'source_guard_receipt_sha256':guard['receipt_sha256'],
+            'model_admission_receipt_sha256':admission['receipt_sha256'],
+            'model_inventory_basis_content_sha256':basis['integrity']['content_sha256'],
+            'model_inventory_basis_file_sha256':hashlib.sha256(basis_path.read_bytes()).hexdigest(),
+            'model_inventory_basis_receipt_sha256':basis_receipt['receipt_sha256'],
+            'model_inventory_basis_receipt_file_sha256':hashlib.sha256(basis_receipt_path.read_bytes()).hexdigest(),
+            'inventory_count':basis['inventory']['enumerated_count'],
+            'classification_counts':basis['inventory']['classification_counts'],
+            'inventory_identity_set_sha256':basis['inventory']['identity_set_sha256'],
+            'silent_drop_count':basis['closure']['silent_drop_count'],
+            'independent_runner_count':2,
+            'byte_identical':True,
+            'source_tamper_rejected':True,
+            'license_tamper_rejected':True,
+            'production_gate_satisfied':True,
+            'whole_building_lca_claimed':False,
+            'scientific_validation_performed':False,
+            'professional_review_performed':False,
+            'regulator_accepted':False,
+            'certified':False,
+          }
+          raw=json.dumps(out,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()
+          out['comparison_receipt_sha256']=hashlib.sha256(raw).hexdigest()
+          Path('/tmp/v30/final/v30-real-model-independent-comparison-receipt.json').write_text(json.dumps(out,indent=2,sort_keys=True)+'\n',encoding='utf-8',newline='\n')
+          Path('/tmp/v30/final/source-provenance.json').write_bytes((root/'guard/source-provenance.json').read_bytes())
+          Path('/tmp/v30/final/authorization.json').write_bytes((root/'guard/authorization.json').read_bytes())
+          Path('/tmp/v30/final/source-guard-receipt.json').write_bytes((root/'guard/source-guard-receipt.json').read_bytes())
+          Path('/tmp/v30/final/model-admission-receipt.json').write_bytes((root/'out-a/model-admission-receipt.json').read_bytes())
+          Path('/tmp/v30/final/model-inventory-basis.json').write_bytes(basis_path.read_bytes())
+          Path('/tmp/v30/final/model-inventory-basis-receipt.json').write_bytes(basis_receipt_path.read_bytes())
+          print(json.dumps(out,indent=2,sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v30-real-model-inventory-basis
+          path: /tmp/v30/final/**
+          if-no-files-found: error
+          retention-days: 30
