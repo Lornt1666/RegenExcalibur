@@ -1,0 +1,203 @@
+name: ProofGrid v3.0 Real Public Model Discovery
+
+on:
+  pull_request:
+    paths:
+      - "reference/model_inventory_v30.py"
+      - "policies/inventory-policy-v30.json"
+      - "schemas/model-source-authorization-v30.schema.json"
+      - "schemas/model-inventory-basis-v30.schema.json"
+      - "conformance/model-inventory-v30/REAL_PUBLIC_CONTROL_SOURCE.json"
+      - ".github/workflows/proofgrid-v30-real-public-model-discovery.yml"
+      - "requirements-proofgrid.txt"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  real-discovery-replica:
+    strategy:
+      fail-fast: false
+      matrix:
+        replica: [a, b]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6.1.0
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.11.16"
+      - name: Install exact ProofGrid dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -r requirements-proofgrid.txt
+          python -m pip check
+      - name: Verify discovery manifest is pinned but SHA-256 is not yet frozen
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          m=json.loads(Path('conformance/model-inventory-v30/REAL_PUBLIC_CONTROL_SOURCE.json').read_text())
+          assert m['source_role']=='PUBLIC_OPEN_REAL_IFC_CONTROL'
+          assert m['source_is_user_project'] is False
+          assert m['upstream']['repository']=='RWTH-E3D/DigitalHub'
+          assert m['upstream']['commit']=='36565d529b4dadeca625de2b793d7e16700171e9'
+          assert m['upstream']['path']=='Version_2/DigitalHub_FM-ARC_v2.ifc'
+          assert m['upstream']['git_blob_sha1']=='c3951b5061cdabecdeaf7eaa0f957175221200f5'
+          assert m['upstream']['size_bytes']==9022255
+          assert m['license']['spdx']=='MIT'
+          assert m['license']['git_blob_sha1']=='14122c2ad0ffd9bedb31b11eeeaab9df1541796c'
+          assert m['source_sha256_state']=='DISCOVERY_PENDING'
+          PY
+      - name: Fetch exact real IFC and license from immutable upstream commit
+        run: |
+          set -euo pipefail
+          ROOT="/tmp/v30-real-${{ matrix.replica }}"
+          mkdir -p "${ROOT}/out-a" "${ROOT}/out-b"
+          curl --fail --location --retry 4 --retry-delay 2 \
+            "https://raw.githubusercontent.com/RWTH-E3D/DigitalHub/36565d529b4dadeca625de2b793d7e16700171e9/Version_2/DigitalHub_FM-ARC_v2.ifc" \
+            --output "${ROOT}/DigitalHub_FM-ARC_v2.ifc"
+          curl --fail --location --retry 4 --retry-delay 2 \
+            "https://raw.githubusercontent.com/RWTH-E3D/DigitalHub/36565d529b4dadeca625de2b793d7e16700171e9/LICENSE" \
+            --output "${ROOT}/LICENSE"
+          test "$(stat -c%s "${ROOT}/DigitalHub_FM-ARC_v2.ifc")" -eq 9022255
+          test "$(git hash-object "${ROOT}/DigitalHub_FM-ARC_v2.ifc")" = "c3951b5061cdabecdeaf7eaa0f957175221200f5"
+          test "$(git hash-object "${ROOT}/LICENSE")" = "14122c2ad0ffd9bedb31b11eeeaab9df1541796c"
+          grep -q '^MIT License$' "${ROOT}/LICENSE"
+          grep -q 'RWTH Aachen University - E3D Institute of Energy Efficiency and Sustainable Building' "${ROOT}/LICENSE"
+      - name: Freeze discovered SHA-256 provenance and exact real-source authorization
+        run: |
+          set -euo pipefail
+          ROOT="/tmp/v30-real-${{ matrix.replica }}"
+          SOURCE_SHA="$(sha256sum "${ROOT}/DigitalHub_FM-ARC_v2.ifc" | awk '{print $1}')"
+          LICENSE_SHA="$(sha256sum "${ROOT}/LICENSE" | awk '{print $1}')"
+          python - <<'PY'
+          import hashlib,json,os
+          from pathlib import Path
+          root=Path('/tmp/v30-real-${{ matrix.replica }}')
+          source=root/'DigitalHub_FM-ARC_v2.ifc'
+          license_file=root/'LICENSE'
+          source_sha=hashlib.sha256(source.read_bytes()).hexdigest()
+          license_sha=hashlib.sha256(license_file.read_bytes()).hexdigest()
+          provenance={
+            'schema_version':'1.0',
+            'source_name':'RWTH DigitalHub FM-ARC v2',
+            'source_role':'PUBLIC_OPEN_REAL_IFC_CONTROL',
+            'upstream_repository':'RWTH-E3D/DigitalHub',
+            'upstream_commit':'36565d529b4dadeca625de2b793d7e16700171e9',
+            'upstream_path':'Version_2/DigitalHub_FM-ARC_v2.ifc',
+            'upstream_git_blob_sha1':'c3951b5061cdabecdeaf7eaa0f957175221200f5',
+            'source_size_bytes':source.stat().st_size,
+            'source_sha256':source_sha,
+            'license_spdx':'MIT',
+            'license_git_blob_sha1':'14122c2ad0ffd9bedb31b11eeeaab9df1541796c',
+            'license_sha256':license_sha,
+            'source_is_user_project':False,
+            'reconstructed':False,
+            'synthetic':False,
+          }
+          (root/'source-provenance.json').write_text(json.dumps(provenance,indent=2,sort_keys=True)+'\n',encoding='utf-8',newline='\n')
+          auth={
+            'authorization_reference':f"github-public-source://RWTH-E3D/DigitalHub@36565d529b4dadeca625de2b793d7e16700171e9/Version_2/DigitalHub_FM-ARC_v2.ifc?sha256={source_sha}&license_sha256={license_sha};user-directive=chat-2026-08-25-no-blockers",
+            'authorization_version':'3.0.0',
+            'authorized_purpose':'ProofGrid v3.0 authoritative model inventory basis',
+            'notes':[
+              'User explicitly authorized removing blockers and proceeding with an openly licensed public real IFC control.',
+              'Exact source is RWTH DigitalHub FM-ARC v2 at the immutable upstream commit/path/blob.',
+              'MIT license is verified from the same immutable upstream commit.',
+              'The authorization reference binds the exact IFC SHA-256 and license SHA-256.',
+              "This public model is not claimed to be the user's own project model.",
+            ],
+            'reconstructed':False,
+            'schema_version':'1.0',
+            'source_classification':'USER_AUTHORIZED_REAL_IFC',
+            'synthetic':False,
+            'user_authorized':True,
+          }
+          (root/'authorization.json').write_text(json.dumps(auth,indent=2,sort_keys=True)+'\n',encoding='utf-8',newline='\n')
+          print('DISCOVERED_SOURCE_SHA256='+source_sha)
+          print('DISCOVERED_LICENSE_SHA256='+license_sha)
+          PY
+      - name: Execute real v3.0 inventory twice in each clean runner
+        run: |
+          set -euo pipefail
+          ROOT="/tmp/v30-real-${{ matrix.replica }}"
+          for RUN in a b; do
+            python -m reference.model_inventory_v30 \
+              --ifc "${ROOT}/DigitalHub_FM-ARC_v2.ifc" \
+              --policy policies/inventory-policy-v30.json \
+              --authorization "${ROOT}/authorization.json" \
+              --output-dir "${ROOT}/out-${RUN}"
+          done
+          diff -u "${ROOT}/out-a/model-admission-receipt.json" "${ROOT}/out-b/model-admission-receipt.json"
+          diff -u "${ROOT}/out-a/model-inventory-basis.json" "${ROOT}/out-b/model-inventory-basis.json"
+          diff -u "${ROOT}/out-a/model-inventory-basis-receipt.json" "${ROOT}/out-b/model-inventory-basis-receipt.json"
+      - name: Assert real-model bounded production verdict
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          root=Path('/tmp/v30-real-${{ matrix.replica }}')
+          source_sha=hashlib.sha256((root/'DigitalHub_FM-ARC_v2.ifc').read_bytes()).hexdigest()
+          basis=json.loads((root/'out-a/model-inventory-basis.json').read_text())
+          admission=json.loads((root/'out-a/model-admission-receipt.json').read_text())
+          receipt=json.loads((root/'out-a/model-inventory-basis-receipt.json').read_text())
+          assert basis['verdict']=='MODEL_INVENTORY_BASIS_CLOSED_FOR_POLICY'
+          assert basis['production_gate_satisfied'] is True
+          assert basis['source']['sha256']==source_sha
+          assert basis['source']['file_bytes']==9022255
+          assert basis['inventory']['enumerated_count'] > 0
+          assert basis['closure']['silent_drop_count']==0
+          assert basis['claims']['model_inventory_basis_closed_for_policy'] is True
+          assert basis['claims']['whole_building_lca_claimed'] is False
+          assert basis['claims']['scientific_validation_performed'] is False
+          assert basis['claims']['professional_review_performed'] is False
+          assert basis['claims']['regulator_accepted'] is False
+          assert basis['claims']['certified'] is False
+          assert admission['source_sha256']==source_sha
+          assert receipt['source_sha256']==source_sha
+          print('REAL_SOURCE_SHA256='+source_sha)
+          print('REAL_ENUMERATED_COUNT='+str(basis['inventory']['enumerated_count']))
+          print('REAL_IDENTITY_SET_SHA256='+basis['inventory']['identity_set_sha256'])
+          print('REAL_BASIS_CONTENT_SHA256='+basis['integrity']['content_sha256'])
+          print('REAL_BASIS_RECEIPT_SHA256='+receipt['receipt_sha256'])
+          PY
+      - name: Upload real discovery evidence only
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v30-real-discovery-${{ matrix.replica }}
+          path: |
+            /tmp/v30-real-${{ matrix.replica }}/source-provenance.json
+            /tmp/v30-real-${{ matrix.replica }}/authorization.json
+            /tmp/v30-real-${{ matrix.replica }}/out-a/model-admission-receipt.json
+            /tmp/v30-real-${{ matrix.replica }}/out-a/model-inventory-basis.json
+            /tmp/v30-real-${{ matrix.replica }}/out-a/model-inventory-basis-receipt.json
+          if-no-files-found: error
+          retention-days: 30
+
+  compare-real-discovery:
+    needs: real-discovery-replica
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          name: proofgrid-v30-real-discovery-a
+          path: /tmp/v30/a
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          name: proofgrid-v30-real-discovery-b
+          path: /tmp/v30/b
+      - name: Require real-source discovery byte identity
+        run: |
+          set -euo pipefail
+          diff -u /tmp/v30/a/source-provenance.json /tmp/v30/b/source-provenance.json
+          diff -u /tmp/v30/a/authorization.json /tmp/v30/b/authorization.json
+          diff -u /tmp/v30/a/model-admission-receipt.json /tmp/v30/b/model-admission-receipt.json
+          diff -u /tmp/v30/a/model-inventory-basis.json /tmp/v30/b/model-inventory-basis.json
+          diff -u /tmp/v30/a/model-inventory-basis-receipt.json /tmp/v30/b/model-inventory-basis-receipt.json
+          grep -q '"verdict": "MODEL_INVENTORY_BASIS_CLOSED_FOR_POLICY"' /tmp/v30/a/model-inventory-basis.json
+          grep -q '"production_gate_satisfied": true' /tmp/v30/a/model-inventory-basis.json
