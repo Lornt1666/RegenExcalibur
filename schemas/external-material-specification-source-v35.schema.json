@@ -22,9 +22,7 @@
       "additionalProperties": false,
       "required": ["channel", "source_locator", "received_at", "content_sha256", "content_bytes"],
       "properties": {
-        "channel": {
-          "enum": ["EMAIL_REPLY", "AUTHOR_ATTACHMENT", "OFFICIAL_PROJECT_ARTIFACT", "AUTHOR_CONFIRMATION"]
-        },
+        "channel": {"enum": ["EMAIL_REPLY", "AUTHOR_ATTACHMENT", "OFFICIAL_PROJECT_ARTIFACT", "AUTHOR_CONFIRMATION"]},
         "source_locator": {"type": "string", "minLength": 1},
         "message_id": {"type": ["string", "null"]},
         "thread_id": {"type": ["string", "null"]},
@@ -38,24 +36,14 @@
     "candidate": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "ifc_source_sha256",
-        "step_id",
-        "global_id",
-        "object_id",
-        "material_name",
-        "binding_method",
-        "candidate_bound"
-      ],
+      "required": ["ifc_source_sha256", "step_id", "global_id", "object_id", "material_name", "binding_method", "candidate_bound"],
       "properties": {
         "ifc_source_sha256": {"const": "19d7d02d53c2b88e86890ee236297b12bbb0f7748030cd32ff6a22762e9966bb"},
         "step_id": {"const": 9730},
         "global_id": {"const": "3BmeJtEDj3AQO77Os2w7Ny"},
         "object_id": {"const": "2395272"},
         "material_name": {"const": "Ortbeton - bewehrt"},
-        "binding_method": {
-          "enum": ["EXACT_GLOBAL_ID", "EXACT_OBJECT_ID", "EXACT_DOCUMENTED_MATERIAL_GROUP", "AUTHOR_EXPLICIT_CONFIRMATION", "UNBOUND"]
-        },
+        "binding_method": {"enum": ["EXACT_GLOBAL_ID", "EXACT_OBJECT_ID", "EXACT_DOCUMENTED_MATERIAL_GROUP", "AUTHOR_EXPLICIT_CONFIRMATION", "UNBOUND"]},
         "candidate_bound": {"type": "boolean"}
       }
     },
@@ -68,34 +56,17 @@
         "author_email": {"type": ["string", "null"]},
         "author_organization": {"type": "string", "minLength": 1},
         "relation_to_digitalhub": {"type": "string", "minLength": 1},
-        "authority_basis": {
-          "enum": ["PROJECT_AUTHOR", "PROJECT_MAINTAINER", "ORIGINAL_MODEL_AUTHOR", "ORIGINAL_SPECIFICATION_AUTHOR", "OTHER_DOCUMENTED_PROJECT_AUTHORITY"]
-        }
+        "authority_basis": {"enum": ["PROJECT_AUTHOR", "PROJECT_MAINTAINER", "ORIGINAL_MODEL_AUTHOR", "ORIGINAL_SPECIFICATION_AUTHOR", "OTHER_DOCUMENTED_PROJECT_AUTHORITY"]}
       }
     },
     "material_semantics": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "strength_class_explicit",
-        "concrete_strength_class",
-        "strength_class_source_text_sha256",
-        "explicit_absence_statement"
-      ],
+      "required": ["strength_class_explicit", "concrete_strength_class", "strength_class_source_text_sha256", "explicit_absence_statement"],
       "properties": {
         "strength_class_explicit": {"type": "boolean"},
-        "concrete_strength_class": {
-          "oneOf": [
-            {"type": "null"},
-            {"type": "string", "pattern": "^C[0-9]{2}/[0-9]{2}$"}
-          ]
-        },
-        "strength_class_source_text_sha256": {
-          "oneOf": [
-            {"type": "null"},
-            {"type": "string", "pattern": "^[a-f0-9]{64}$"}
-          ]
-        },
+        "concrete_strength_class": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^C[0-9]{2}/[0-9]{2}$"}]},
+        "strength_class_source_text_sha256": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^[a-f0-9]{64}$"}]},
         "explicit_absence_statement": {"type": "boolean"}
       }
     },
@@ -109,16 +80,7 @@
     "authority_boundaries": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "fuzzy_matching",
-        "strength_class_inferred",
-        "environmental_mapping_performed",
-        "impact_calculation_performed",
-        "scientific_suitability_confirmed",
-        "professional_review_performed",
-        "regulator_acceptance_implied",
-        "certified"
-      ],
+      "required": ["fuzzy_matching", "strength_class_inferred", "environmental_mapping_performed", "impact_calculation_performed", "scientific_suitability_confirmed", "professional_review_performed", "regulator_acceptance_implied", "certified"],
       "properties": {
         "fuzzy_matching": {"const": false},
         "strength_class_inferred": {"const": false},
@@ -137,22 +99,31 @@
       "then": {
         "properties": {
           "candidate": {"properties": {"candidate_bound": {"const": true}, "binding_method": {"not": {"const": "UNBOUND"}}}},
-          "material_semantics": {"properties": {"strength_class_explicit": {"const": true}, "explicit_absence_statement": {"const": false}}, "required": ["concrete_strength_class"]}
+          "material_semantics": {
+            "properties": {
+              "strength_class_explicit": {"const": true},
+              "concrete_strength_class": {"type": "string", "pattern": "^C[0-9]{2}/[0-9]{2}$"},
+              "strength_class_source_text_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+              "explicit_absence_statement": {"const": false}
+            }
+          }
         }
       }
     },
     {
       "if": {"properties": {"decision": {"const": "AUTHORITATIVE_MATERIAL_SPEC_ACQUIRED_BUT_NOT_CANDIDATE_BOUND"}}},
-      "then": {"properties": {"candidate": {"properties": {"candidate_bound": {"const": false}}}}}
+      "then": {"properties": {"candidate": {"properties": {"candidate_bound": {"const": false}, "binding_method": {"const": "UNBOUND"}}}}}
     },
     {
       "if": {"properties": {"decision": {"const": "AUTHORITATIVE_SOURCE_CONFIRMS_STRENGTH_CLASS_NOT_SPECIFIED"}}},
       "then": {
         "properties": {
+          "candidate": {"properties": {"candidate_bound": {"const": true}, "binding_method": {"not": {"const": "UNBOUND"}}}},
           "material_semantics": {
             "properties": {
               "strength_class_explicit": {"const": false},
               "concrete_strength_class": {"type": "null"},
+              "strength_class_source_text_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
               "explicit_absence_statement": {"const": true}
             }
           }
