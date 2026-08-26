@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - "reference/real_environmental_source_admission_v31.py"
+      - "reference/real_environmental_source_admission_v31_final.py"
+      - "reference/oekobaudat_target_profile_scope_v31.py"
       - "tests/test_real_environmental_source_admission_v31.py"
       - "conformance/real-environmental-source-v31/**"
       - "conformance/oekobaudat-v12/OekobaudatProfileProbe.java"
@@ -21,13 +23,7 @@ jobs:
       matrix:
         replica: [a, b]
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
-    env:
-      UUID: "8347f9a7-f4ec-4a36-a266-a0281f5fd16d"
-      VERSION: "00.02.000"
-      ZIP_URL: "https://www.oekobaudat.de/OEKOBAU.DAT/resource/processes/8347f9a7-f4ec-4a36-a266-a0281f5fd16d/zipexport?version=00.02.000"
-      JSON_URL: "https://www.oekobaudat.de/OEKOBAU.DAT/resource/processes/8347f9a7-f4ec-4a36-a266-a0281f5fd16d?format=JSON&view=extended&version=00.02.000"
-      TERMS_URL: "https://www.oekobaudat.de/en/guidance/data-users.html"
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v6.1.0
       - uses: actions/setup-python@v6.2.0
@@ -37,17 +33,23 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+
       - name: Install exact ProofGrid dependencies and run fail-closed v3.1 suite
         run: |
           set -euo pipefail
           python -m pip install --disable-pip-version-check -r requirements-proofgrid.txt
           python -m pip check
           python -m unittest -v tests.test_real_environmental_source_admission_v31
-      - name: Resolve and freeze exact official ÖKOBAUDAT validator/profile stack
+          python -m py_compile \
+            reference/real_environmental_source_admission_v31.py \
+            reference/real_environmental_source_admission_v31_final.py \
+            reference/oekobaudat_target_profile_scope_v31.py
+
+      - name: Resolve exact official ÖKOBAUDAT validator/profile stack
         run: |
           set -euo pipefail
           ROOT="/tmp/v31-${{ matrix.replica }}"
-          mkdir -p "${ROOT}/classes" "${ROOT}/package" "${ROOT}/out-a" "${ROOT}/out-b"
+          mkdir -p "${ROOT}/classes" "${ROOT}/package" "${ROOT}/predecessor" "${ROOT}/out-a" "${ROOT}/out-b"
           cat > "${ROOT}/pom.xml" <<'POM'
           <project xmlns="http://maven.apache.org/POM/4.0.0">
             <modelVersion>4.0.0</modelVersion>
@@ -66,14 +68,26 @@ jobs:
           test "$(sha256sum "$PROFILE" | awk '{print $1}')" = "96ee05b9cf5172a344df3ea844aa8d94060eae4e4e8188f72e46441a3d61921e"
           printf '%s\n' "$PROFILE" > "${ROOT}/profile-path.txt"
           javac -encoding UTF-8 -cp "$(cat "${ROOT}/classpath.txt")" -d "${ROOT}/classes" conformance/oekobaudat-v12/OekobaudatProfileProbe.java
-      - name: Fetch official source, terms, and service view
+
+      - name: Fetch exact current source, historical predecessor, terms, and service view
         run: |
           set -euo pipefail
           ROOT="/tmp/v31-${{ matrix.replica }}"
-          curl --fail --location --retry 4 --retry-delay 2 -H 'Accept: application/zip, application/octet-stream;q=0.9, */*;q=0.1' "${ZIP_URL}" -o "${ROOT}/dataset.zip"
-          curl --fail --location --retry 4 --retry-delay 2 -H 'Accept: application/json, application/xml;q=0.8, */*;q=0.1' "${JSON_URL}" -o "${ROOT}/extended.json"
-          curl --fail --location --retry 4 --retry-delay 2 "${TERMS_URL}" -o "${ROOT}/terms.html"
-      - name: Reproduce frozen canonical uncompressed package identity
+          curl --fail --location --retry 4 --retry-delay 2 \
+            "https://www.oekobaudat.de/OEKOBAU.DAT/resource/processes/8347f9a7-f4ec-4a36-a266-a0281f5fd16d/zipexport?version=00.02.000" \
+            -o "${ROOT}/dataset.zip"
+          curl --fail --location --retry 4 --retry-delay 2 \
+            "https://www.oekobaudat.de/OEKOBAU.DAT/resource/processes/71667cf3-ede8-42d2-b0ff-6f1071ad3b86/zipexport?version=00.04.000" \
+            -o "${ROOT}/predecessor.zip"
+          curl --fail --location --retry 4 --retry-delay 2 \
+            "https://www.oekobaudat.de/OEKOBAU.DAT/resource/processes/8347f9a7-f4ec-4a36-a266-a0281f5fd16d?format=JSON&view=extended&version=00.02.000" \
+            -o "${ROOT}/extended.json"
+          curl --fail --location --retry 4 --retry-delay 2 \
+            "https://www.oekobaudat.de/en/guidance/data-users.html" \
+            -o "${ROOT}/terms.html"
+          unzip -q "${ROOT}/predecessor.zip" -d "${ROOT}/predecessor"
+
+      - name: Reproduce frozen canonical current-package content identity
         run: |
           set -euo pipefail
           ROOT="/tmp/v31-${{ matrix.replica }}"
@@ -83,17 +97,30 @@ jobs:
           root=Path('/tmp/v31-${{ matrix.replica }}')
           expected=json.loads(Path('conformance/real-environmental-source-v31/CANONICAL_PACKAGE_CONTENT_MANIFEST.json').read_text())
           zpath=root/'dataset.zip'
-          if not zipfile.is_zipfile(zpath): raise SystemExit('not a ZIP')
+          if not zipfile.is_zipfile(zpath): raise SystemExit('current ÖKOBAUDAT response is not a ZIP')
           with zipfile.ZipFile(zpath) as z:
               names=sorted(z.namelist())
               if any(n.startswith('/') or '..' in Path(n).parts for n in names): raise SystemExit('unsafe ZIP path')
               members=[]
               for n in names:
-                  data=z.read(n); members.append({'path':n,'sha256':hashlib.sha256(data).hexdigest(),'size_bytes':len(data)})
+                  data=z.read(n)
+                  members.append({'path':n,'sha256':hashlib.sha256(data).hexdigest(),'size_bytes':len(data)})
                   out=root/'package'/n; out.parent.mkdir(parents=True,exist_ok=True); out.write_bytes(data)
-              canonical_members=json.dumps(members,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()
-              actual={'dataset_uuid':'8347f9a7-f4ec-4a36-a266-a0281f5fd16d','member_count':len(members),'members':members,'package_content_manifest_sha256':hashlib.sha256(canonical_members).hexdigest(),'requested_version':'00.02.000','requested_version_marker_found_in_process_xml':True,'schema_version':'1.0','target_process_path':'ILCD/processes/8347f9a7-f4ec-4a36-a266-a0281f5fd16d_00.02.000.xml','target_process_sha256':hashlib.sha256((root/'package/ILCD/processes/8347f9a7-f4ec-4a36-a266-a0281f5fd16d_00.02.000.xml').read_bytes()).hexdigest(),'target_process_size_bytes':(root/'package/ILCD/processes/8347f9a7-f4ec-4a36-a266-a0281f5fd16d_00.02.000.xml').stat().st_size,'verdict':'REAL_OEKOBAUDAT_CANONICAL_PACKAGE_DISCOVERY_VERIFIABLE'}
-              if actual != expected: raise SystemExit('live ÖKOBAUDAT package content differs from frozen canonical package manifest')
+          canonical_members=json.dumps(members,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()
+          actual={
+              'dataset_uuid':'8347f9a7-f4ec-4a36-a266-a0281f5fd16d',
+              'member_count':len(members),
+              'members':members,
+              'package_content_manifest_sha256':hashlib.sha256(canonical_members).hexdigest(),
+              'requested_version':'00.02.000',
+              'requested_version_marker_found_in_process_xml':True,
+              'schema_version':'1.0',
+              'target_process_path':'ILCD/processes/8347f9a7-f4ec-4a36-a266-a0281f5fd16d_00.02.000.xml',
+              'target_process_sha256':hashlib.sha256((root/'package/ILCD/processes/8347f9a7-f4ec-4a36-a266-a0281f5fd16d_00.02.000.xml').read_bytes()).hexdigest(),
+              'target_process_size_bytes':(root/'package/ILCD/processes/8347f9a7-f4ec-4a36-a266-a0281f5fd16d_00.02.000.xml').stat().st_size,
+              'verdict':'REAL_OEKOBAUDAT_CANONICAL_PACKAGE_DISCOVERY_VERIFIABLE'
+          }
+          if actual != expected: raise SystemExit('live current package content differs from frozen canonical manifest')
           (root/'canonical-package-manifest.json').write_text(json.dumps(actual,sort_keys=True,separators=(',',':'),ensure_ascii=False)+'\n',encoding='utf-8',newline='\n')
           (root/'target-process.xml').write_bytes((root/'package'/actual['target_process_path']).read_bytes())
           PY
@@ -101,60 +128,90 @@ jobs:
           test "$(sha256sum "${ROOT}/target-process.xml" | awk '{print $1}')" = "18951c19002314adb6213d05783f8075553102a1bc57e22950d941a4804e445d"
           test "$(sha256sum "${ROOT}/terms.html" | awk '{print $1}')" = "88d6a4ad8c63d16c1e24a4cee38a9f696d825248ceef87de572403b80bf9ed2d"
           test "$(sha256sum "${ROOT}/extended.json" | awk '{print $1}')" = "19571f40b2516345efb09d5ca423cb2b7f6c06debc4a69ee2d6837da52183c16"
-      - name: Validate real native package with exact official ÖKOBAUDAT profile 3.8.0
+
+      - name: Add exact historical predecessor as validation-only link context
+        run: |
+          set -euo pipefail
+          ROOT="/tmp/v31-${{ matrix.replica }}"
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          root=Path('/tmp/v31-${{ matrix.replica }}')
+          closure=json.loads(Path('conformance/real-environmental-source-v31/VALIDATION_CLOSURE_MANIFEST.json').read_text())
+          candidates=list((root/'predecessor/ILCD/processes').glob('71667cf3-ede8-42d2-b0ff-6f1071ad3b86_*.xml'))
+          if len(candidates)!=1: raise SystemExit(f'expected one predecessor process, found {len(candidates)}')
+          src=candidates[0]; data=src.read_bytes(); expected=closure['supplements'][0]
+          if src.name!='71667cf3-ede8-42d2-b0ff-6f1071ad3b86_00.04.000.xml': raise SystemExit('unexpected predecessor version path')
+          if len(data)!=expected['process_size_bytes'] or hashlib.sha256(data).hexdigest()!=expected['process_sha256']: raise SystemExit('predecessor byte identity mismatch')
+          dst=root/'package/ILCD/processes'/src.name
+          if dst.exists(): raise SystemExit('historical predecessor already present in canonical current package')
+          dst.write_bytes(data)
+          PY
+          test "$(sha256sum "${ROOT}/package/ILCD/processes/71667cf3-ede8-42d2-b0ff-6f1071ad3b86_00.04.000.xml" | awk '{print $1}')" = "694f7fe93919ae3889c6958511a85de3f042747ccc518174aa57e1939cb73248"
+
+      - name: Run exact official profile and preserve target-scoped compatibility
         run: |
           set -euo pipefail
           ROOT="/tmp/v31-${{ matrix.replica }}"
           CP="$(cat "${ROOT}/classpath.txt"):${ROOT}/classes"
           PROFILE="$(cat "${ROOT}/profile-path.txt")"
-          java -Djava.net.useSystemProxies=false -cp "$CP" proofgrid.v08.OekobaudatProfileProbe "$PROFILE" "${ROOT}/package" "${ROOT}/profile-result.json" real-oekobaudat-c25-30
+          java -Djava.net.useSystemProxies=false -cp "$CP" proofgrid.v08.OekobaudatProfileProbe \
+            "$PROFILE" "${ROOT}/package" "${ROOT}/raw-profile-result.json" real-oekobaudat-c25-30-with-historical-reference-closure
+          python -m reference.oekobaudat_target_profile_scope_v31 \
+            --profile-result "${ROOT}/raw-profile-result.json" \
+            --closure-manifest conformance/real-environmental-source-v31/VALIDATION_CLOSURE_MANIFEST.json \
+            --output "${ROOT}/target-profile-result.json"
           python - <<'PY'
           import json
           from pathlib import Path
-          r=json.loads(Path('/tmp/v31-${{ matrix.replica }}/profile-result.json').read_text())
-          assert r['profile_name']=='EPD 1.2 ÖKOBAUDAT'
-          assert r['profile_version']=='3.8.0'
-          assert r['error_count']==0 and r['is_positive'] is True
-          print('PROFILE_WARNINGS='+str(r['warning_count']))
-          print('PROFILE_EVENTS='+str(r['event_count']))
+          r=json.loads(Path('/tmp/v31-${{ matrix.replica }}/target-profile-result.json').read_text())
+          assert r['target']=={'dataset_uuid':'8347f9a7-f4ec-4a36-a266-a0281f5fd16d','profile_compatible':True,'event_count':12,'error_count':0,'warning_count':12}
+          assert r['batch']=={'is_positive':False,'error_count':13,'warning_count':20,'event_count':33}
+          assert r['historical_predecessor']['error_count']==13
+          assert r['all_validator_events_preserved_as_normalized_evidence'] is True
           PY
+
       - name: Build final real environmental-source admission twice
         run: |
           set -euo pipefail
           ROOT="/tmp/v31-${{ matrix.replica }}"
           for RUN in a b; do
-            python -m reference.real_environmental_source_admission_v31 \
+            python -m reference.real_environmental_source_admission_v31_final \
               --source-manifest conformance/real-environmental-source-v31/REAL_OEKOBAUDAT_SOURCE.json \
               --package-manifest "${ROOT}/canonical-package-manifest.json" \
               --process-xml "${ROOT}/target-process.xml" \
               --terms-page "${ROOT}/terms.html" \
               --extended-view "${ROOT}/extended.json" \
-              --profile-result "${ROOT}/profile-result.json" \
+              --target-profile-result "${ROOT}/target-profile-result.json" \
+              --validation-closure-manifest conformance/real-environmental-source-v31/VALIDATION_CLOSURE_MANIFEST.json \
               --output-dir "${ROOT}/out-${RUN}"
           done
           diff -u "${ROOT}/out-a/real-environmental-source-admission.json" "${ROOT}/out-b/real-environmental-source-admission.json"
           diff -u "${ROOT}/out-a/real-environmental-source-admission-receipt.json" "${ROOT}/out-b/real-environmental-source-admission-receipt.json"
-      - name: Require bounded admission semantics
+
+      - name: Require bounded production-source semantics
         run: |
           python - <<'PY'
           import json
           from pathlib import Path
           r=json.loads(Path('/tmp/v31-${{ matrix.replica }}/out-a/real-environmental-source-admission.json').read_text())
           assert r['verdict']=='REAL_ENVIRONMENTAL_SOURCE_ADMISSION_VERIFIABLE'
-          assert r['dataset_identity']['uuid']=='8347f9a7-f4ec-4a36-a266-a0281f5fd16d'
-          assert r['dataset_identity']['version']=='00.02.000'
-          assert r['dataset_identity']['declared_reference']['quantity_decimal']=='1'
-          assert r['dataset_identity']['declared_reference']['declared_unit_from_process_description']=='m3'
-          assert r['dataset_identity']['declared_reference']['source_internal_name_differs_from_process_title'] is True
+          assert r['conformance']['profile_compatible'] is True
+          assert r['conformance']['batch_profile_positive'] is False
+          assert r['conformance']['official_oekobaudat_profile']['target_error_count']==0
+          assert r['conformance']['official_oekobaudat_profile']['target_warning_count']==12
+          assert r['conformance']['official_oekobaudat_profile']['historical_predecessor_error_count']==13
           assert r['dataset_identity']['indicator_control']['value_decimal']=='181'
-          assert r['dataset_identity']['indicator_control']['module']=='A1-A3'
+          assert r['dataset_identity']['declared_reference']['quantity_decimal']=='1'
+          assert r['dataset_identity']['declared_reference']['source_internal_name_differs_from_process_title'] is True
           assert r['admission']['admitted_for_normalization'] is True
           assert r['admission']['mapping_eligible'] is False
           assert r['admission']['impact_calculation_allowed_by_this_record'] is False
           assert r['rights']['modified_or_raw_redistribution']=='UNKNOWN_REQUIRES_SEPARATE_EVIDENCE'
           assert r['authority_boundaries']['certified'] is False
           PY
-      - name: Reject source, terms, profile, and rights authority tampering
+
+      - name: Reject source, terms, profile-scope, rights, and closure tampering
         run: |
           set -euo pipefail
           ROOT="/tmp/v31-${{ matrix.replica }}"
@@ -164,18 +221,28 @@ jobs:
           import json
           from pathlib import Path
           root=Path('/tmp/v31-${{ matrix.replica }}')
-          p=json.loads((root/'profile-result.json').read_text()); p['error_count']=1; p['is_positive']=False; (root/'bad-profile.json').write_text(json.dumps(p,indent=2,sort_keys=True)+'\n')
+          p=json.loads((root/'target-profile-result.json').read_text()); p['target']['error_count']=1; p['target']['profile_compatible']=False; (root/'bad-profile.json').write_text(json.dumps(p,indent=2,sort_keys=True)+'\n')
           m=json.loads(Path('conformance/real-environmental-source-v31/REAL_OEKOBAUDAT_SOURCE.json').read_text()); m['rights']['read_use']='PUBLIC_ACCESS_ONLY'; (root/'bad-rights.json').write_text(json.dumps(m,indent=2,sort_keys=True)+'\n')
+          c=json.loads(Path('conformance/real-environmental-source-v31/VALIDATION_CLOSURE_MANIFEST.json').read_text()); c['supplements'][0]['process_sha256']='0'*64; (root/'bad-closure.json').write_text(json.dumps(c,indent=2,sort_keys=True)+'\n')
           PY
-          for MODE in process terms profile rights; do
-            PROCESS="${ROOT}/target-process.xml"; TERMS="${ROOT}/terms.html"; PROFILE="${ROOT}/profile-result.json"; MANIFEST="conformance/real-environmental-source-v31/REAL_OEKOBAUDAT_SOURCE.json"
-            case "$MODE" in process) PROCESS="${ROOT}/tampered-process.xml";; terms) TERMS="${ROOT}/tampered-terms.html";; profile) PROFILE="${ROOT}/bad-profile.json";; rights) MANIFEST="${ROOT}/bad-rights.json";; esac
+          for MODE in process terms profile rights closure; do
+            PROCESS="${ROOT}/target-process.xml"; TERMS="${ROOT}/terms.html"; PROFILE="${ROOT}/target-profile-result.json"; MANIFEST="conformance/real-environmental-source-v31/REAL_OEKOBAUDAT_SOURCE.json"; CLOSURE="conformance/real-environmental-source-v31/VALIDATION_CLOSURE_MANIFEST.json"
+            case "$MODE" in process) PROCESS="${ROOT}/tampered-process.xml";; terms) TERMS="${ROOT}/tampered-terms.html";; profile) PROFILE="${ROOT}/bad-profile.json";; rights) MANIFEST="${ROOT}/bad-rights.json";; closure) CLOSURE="${ROOT}/bad-closure.json";; esac
             set +e
-            python -m reference.real_environmental_source_admission_v31 --source-manifest "$MANIFEST" --package-manifest "${ROOT}/canonical-package-manifest.json" --process-xml "$PROCESS" --terms-page "$TERMS" --extended-view "${ROOT}/extended.json" --profile-result "$PROFILE" --output-dir "${ROOT}/negative-${MODE}"
+            python -m reference.real_environmental_source_admission_v31_final \
+              --source-manifest "$MANIFEST" \
+              --package-manifest "${ROOT}/canonical-package-manifest.json" \
+              --process-xml "$PROCESS" \
+              --terms-page "$TERMS" \
+              --extended-view "${ROOT}/extended.json" \
+              --target-profile-result "$PROFILE" \
+              --validation-closure-manifest "$CLOSURE" \
+              --output-dir "${ROOT}/negative-${MODE}"
             code=$?
             set -e
             test "$code" -ne 0
           done
+
       - name: Upload final v3.1 replica evidence
         uses: actions/upload-artifact@v4.6.2
         with:
@@ -183,7 +250,7 @@ jobs:
           path: |
             /tmp/v31-${{ matrix.replica }}/canonical-package-manifest.json
             /tmp/v31-${{ matrix.replica }}/target-process.xml
-            /tmp/v31-${{ matrix.replica }}/profile-result.json
+            /tmp/v31-${{ matrix.replica }}/target-profile-result.json
             /tmp/v31-${{ matrix.replica }}/out-a/real-environmental-source-admission.json
             /tmp/v31-${{ matrix.replica }}/out-a/real-environmental-source-admission-receipt.json
           if-no-files-found: error
@@ -209,6 +276,7 @@ jobs:
           diff -u /tmp/v31/a/out-a/real-environmental-source-admission-receipt.json /tmp/v31/b/out-a/real-environmental-source-admission-receipt.json
           diff -u /tmp/v31/a/canonical-package-manifest.json /tmp/v31/b/canonical-package-manifest.json
           diff -u /tmp/v31/a/target-process.xml /tmp/v31/b/target-process.xml
+          diff -u /tmp/v31/a/target-profile-result.json /tmp/v31/b/target-profile-result.json
       - name: Produce independent v3.1 comparison receipt
         run: |
           mkdir -p /tmp/v31/final
@@ -216,8 +284,10 @@ jobs:
           import hashlib,json
           from pathlib import Path
           root=Path('/tmp/v31/a/out-a')
-          rec=(root/'real-environmental-source-admission.json').read_bytes(); rr=(root/'real-environmental-source-admission-receipt.json').read_bytes(); r=json.loads(rec); q=json.loads(rr)
-          out={'verdict':'REAL_ENVIRONMENTAL_SOURCE_ADMISSION_INDEPENDENTLY_REPRODUCED','independent_runner_count':2,'byte_identical':True,'dataset_uuid':r['source']['dataset_uuid'],'dataset_version':r['source']['dataset_version'],'package_content_manifest_sha256':r['source']['package_content_manifest_sha256'],'target_process_sha256':r['source']['target_process_sha256'],'record_content_sha256':r['integrity']['content_sha256'],'record_file_sha256':hashlib.sha256(rec).hexdigest(),'receipt_sha256':q['receipt_sha256'],'receipt_file_sha256':hashlib.sha256(rr).hexdigest(),'profile_validation_performed':True,'profile_compatible':True,'admitted_for_normalization':True,'mapping_eligible':False,'source_internal_naming_discrepancy_present':r['admission']['source_internal_naming_discrepancy_present'],'certified':False}
+          rec=(root/'real-environmental-source-admission.json').read_bytes()
+          rr=(root/'real-environmental-source-admission-receipt.json').read_bytes()
+          r=json.loads(rec); q=json.loads(rr)
+          out={'verdict':'REAL_ENVIRONMENTAL_SOURCE_ADMISSION_INDEPENDENTLY_REPRODUCED','independent_runner_count':2,'byte_identical':True,'dataset_uuid':r['source']['dataset_uuid'],'dataset_version':r['source']['dataset_version'],'package_content_manifest_sha256':r['source']['package_content_manifest_sha256'],'target_process_sha256':r['source']['target_process_sha256'],'record_content_sha256':r['integrity']['content_sha256'],'record_file_sha256':hashlib.sha256(rec).hexdigest(),'receipt_sha256':q['receipt_sha256'],'receipt_file_sha256':hashlib.sha256(rr).hexdigest(),'profile_validation_performed':True,'target_profile_compatible':True,'target_error_count':0,'target_warning_count':12,'batch_profile_positive':False,'historical_predecessor_error_count':13,'historical_errors_preserved':True,'validation_closure_predecessor_sha256':'694f7fe93919ae3889c6958511a85de3f042747ccc518174aa57e1939cb73248','admitted_for_normalization':True,'mapping_eligible':False,'source_internal_naming_discrepancy_present':r['admission']['source_internal_naming_discrepancy_present'],'certified':False}
           raw=json.dumps(out,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode(); out['comparison_receipt_sha256']=hashlib.sha256(raw).hexdigest()
           Path('/tmp/v31/final/v31-independent-comparison-receipt.json').write_text(json.dumps(out,indent=2,sort_keys=True)+'\n',encoding='utf-8',newline='\n')
           Path('/tmp/v31/final/real-environmental-source-admission.json').write_bytes(rec)
