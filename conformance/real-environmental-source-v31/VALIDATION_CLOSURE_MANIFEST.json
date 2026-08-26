@@ -1,0 +1,55 @@
+{
+  "schema_version": "1.0",
+  "manifest_version": "3.1.0",
+  "role": "VALIDATION_ONLY_REFERENCE_CLOSURE",
+  "target": {
+    "uuid": "8347f9a7-f4ec-4a36-a266-a0281f5fd16d",
+    "version": "00.02.000",
+    "process_sha256": "18951c19002314adb6213d05783f8075553102a1bc57e22950d941a4804e445d"
+  },
+  "supplements": [
+    {
+      "provider": "ÖKOBAUDAT",
+      "relationship": "referenceToPrecedingDataSetVersion",
+      "uuid": "71667cf3-ede8-42d2-b0ff-6f1071ad3b86",
+      "version": "00.04.000",
+      "process_path": "ILCD/processes/71667cf3-ede8-42d2-b0ff-6f1071ad3b86_00.04.000.xml",
+      "process_size_bytes": 39883,
+      "process_sha256": "694f7fe93919ae3889c6958511a85de3f042747ccc518174aa57e1939cb73248",
+      "source_authority": false,
+      "validation_context_only": true
+    }
+  ],
+  "validation_method": {
+    "validator_library": "com.okworx.ilcd.validation:ilcd-validation:2.12.2",
+    "profile": "com.okworx.ilcd.validation.profiles:EPD-1.2-OEKOBAUDAT:3.8.0",
+    "strategy": "OFFICIAL_BATCH_VALIDATION_WITH_TARGET_SCOPED_EVENT_CLASSIFICATION",
+    "canonical_source_package_mutated": false,
+    "supplement_becomes_source_authority": false,
+    "all_validator_events_preserved": true
+  },
+  "diagnostic_control": {
+    "without_supplement_target_error_count": 1,
+    "without_supplement_target_error_aspect": "Links",
+    "without_supplement_error_reference": "referenceToPrecedingDataSetVersion",
+    "with_supplement": {
+      "batch_error_count": 13,
+      "batch_warning_count": 20,
+      "batch_event_count": 33,
+      "target_error_count": 0,
+      "target_warning_count": 12,
+      "predecessor_error_count": 13,
+      "predecessor_warning_count": 8,
+      "unattributed_event_count": 0
+    }
+  },
+  "claim_boundary": {
+    "target_profile_compatible_under_reference_closure": true,
+    "closure_supplement_profile_compatible": false,
+    "batch_is_positive": false,
+    "historical_errors_suppressed": false,
+    "scientific_validity_inferred": false,
+    "professional_suitability_inferred": false,
+    "certification_authority_inferred": false
+  }
+}
