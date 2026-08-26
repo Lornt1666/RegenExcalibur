@@ -36,26 +36,30 @@ jobs:
           ROOT="/tmp/v32-scan-${{ matrix.replica }}"; mkdir -p "$ROOT"
           curl --fail --location --retry 4 --retry-delay 2 "https://raw.githubusercontent.com/RWTH-E3D/DigitalHub/36565d529b4dadeca625de2b793d7e16700171e9/Version_2/DigitalHub_FM-ARC_v2.ifc" -o "$ROOT/model.ifc"
           test "$(sha256sum "$ROOT/model.ifc" | awk '{print $1}')" = "19d7d02d53c2b88e86890ee236297b12bbb0f7748030cd32ff6a22762e9966bb"
-      - name: Scan all IfcProduct semantic strings twice
+      - name: Scan entire exact native IFC source text twice
         run: |
           set -euo pipefail
           ROOT="/tmp/v32-scan-${{ matrix.replica }}"
           python -m reference.real_model_strength_class_scan_v32 --ifc "$ROOT/model.ifc" --output "$ROOT/scan-a.json"
           python -m reference.real_model_strength_class_scan_v32 --ifc "$ROOT/model.ifc" --output "$ROOT/scan-b.json"
           diff -u "$ROOT/scan-a.json" "$ROOT/scan-b.json"
-      - name: Assert scan remains non-mapping evidence
+      - name: Assert scan remains source-level non-mapping evidence
         run: |
           python - <<'PY'
           import json
           from pathlib import Path
           r=json.loads(Path('/tmp/v32-scan-${{ matrix.replica }}/scan-a.json').read_text())
           assert r['verdict']=='REAL_IFC_LITERAL_CONCRETE_STRENGTH_CLASS_SCAN_VERIFIABLE'
-          assert r['enumerated_ifc_product_count']==1026
+          assert r['source']['ifc_product_count']==1026
+          assert r['source_occurrence_count']==0
+          assert r['literal_strength_classes']==[]
+          assert r['method']['scope']=='ENTIRE_NATIVE_IFC_UTF8_SOURCE_TEXT'
+          assert r['method']['helper_api_inference_used'] is False
           assert r['method']['inference_from_stb_or_material_names'] is False
           assert r['method']['fuzzy_matching'] is False
           assert r['authority_boundaries']['mapping_performed'] is False
           assert r['authority_boundaries']['impact_calculation_performed'] is False
-          print('MATCHED_PRODUCTS='+str(r['matched_product_count']))
+          print('SOURCE_OCCURRENCES='+str(r['source_occurrence_count']))
           print('LITERAL_CLASSES='+','.join(r['literal_strength_classes']))
           print('C25_30_PRESENT='+str(r['target_classes']['C25/30_present']).lower())
           print('C30_37_PRESENT='+str(r['target_classes']['C30/37_present']).lower())
@@ -80,6 +84,6 @@ jobs:
         with:
           name: proofgrid-v32-model-wide-strength-scan-b
           path: /tmp/v32/b
-      - name: Require model-wide scan byte identity
+      - name: Require model-wide source scan byte identity
         run: |
           diff -u /tmp/v32/a/scan-a.json /tmp/v32/b/scan-a.json
