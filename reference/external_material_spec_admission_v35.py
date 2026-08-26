@@ -80,7 +80,6 @@ def validate_source_record(source: dict[str, Any], content_bytes: bytes) -> None
     semantics = source["material_semantics"]
     boundaries = source["authority_boundaries"]
 
-    # The exact v3.2 candidate is already enforced by schema constants.
     require(candidate["ifc_source_sha256"] == "19d7d02d53c2b88e86890ee236297b12bbb0f7748030cd32ff6a22762e9966bb", "wrong IFC source")
     require(candidate["step_id"] == 9730, "wrong candidate STEP ID")
     require(candidate["global_id"] == "3BmeJtEDj3AQO77Os2w7Ny", "wrong candidate GlobalId")
@@ -96,10 +95,14 @@ def validate_source_record(source: dict[str, Any], content_bytes: bytes) -> None
 
     elif decision == "AUTHORITATIVE_MATERIAL_SPEC_ACQUIRED_BUT_NOT_CANDIDATE_BOUND":
         require(candidate["candidate_bound"] is False, "unbound decision requires candidate_bound=false")
+        require(candidate["binding_method"] == "UNBOUND", "unbound decision requires binding_method=UNBOUND")
 
     elif decision == "AUTHORITATIVE_SOURCE_CONFIRMS_STRENGTH_CLASS_NOT_SPECIFIED":
+        require(candidate["candidate_bound"] is True, "absence confirmation must be bound to the exact candidate")
+        require(candidate["binding_method"] != "UNBOUND", "absence confirmation requires explicit binding method")
         require(semantics["strength_class_explicit"] is False, "absence decision cannot contain explicit strength class")
         require(semantics["concrete_strength_class"] is None, "absence decision requires null strength class")
+        require(semantics["strength_class_source_text_sha256"] is not None, "absence decision requires exact absence-text digest")
         require(semantics["explicit_absence_statement"] is True, "absence decision requires explicit absence statement")
 
     else:
