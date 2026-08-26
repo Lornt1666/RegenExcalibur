@@ -1,0 +1,182 @@
+name: ProofGrid v3.2 Final Suitability Decision
+
+on:
+  pull_request:
+    paths:
+      - "reference/real_model_source_suitability_probe_v32.py"
+      - "reference/real_model_strength_class_scan_v32.py"
+      - "reference/real_model_environmental_suitability_decision_v32.py"
+      - "tests/test_real_model_environmental_suitability_decision_v32.py"
+      - ".github/workflows/proofgrid-v32-final-suitability-decision.yml"
+      - "requirements-proofgrid.txt"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  decision-replica:
+    strategy:
+      fail-fast: false
+      matrix:
+        replica: [a, b]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      V31_ARTIFACT_ID: "9589953956"
+      V31_ARTIFACT_SHA256: "3c6306eab56cc06d24de3d48a0f79c0bc7f9d14abcc2e05ae0055428bfa81bf9"
+    steps:
+      - uses: actions/checkout@v6.1.0
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.11.16"
+      - name: Install exact dependencies and run fail-closed decision tests
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -r requirements-proofgrid.txt
+          python -m pip check
+          python -m unittest -v tests.test_real_model_environmental_suitability_decision_v32
+          python -m py_compile \
+            reference/real_model_source_suitability_probe_v32.py \
+            reference/real_model_strength_class_scan_v32.py \
+            reference/real_model_environmental_suitability_decision_v32.py
+      - name: Fetch exact real IFC and accepted v3.1 evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ROOT="/tmp/v32-final-${{ matrix.replica }}"
+          mkdir -p "$ROOT/v31" "$ROOT/out-a" "$ROOT/out-b"
+          curl --fail --location --retry 4 --retry-delay 2 \
+            "https://raw.githubusercontent.com/RWTH-E3D/DigitalHub/36565d529b4dadeca625de2b793d7e16700171e9/Version_2/DigitalHub_FM-ARC_v2.ifc" \
+            -o "$ROOT/model.ifc"
+          test "$(stat -c%s "$ROOT/model.ifc")" -eq 9022255
+          test "$(sha256sum "$ROOT/model.ifc" | awk '{print $1}')" = "19d7d02d53c2b88e86890ee236297b12bbb0f7748030cd32ff6a22762e9966bb"
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${V31_ARTIFACT_ID}/zip" > "$ROOT/v31.zip"
+          echo "${V31_ARTIFACT_SHA256}  $ROOT/v31.zip" | sha256sum -c -
+          unzip -q "$ROOT/v31.zip" -d "$ROOT/v31"
+          test "$(sha256sum "$ROOT/v31/real-environmental-source-admission.json" | awk '{print $1}')" = "d32cc006b92157853d82e762d5064f81d17833494368cf463eb92f3102b10f2f"
+          test "$(sha256sum "$ROOT/v31/real-environmental-source-admission-receipt.json" | awk '{print $1}')" = "d19ab62b32afd9df2a0d2d6ccfc1fc9aab1bf6272ad02253495306c747d29d34"
+          test "$(sha256sum "$ROOT/v31/v31-independent-comparison-receipt.json" | awk '{print $1}')" = "21f40088d4950e7f53adb36e453b1f7647685adce1f853c21337b2a352c4cfdf"
+      - name: Regenerate exact candidate and whole-IFC evidence
+        run: |
+          set -euo pipefail
+          ROOT="/tmp/v32-final-${{ matrix.replica }}"
+          python -m reference.real_model_source_suitability_probe_v32 --ifc "$ROOT/model.ifc" --output "$ROOT/candidate-probe.json"
+          python -m reference.real_model_strength_class_scan_v32 --ifc "$ROOT/model.ifc" --output "$ROOT/model-scan.json"
+          test "$(sha256sum "$ROOT/candidate-probe.json" | awk '{print $1}')" = "a3b48f0083b1c9b1382fe1d9386b01d3e2c171222f33cfef6c133fb44429d869"
+          test "$(sha256sum "$ROOT/model-scan.json" | awk '{print $1}')" = "edd9af95b1ab22a8002b8e9f9ab8c9f0854719ded372fa7667b015c289c68684"
+      - name: Build binding unresolved suitability decision twice
+        run: |
+          set -euo pipefail
+          ROOT="/tmp/v32-final-${{ matrix.replica }}"
+          for RUN in a b; do
+            python -m reference.real_model_environmental_suitability_decision_v32 \
+              --candidate-probe "$ROOT/candidate-probe.json" \
+              --model-scan "$ROOT/model-scan.json" \
+              --v31-record "$ROOT/v31/real-environmental-source-admission.json" \
+              --v31-receipt "$ROOT/v31/real-environmental-source-admission-receipt.json" \
+              --v31-comparison "$ROOT/v31/v31-independent-comparison-receipt.json" \
+              --output-dir "$ROOT/out-$RUN"
+          done
+          diff -u "$ROOT/out-a/real-model-environmental-source-suitability-decision.json" "$ROOT/out-b/real-model-environmental-source-suitability-decision.json"
+          diff -u "$ROOT/out-a/real-model-environmental-source-suitability-decision-receipt.json" "$ROOT/out-b/real-model-environmental-source-suitability-decision-receipt.json"
+      - name: Require exact unresolved decision semantics
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.loads(Path('/tmp/v32-final-${{ matrix.replica }}/out-a/real-model-environmental-source-suitability-decision.json').read_text())
+          assert r['verdict']=='REAL_MODEL_ENVIRONMENTAL_SOURCE_SUITABILITY_REVIEW_VERIFIABLE'
+          assert r['decision']=='SUITABILITY_UNRESOLVED_MISSING_SOURCE_SEMANTICS'
+          assert r['semantic_evidence']['candidate_c25_30_present'] is False
+          assert r['semantic_evidence']['candidate_c30_37_present'] is False
+          assert r['semantic_evidence']['entire_ifc_literal_strength_class_occurrence_count']==0
+          assert r['reference_basis_compatibility']['unit_compatible_without_conversion'] is True
+          assert r['reference_basis_compatibility']['quantity_scaling_arithmetic_performed'] is False
+          assert r['authority_boundaries']['mapping_authorized'] is False
+          assert r['authority_boundaries']['environmental_mapping_performed'] is False
+          assert r['authority_boundaries']['impact_calculation_permitted'] is False
+          assert r['authority_boundaries']['impact_calculation_performed'] is False
+          assert r['authority_boundaries']['certified'] is False
+          print('DECISION_CONTENT_SHA='+r['integrity']['content_sha256'])
+          PY
+      - name: Reject parent and authority tampering
+        run: |
+          set -euo pipefail
+          ROOT="/tmp/v32-final-${{ matrix.replica }}"
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path('/tmp/v32-final-${{ matrix.replica }}')
+          p=json.loads((root/'candidate-probe.json').read_text()); p['strength_class_evidence']['c25_30_present']=True; (root/'bad-probe.json').write_text(json.dumps(p,indent=2,sort_keys=True)+'\n')
+          s=json.loads((root/'model-scan.json').read_text()); s['source_occurrence_count']=1; (root/'bad-scan.json').write_text(json.dumps(s,indent=2,sort_keys=True)+'\n')
+          PY
+          for MODE in probe scan; do
+            PROBE="$ROOT/candidate-probe.json"; SCAN="$ROOT/model-scan.json"
+            case "$MODE" in probe) PROBE="$ROOT/bad-probe.json";; scan) SCAN="$ROOT/bad-scan.json";; esac
+            set +e
+            python -m reference.real_model_environmental_suitability_decision_v32 \
+              --candidate-probe "$PROBE" --model-scan "$SCAN" \
+              --v31-record "$ROOT/v31/real-environmental-source-admission.json" \
+              --v31-receipt "$ROOT/v31/real-environmental-source-admission-receipt.json" \
+              --v31-comparison "$ROOT/v31/v31-independent-comparison-receipt.json" \
+              --output-dir "$ROOT/negative-$MODE"
+            code=$?
+            set -e
+            test "$code" -ne 0
+          done
+      - uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v32-final-suitability-${{ matrix.replica }}
+          path: |
+            /tmp/v32-final-${{ matrix.replica }}/candidate-probe.json
+            /tmp/v32-final-${{ matrix.replica }}/model-scan.json
+            /tmp/v32-final-${{ matrix.replica }}/out-a/real-model-environmental-source-suitability-decision.json
+            /tmp/v32-final-${{ matrix.replica }}/out-a/real-model-environmental-source-suitability-decision-receipt.json
+          if-no-files-found: error
+          retention-days: 30
+
+  compare-decision:
+    needs: decision-replica
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          name: proofgrid-v32-final-suitability-a
+          path: /tmp/v32/a
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          name: proofgrid-v32-final-suitability-b
+          path: /tmp/v32/b
+      - name: Require independent decision byte identity
+        run: |
+          set -euo pipefail
+          diff -u /tmp/v32/a/out-a/real-model-environmental-source-suitability-decision.json /tmp/v32/b/out-a/real-model-environmental-source-suitability-decision.json
+          diff -u /tmp/v32/a/out-a/real-model-environmental-source-suitability-decision-receipt.json /tmp/v32/b/out-a/real-model-environmental-source-suitability-decision-receipt.json
+          diff -u /tmp/v32/a/candidate-probe.json /tmp/v32/b/candidate-probe.json
+          diff -u /tmp/v32/a/model-scan.json /tmp/v32/b/model-scan.json
+      - name: Produce independent v3.2 comparison receipt
+        run: |
+          mkdir -p /tmp/v32/final
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          root=Path('/tmp/v32/a/out-a')
+          rec=(root/'real-model-environmental-source-suitability-decision.json').read_bytes()
+          rr=(root/'real-model-environmental-source-suitability-decision-receipt.json').read_bytes()
+          r=json.loads(rec); q=json.loads(rr)
+          out={'verdict':'REAL_MODEL_ENVIRONMENTAL_SOURCE_SUITABILITY_REVIEW_INDEPENDENTLY_REPRODUCED','independent_runner_count':2,'byte_identical':True,'decision':r['decision'],'record_content_sha256':r['integrity']['content_sha256'],'record_file_sha256':hashlib.sha256(rec).hexdigest(),'receipt_sha256':q['receipt_sha256'],'receipt_file_sha256':hashlib.sha256(rr).hexdigest(),'candidate_step_id':r['candidate']['step_id'],'candidate_global_id':r['candidate']['global_id'],'ifc_source_sha256':r['candidate']['ifc_source_sha256'],'v31_admission_content_sha256':r['parent_evidence']['v31_admission_content_sha256'],'model_wide_strength_occurrences':0,'mapping_authorized':False,'impact_calculation_performed':False,'certified':False}
+          raw=json.dumps(out,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode(); out['comparison_receipt_sha256']=hashlib.sha256(raw).hexdigest()
+          Path('/tmp/v32/final/v32-independent-comparison-receipt.json').write_text(json.dumps(out,indent=2,sort_keys=True)+'\n',encoding='utf-8',newline='\n')
+          Path('/tmp/v32/final/real-model-environmental-source-suitability-decision.json').write_bytes(rec)
+          Path('/tmp/v32/final/real-model-environmental-source-suitability-decision-receipt.json').write_bytes(rr)
+          print(json.dumps(out,indent=2,sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v32-final-suitability-decision
+          path: /tmp/v32/final/**
+          if-no-files-found: error
+          retention-days: 30

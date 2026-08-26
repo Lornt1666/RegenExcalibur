@@ -1,0 +1,91 @@
+name: ProofGrid v3.2 Model-Wide Strength Class Scan
+
+on:
+  pull_request:
+    paths:
+      - "reference/real_model_strength_class_scan_v32.py"
+      - "reference/real_model_source_suitability_probe_v32.py"
+      - ".github/workflows/proofgrid-v32-model-wide-strength-scan.yml"
+      - "requirements-proofgrid.txt"
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    strategy:
+      fail-fast: false
+      matrix:
+        replica: [a, b]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6.1.0
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.11.16"
+      - name: Install exact ProofGrid dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -r requirements-proofgrid.txt
+          python -m pip check
+          python -m py_compile reference/real_model_strength_class_scan_v32.py
+      - name: Fetch exact DigitalHub IFC
+        run: |
+          set -euo pipefail
+          ROOT="/tmp/v32-scan-${{ matrix.replica }}"; mkdir -p "$ROOT"
+          curl --fail --location --retry 4 --retry-delay 2 "https://raw.githubusercontent.com/RWTH-E3D/DigitalHub/36565d529b4dadeca625de2b793d7e16700171e9/Version_2/DigitalHub_FM-ARC_v2.ifc" -o "$ROOT/model.ifc"
+          test "$(stat -c%s "$ROOT/model.ifc")" -eq 9022255
+          test "$(sha256sum "$ROOT/model.ifc" | awk '{print $1}')" = "19d7d02d53c2b88e86890ee236297b12bbb0f7748030cd32ff6a22762e9966bb"
+      - name: Scan entire exact native IFC source text twice
+        run: |
+          set -euo pipefail
+          ROOT="/tmp/v32-scan-${{ matrix.replica }}"
+          python -m reference.real_model_strength_class_scan_v32 --ifc "$ROOT/model.ifc" --output "$ROOT/scan-a.json"
+          python -m reference.real_model_strength_class_scan_v32 --ifc "$ROOT/model.ifc" --output "$ROOT/scan-b.json"
+          diff -u "$ROOT/scan-a.json" "$ROOT/scan-b.json"
+      - name: Assert scan remains source-level non-mapping evidence
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.loads(Path('/tmp/v32-scan-${{ matrix.replica }}/scan-a.json').read_text())
+          assert r['verdict']=='REAL_IFC_LITERAL_CONCRETE_STRENGTH_CLASS_SCAN_VERIFIABLE'
+          assert r['source']['sha256']=='19d7d02d53c2b88e86890ee236297b12bbb0f7748030cd32ff6a22762e9966bb'
+          assert r['source']['file_bytes']==9022255
+          assert r['source_occurrence_count']==0
+          assert r['literal_strength_classes']==[]
+          assert r['method']['scope']=='ENTIRE_NATIVE_IFC_UTF8_SOURCE_TEXT'
+          assert r['method']['helper_api_inference_used'] is False
+          assert r['method']['inference_from_stb_or_material_names'] is False
+          assert r['method']['fuzzy_matching'] is False
+          assert r['authority_boundaries']['mapping_performed'] is False
+          assert r['authority_boundaries']['impact_calculation_performed'] is False
+          print('SOURCE_OCCURRENCES='+str(r['source_occurrence_count']))
+          print('LITERAL_CLASSES='+','.join(r['literal_strength_classes']))
+          print('C25_30_PRESENT='+str(r['target_classes']['C25/30_present']).lower())
+          print('C30_37_PRESENT='+str(r['target_classes']['C30/37_present']).lower())
+          print('SCAN_CONTENT_SHA='+r['integrity']['content_sha256'])
+          PY
+      - uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v32-model-wide-strength-scan-${{ matrix.replica }}
+          path: /tmp/v32-scan-${{ matrix.replica }}/scan-a.json
+          if-no-files-found: error
+          retention-days: 30
+
+  compare:
+    needs: scan
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          name: proofgrid-v32-model-wide-strength-scan-a
+          path: /tmp/v32/a
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          name: proofgrid-v32-model-wide-strength-scan-b
+          path: /tmp/v32/b
+      - name: Require model-wide source scan byte identity
+        run: |
+          diff -u /tmp/v32/a/scan-a.json /tmp/v32/b/scan-a.json
