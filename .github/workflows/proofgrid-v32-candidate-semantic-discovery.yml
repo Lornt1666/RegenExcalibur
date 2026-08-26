@@ -1,0 +1,101 @@
+name: ProofGrid v3.2 Candidate Semantic Discovery
+
+on:
+  pull_request:
+    paths:
+      - "reference/real_model_source_suitability_probe_v32.py"
+      - ".github/workflows/proofgrid-v32-candidate-semantic-discovery.yml"
+      - "requirements-proofgrid.txt"
+
+permissions:
+  contents: read
+
+jobs:
+  semantic-probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        replica: [a, b]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6.1.0
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.11.16"
+      - name: Install exact ProofGrid dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -r requirements-proofgrid.txt
+          python -m pip check
+          python -m py_compile reference/real_model_source_suitability_probe_v32.py
+      - name: Fetch exact real DigitalHub IFC
+        run: |
+          set -euo pipefail
+          ROOT="/tmp/v32-${{ matrix.replica }}"
+          mkdir -p "$ROOT"
+          curl --fail --location --retry 4 --retry-delay 2 \
+            "https://raw.githubusercontent.com/RWTH-E3D/DigitalHub/36565d529b4dadeca625de2b793d7e16700171e9/Version_2/DigitalHub_FM-ARC_v2.ifc" \
+            -o "$ROOT/DigitalHub_FM-ARC_v2.ifc"
+          test "$(stat -c%s "$ROOT/DigitalHub_FM-ARC_v2.ifc")" -eq 9022255
+          test "$(sha256sum "$ROOT/DigitalHub_FM-ARC_v2.ifc" | awk '{print $1}')" = "19d7d02d53c2b88e86890ee236297b12bbb0f7748030cd32ff6a22762e9966bb"
+      - name: Mine exact candidate semantic neighborhood twice
+        run: |
+          set -euo pipefail
+          ROOT="/tmp/v32-${{ matrix.replica }}"
+          python -m reference.real_model_source_suitability_probe_v32 --ifc "$ROOT/DigitalHub_FM-ARC_v2.ifc" --output "$ROOT/probe-a.json"
+          python -m reference.real_model_source_suitability_probe_v32 --ifc "$ROOT/DigitalHub_FM-ARC_v2.ifc" --output "$ROOT/probe-b.json"
+          diff -u "$ROOT/probe-a.json" "$ROOT/probe-b.json"
+      - name: Assert no mapping or inferred strength-class promotion
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.loads(Path('/tmp/v32-${{ matrix.replica }}/probe-a.json').read_text())
+          assert r['verdict']=='REAL_MODEL_ENVIRONMENTAL_SOURCE_SUITABILITY_EVIDENCE_PROBE_VERIFIABLE'
+          c=r['candidate']
+          assert c['step_id']==9730 and c['global_id']=='3BmeJtEDj3AQO77Os2w7Ny' and c['ifc_type']=='IfcColumn'
+          assert c['net_volume']['quantity_step_id']==9737
+          assert c['net_volume']['quantity_lexical']=='0.365000000000004'
+          assert c['net_volume']['unit_name']=='CUBIC_METRE'
+          assert r['authority_boundaries']['fuzzy_name_mapping_allowed'] is False
+          assert r['authority_boundaries']['strength_class_inference_performed'] is False
+          assert r['authority_boundaries']['environmental_mapping_performed'] is False
+          assert r['authority_boundaries']['impact_calculation_performed'] is False
+          print('C25_30_PRESENT='+str(r['strength_class_evidence']['c25_30_present']).lower())
+          print('C30_37_PRESENT='+str(r['strength_class_evidence']['c30_37_present']).lower())
+          print('PROBE_CONTENT_SHA256='+r['integrity']['content_sha256'])
+          PY
+      - uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v32-candidate-semantic-probe-${{ matrix.replica }}
+          path: /tmp/v32-${{ matrix.replica }}/probe-a.json
+          if-no-files-found: error
+          retention-days: 30
+
+  compare-probe:
+    needs: semantic-probe
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          name: proofgrid-v32-candidate-semantic-probe-a
+          path: /tmp/v32/a
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          name: proofgrid-v32-candidate-semantic-probe-b
+          path: /tmp/v32/b
+      - name: Require independent candidate-neighborhood byte identity
+        run: |
+          set -euo pipefail
+          diff -u /tmp/v32/a/probe-a.json /tmp/v32/b/probe-a.json
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          p=Path('/tmp/v32/a/probe-a.json')
+          r=json.loads(p.read_text())
+          print('V32_PROBE_FILE_SHA256='+hashlib.sha256(p.read_bytes()).hexdigest())
+          print('V32_PROBE_CONTENT_SHA256='+r['integrity']['content_sha256'])
+          print('C25_30_PRESENT='+str(r['strength_class_evidence']['c25_30_present']).lower())
+          print('C30_37_PRESENT='+str(r['strength_class_evidence']['c30_37_present']).lower())
+          PY
