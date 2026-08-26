@@ -46,7 +46,7 @@ jobs:
           unzip -q "$ROOT/current.zip" -d "$ROOT/current"
           unzip -q "$ROOT/predecessor.zip" -d "$ROOT/predecessor"
           test "$(sha256sum "$ROOT/current/ILCD/processes/8347f9a7-f4ec-4a36-a266-a0281f5fd16d_00.02.000.xml" | awk '{print $1}')" = "18951c19002314adb6213d05783f8075553102a1bc57e22950d941a4804e445d"
-      - name: Select only official predecessor process as validation supplement
+      - name: Add only official predecessor process as link-resolution supplement
         run: |
           set -euo pipefail
           ROOT="/tmp/v31-closure-${{ matrix.replica }}"
@@ -55,39 +55,25 @@ jobs:
           from pathlib import Path
           root=Path('/tmp/v31-closure-${{ matrix.replica }}')
           candidates=list((root/'predecessor/ILCD/processes').glob('71667cf3-ede8-42d2-b0ff-6f1071ad3b86_*.xml'))
-          if len(candidates)!=1:
-              raise SystemExit(f'expected one predecessor process XML, found {len(candidates)}: {candidates}')
+          if len(candidates)!=1: raise SystemExit(f'expected one predecessor process XML, found {len(candidates)}: {candidates}')
           src=candidates[0]
-          if '_00.04.000.xml' not in src.name:
-              raise SystemExit(f'unexpected predecessor version path: {src.name}')
-          data=src.read_bytes()
-          dst=root/'current/ILCD/processes'/src.name
-          if dst.exists(): raise SystemExit('predecessor process unexpectedly already present in current package')
+          if src.name!='71667cf3-ede8-42d2-b0ff-6f1071ad3b86_00.04.000.xml': raise SystemExit(f'unexpected predecessor path: {src.name}')
+          data=src.read_bytes(); dst=root/'current/ILCD/processes'/src.name
+          if dst.exists(): raise SystemExit('predecessor unexpectedly already in current package')
           dst.write_bytes(data)
-          receipt={
-            'verdict':'OEKOBAUDAT_VALIDATION_CLOSURE_PREDECESSOR_DISCOVERY_VERIFIABLE',
-            'role':'VALIDATION_ONLY_REFERENCE_CLOSURE_SUPPLEMENT',
-            'source_provider':'ÖKOBAUDAT',
-            'predecessor_uuid':'71667cf3-ede8-42d2-b0ff-6f1071ad3b86',
-            'predecessor_version':'00.04.000',
-            'predecessor_process_path':'ILCD/processes/'+src.name,
-            'predecessor_process_size_bytes':len(data),
-            'predecessor_process_sha256':hashlib.sha256(data).hexdigest(),
-            'canonical_source_package_mutated':False,
-            'supplement_is_source_authority':False,
-            'purpose':'Resolve current process referenceToPrecedingDataSetVersion during exact profile validation only.'
-          }
+          receipt={'verdict':'OEKOBAUDAT_VALIDATION_CLOSURE_PREDECESSOR_DISCOVERY_VERIFIABLE','role':'VALIDATION_ONLY_REFERENCE_CLOSURE_SUPPLEMENT','source_provider':'ÖKOBAUDAT','predecessor_uuid':'71667cf3-ede8-42d2-b0ff-6f1071ad3b86','predecessor_version':'00.04.000','predecessor_process_path':'ILCD/processes/'+src.name,'predecessor_process_size_bytes':len(data),'predecessor_process_sha256':hashlib.sha256(data).hexdigest(),'canonical_source_package_mutated':False,'supplement_is_source_authority':False,'target_validation_scope':'CURRENT_PROCESS_FILE_ONLY','purpose':'Resolve current process referenceToPrecedingDataSetVersion during exact profile validation only.'}
           raw=json.dumps(receipt,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode(); receipt['receipt_sha256']=hashlib.sha256(raw).hexdigest()
           (root/'closure-receipt.json').write_text(json.dumps(receipt,indent=2,sort_keys=True)+'\n',encoding='utf-8',newline='\n')
           print(json.dumps(receipt,indent=2,sort_keys=True))
           PY
-      - name: Rerun exact profile with one-file validation closure supplement
+      - name: Validate only current process with predecessor available for link resolution
         run: |
           set -euo pipefail
           ROOT="/tmp/v31-closure-${{ matrix.replica }}"
           CP="$(cat "$ROOT/classpath.txt"):$ROOT/classes"
           PROFILE="$(cat "$ROOT/profile-path.txt")"
-          java -Djava.net.useSystemProxies=false -cp "$CP" proofgrid.v08.OekobaudatProfileProbe "$PROFILE" "$ROOT/current" "$ROOT/profile-result.json" real-oekobaudat-c25-30-plus-predecessor
+          TARGET="$ROOT/current/ILCD/processes/8347f9a7-f4ec-4a36-a266-a0281f5fd16d_00.02.000.xml"
+          java -Djava.net.useSystemProxies=false -cp "$CP" proofgrid.v08.OekobaudatProfileProbe "$PROFILE" "$TARGET" "$ROOT/profile-result.json" real-oekobaudat-c25-30-current-only-plus-predecessor-context
           python - <<'PY'
           import json
           from pathlib import Path
