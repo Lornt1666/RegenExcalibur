@@ -1,4 +1,3 @@
-import copy
 import hashlib
 import unittest
 
@@ -11,7 +10,7 @@ class ExternalMaterialSpecAdmissionV35Tests(unittest.TestCase):
 
     def source(self, decision="AUTHORITATIVE_MATERIAL_SPEC_ACQUIRED_AND_CANDIDATE_BOUND"):
         content = self.content()
-        source = {
+        return {
             "schema_version": "1.0",
             "record_type": "ProofGridExternalMaterialSpecificationSource",
             "acquisition": {
@@ -59,7 +58,6 @@ class ExternalMaterialSpecAdmissionV35Tests(unittest.TestCase):
                 "certified": False,
             },
         }
-        return source
 
     def test_candidate_bound_source_admitted(self):
         record = v35.build_admission(self.source(), self.content())
@@ -84,6 +82,19 @@ class ExternalMaterialSpecAdmissionV35Tests(unittest.TestCase):
         }
         record = v35.build_admission(source, self.content())
         self.assertEqual(record["candidate_resolution_state"], "AUTHORITATIVE_SOURCE_CONFIRMS_STRENGTH_CLASS_NOT_SPECIFIED")
+
+    def test_unbound_explicit_absence_rejected(self):
+        source = self.source("AUTHORITATIVE_SOURCE_CONFIRMS_STRENGTH_CLASS_NOT_SPECIFIED")
+        source["candidate"]["candidate_bound"] = False
+        source["candidate"]["binding_method"] = "UNBOUND"
+        source["material_semantics"] = {
+            "strength_class_explicit": False,
+            "concrete_strength_class": None,
+            "strength_class_source_text_sha256": hashlib.sha256(b"not specified").hexdigest(),
+            "explicit_absence_statement": True,
+        }
+        with self.assertRaises(v35.ExternalMaterialSpecAdmissionError):
+            v35.build_admission(source, self.content())
 
     def test_content_tamper_rejected(self):
         with self.assertRaises(v35.ExternalMaterialSpecAdmissionError):
