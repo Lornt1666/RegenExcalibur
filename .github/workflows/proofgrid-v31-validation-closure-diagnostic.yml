@@ -1,0 +1,131 @@
+name: ProofGrid v3.1 ÖKOBAUDAT Validation Closure Diagnostic
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/proofgrid-v31-validation-closure-diagnostic.yml"
+      - "conformance/oekobaudat-v12/OekobaudatProfileProbe.java"
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose-predecessor-closure:
+    strategy:
+      fail-fast: false
+      matrix:
+        replica: [a, b]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6.1.0
+      - uses: actions/setup-java@v5.0.0
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Resolve exact validator/profile stack
+        run: |
+          set -euo pipefail
+          ROOT="/tmp/v31-closure-${{ matrix.replica }}"
+          mkdir -p "$ROOT/classes" "$ROOT/current" "$ROOT/predecessor"
+          cat > "$ROOT/pom.xml" <<'POM'
+          <project xmlns="http://maven.apache.org/POM/4.0.0"><modelVersion>4.0.0</modelVersion><groupId>proofgrid.v31</groupId><artifactId>closure-diagnostic</artifactId><version>3.1.0</version><dependencies><dependency><groupId>com.okworx.ilcd.validation</groupId><artifactId>ilcd-validation</artifactId><version>2.12.2</version></dependency><dependency><groupId>com.okworx.ilcd.validation.profiles</groupId><artifactId>EPD-1.2-OEKOBAUDAT</artifactId><version>3.8.0</version></dependency></dependencies></project>
+          POM
+          mvn -B -ntp -f "$ROOT/pom.xml" dependency:go-offline
+          mvn -B -ntp -f "$ROOT/pom.xml" dependency:build-classpath -Dmdep.outputFile="$ROOT/classpath.txt" -Dmdep.pathSeparator=:
+          PROFILE="$HOME/.m2/repository/com/okworx/ilcd/validation/profiles/EPD-1.2-OEKOBAUDAT/3.8.0/EPD-1.2-OEKOBAUDAT-3.8.0.jar"
+          test "$(sha256sum "$PROFILE" | awk '{print $1}')" = "96ee05b9cf5172a344df3ea844aa8d94060eae4e4e8188f72e46441a3d61921e"
+          printf '%s\n' "$PROFILE" > "$ROOT/profile-path.txt"
+          javac -encoding UTF-8 -cp "$(cat "$ROOT/classpath.txt")" -d "$ROOT/classes" conformance/oekobaudat-v12/OekobaudatProfileProbe.java
+      - name: Fetch exact current and predecessor official packages
+        run: |
+          set -euo pipefail
+          ROOT="/tmp/v31-closure-${{ matrix.replica }}"
+          curl --fail --location --retry 4 --retry-delay 2 "https://www.oekobaudat.de/OEKOBAU.DAT/resource/processes/8347f9a7-f4ec-4a36-a266-a0281f5fd16d/zipexport?version=00.02.000" -o "$ROOT/current.zip"
+          curl --fail --location --retry 4 --retry-delay 2 "https://www.oekobaudat.de/OEKOBAU.DAT/resource/processes/71667cf3-ede8-42d2-b0ff-6f1071ad3b86/zipexport?version=00.04.000" -o "$ROOT/predecessor.zip"
+          unzip -q "$ROOT/current.zip" -d "$ROOT/current"
+          unzip -q "$ROOT/predecessor.zip" -d "$ROOT/predecessor"
+          test "$(sha256sum "$ROOT/current/ILCD/processes/8347f9a7-f4ec-4a36-a266-a0281f5fd16d_00.02.000.xml" | awk '{print $1}')" = "18951c19002314adb6213d05783f8075553102a1bc57e22950d941a4804e445d"
+      - name: Select only official predecessor process as validation supplement
+        run: |
+          set -euo pipefail
+          ROOT="/tmp/v31-closure-${{ matrix.replica }}"
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          root=Path('/tmp/v31-closure-${{ matrix.replica }}')
+          candidates=list((root/'predecessor/ILCD/processes').glob('71667cf3-ede8-42d2-b0ff-6f1071ad3b86_*.xml'))
+          if len(candidates)!=1:
+              raise SystemExit(f'expected one predecessor process XML, found {len(candidates)}: {candidates}')
+          src=candidates[0]
+          if '_00.04.000.xml' not in src.name:
+              raise SystemExit(f'unexpected predecessor version path: {src.name}')
+          data=src.read_bytes()
+          dst=root/'current/ILCD/processes'/src.name
+          if dst.exists(): raise SystemExit('predecessor process unexpectedly already present in current package')
+          dst.write_bytes(data)
+          receipt={
+            'verdict':'OEKOBAUDAT_VALIDATION_CLOSURE_PREDECESSOR_DISCOVERY_VERIFIABLE',
+            'role':'VALIDATION_ONLY_REFERENCE_CLOSURE_SUPPLEMENT',
+            'source_provider':'ÖKOBAUDAT',
+            'predecessor_uuid':'71667cf3-ede8-42d2-b0ff-6f1071ad3b86',
+            'predecessor_version':'00.04.000',
+            'predecessor_process_path':'ILCD/processes/'+src.name,
+            'predecessor_process_size_bytes':len(data),
+            'predecessor_process_sha256':hashlib.sha256(data).hexdigest(),
+            'canonical_source_package_mutated':False,
+            'supplement_is_source_authority':False,
+            'purpose':'Resolve current process referenceToPrecedingDataSetVersion during exact profile validation only.'
+          }
+          raw=json.dumps(receipt,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode(); receipt['receipt_sha256']=hashlib.sha256(raw).hexdigest()
+          (root/'closure-receipt.json').write_text(json.dumps(receipt,indent=2,sort_keys=True)+'\n',encoding='utf-8',newline='\n')
+          print(json.dumps(receipt,indent=2,sort_keys=True))
+          PY
+      - name: Rerun exact profile with one-file validation closure supplement
+        run: |
+          set -euo pipefail
+          ROOT="/tmp/v31-closure-${{ matrix.replica }}"
+          CP="$(cat "$ROOT/classpath.txt"):$ROOT/classes"
+          PROFILE="$(cat "$ROOT/profile-path.txt")"
+          java -Djava.net.useSystemProxies=false -cp "$CP" proofgrid.v08.OekobaudatProfileProbe "$PROFILE" "$ROOT/current" "$ROOT/profile-result.json" real-oekobaudat-c25-30-plus-predecessor
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.loads(Path('/tmp/v31-closure-${{ matrix.replica }}/profile-result.json').read_text())
+          print('PROFILE_SUMMARY',json.dumps({k:r[k] for k in ('profile_name','profile_version','is_positive','error_count','warning_count','event_count')},sort_keys=True))
+          for e in r['events']:
+              if e.get('severity')=='ERROR': print('PROFILE_ERROR_EVENT',json.dumps(e,sort_keys=True,ensure_ascii=False))
+          PY
+      - uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v31-validation-closure-diagnostic-${{ matrix.replica }}
+          path: |
+            /tmp/v31-closure-${{ matrix.replica }}/closure-receipt.json
+            /tmp/v31-closure-${{ matrix.replica }}/profile-result.json
+          if-no-files-found: error
+          retention-days: 30
+
+  compare:
+    needs: diagnose-predecessor-closure
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          name: proofgrid-v31-validation-closure-diagnostic-a
+          path: /tmp/v31/a
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          name: proofgrid-v31-validation-closure-diagnostic-b
+          path: /tmp/v31/b
+      - name: Require identical supplement identity and validation summary
+        run: |
+          set -euo pipefail
+          diff -u /tmp/v31/a/closure-receipt.json /tmp/v31/b/closure-receipt.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          a=json.loads(Path('/tmp/v31/a/profile-result.json').read_text()); b=json.loads(Path('/tmp/v31/b/profile-result.json').read_text())
+          keys=('profile_name','profile_version','is_positive','error_count','warning_count','event_count')
+          assert {k:a[k] for k in keys}=={k:b[k] for k in keys}
+          print('CLOSURE_PROFILE_SUMMARY='+json.dumps({k:a[k] for k in keys},sort_keys=True))
+          PY
