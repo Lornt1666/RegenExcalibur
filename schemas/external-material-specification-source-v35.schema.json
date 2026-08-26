@@ -1,0 +1,134 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://regenexcalibur.example/schemas/external-material-specification-source-v35.schema.json",
+  "title": "ProofGrid v3.5 External Material Specification Source",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "record_type",
+    "acquisition",
+    "candidate",
+    "source_authority",
+    "material_semantics",
+    "decision",
+    "authority_boundaries"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "record_type": {"const": "ProofGridExternalMaterialSpecificationSource"},
+    "acquisition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["channel", "source_locator", "received_at", "content_sha256", "content_bytes"],
+      "properties": {
+        "channel": {"enum": ["EMAIL_REPLY", "AUTHOR_ATTACHMENT", "OFFICIAL_PROJECT_ARTIFACT", "AUTHOR_CONFIRMATION"]},
+        "source_locator": {"type": "string", "minLength": 1},
+        "message_id": {"type": ["string", "null"]},
+        "thread_id": {"type": ["string", "null"]},
+        "attachment_name": {"type": ["string", "null"]},
+        "media_type": {"type": ["string", "null"]},
+        "received_at": {"type": "string", "minLength": 1},
+        "content_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "content_bytes": {"type": "integer", "minimum": 1}
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ifc_source_sha256", "step_id", "global_id", "object_id", "material_name", "binding_method", "candidate_bound"],
+      "properties": {
+        "ifc_source_sha256": {"const": "19d7d02d53c2b88e86890ee236297b12bbb0f7748030cd32ff6a22762e9966bb"},
+        "step_id": {"const": 9730},
+        "global_id": {"const": "3BmeJtEDj3AQO77Os2w7Ny"},
+        "object_id": {"const": "2395272"},
+        "material_name": {"const": "Ortbeton - bewehrt"},
+        "binding_method": {"enum": ["EXACT_GLOBAL_ID", "EXACT_OBJECT_ID", "EXACT_DOCUMENTED_MATERIAL_GROUP", "AUTHOR_EXPLICIT_CONFIRMATION", "UNBOUND"]},
+        "candidate_bound": {"type": "boolean"}
+      }
+    },
+    "source_authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["author_name", "author_organization", "relation_to_digitalhub", "authority_basis"],
+      "properties": {
+        "author_name": {"type": "string", "minLength": 1},
+        "author_email": {"type": ["string", "null"]},
+        "author_organization": {"type": "string", "minLength": 1},
+        "relation_to_digitalhub": {"type": "string", "minLength": 1},
+        "authority_basis": {"enum": ["PROJECT_AUTHOR", "PROJECT_MAINTAINER", "ORIGINAL_MODEL_AUTHOR", "ORIGINAL_SPECIFICATION_AUTHOR", "OTHER_DOCUMENTED_PROJECT_AUTHORITY"]}
+      }
+    },
+    "material_semantics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["strength_class_explicit", "concrete_strength_class", "strength_class_source_text_sha256", "explicit_absence_statement"],
+      "properties": {
+        "strength_class_explicit": {"type": "boolean"},
+        "concrete_strength_class": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^C[0-9]{2}/[0-9]{2}$"}]},
+        "strength_class_source_text_sha256": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^[a-f0-9]{64}$"}]},
+        "explicit_absence_statement": {"type": "boolean"}
+      }
+    },
+    "decision": {
+      "enum": [
+        "AUTHORITATIVE_MATERIAL_SPEC_ACQUIRED_AND_CANDIDATE_BOUND",
+        "AUTHORITATIVE_MATERIAL_SPEC_ACQUIRED_BUT_NOT_CANDIDATE_BOUND",
+        "AUTHORITATIVE_SOURCE_CONFIRMS_STRENGTH_CLASS_NOT_SPECIFIED"
+      ]
+    },
+    "authority_boundaries": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fuzzy_matching", "strength_class_inferred", "environmental_mapping_performed", "impact_calculation_performed", "scientific_suitability_confirmed", "professional_review_performed", "regulator_acceptance_implied", "certified"],
+      "properties": {
+        "fuzzy_matching": {"const": false},
+        "strength_class_inferred": {"const": false},
+        "environmental_mapping_performed": {"const": false},
+        "impact_calculation_performed": {"const": false},
+        "scientific_suitability_confirmed": {"const": false},
+        "professional_review_performed": {"const": false},
+        "regulator_acceptance_implied": {"const": false},
+        "certified": {"const": false}
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"decision": {"const": "AUTHORITATIVE_MATERIAL_SPEC_ACQUIRED_AND_CANDIDATE_BOUND"}}},
+      "then": {
+        "properties": {
+          "candidate": {"properties": {"candidate_bound": {"const": true}, "binding_method": {"not": {"const": "UNBOUND"}}}},
+          "material_semantics": {
+            "properties": {
+              "strength_class_explicit": {"const": true},
+              "concrete_strength_class": {"type": "string", "pattern": "^C[0-9]{2}/[0-9]{2}$"},
+              "strength_class_source_text_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+              "explicit_absence_statement": {"const": false}
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"decision": {"const": "AUTHORITATIVE_MATERIAL_SPEC_ACQUIRED_BUT_NOT_CANDIDATE_BOUND"}}},
+      "then": {"properties": {"candidate": {"properties": {"candidate_bound": {"const": false}, "binding_method": {"const": "UNBOUND"}}}}}
+    },
+    {
+      "if": {"properties": {"decision": {"const": "AUTHORITATIVE_SOURCE_CONFIRMS_STRENGTH_CLASS_NOT_SPECIFIED"}}},
+      "then": {
+        "properties": {
+          "candidate": {"properties": {"candidate_bound": {"const": true}, "binding_method": {"not": {"const": "UNBOUND"}}}},
+          "material_semantics": {
+            "properties": {
+              "strength_class_explicit": {"const": false},
+              "concrete_strength_class": {"type": "null"},
+              "strength_class_source_text_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+              "explicit_absence_statement": {"const": true}
+            }
+          }
+        }
+      }
+    }
+  ]
+}

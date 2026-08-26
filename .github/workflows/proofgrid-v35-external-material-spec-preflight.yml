@@ -1,0 +1,67 @@
+name: ProofGrid v3.5 External Material Specification Admission Preflight
+
+on:
+  pull_request:
+    paths:
+      - "schemas/external-material-specification-source-v35.schema.json"
+      - "reference/external_material_spec_admission_v35.py"
+      - "reference/build_external_material_spec_source_v35.py"
+      - "tests/test_external_material_spec_admission_v35.py"
+      - "tests/test_build_external_material_spec_source_v35.py"
+      - "conformance/external-material-spec-v35/**"
+      - ".github/workflows/proofgrid-v35-external-material-spec-preflight.yml"
+      - "requirements-proofgrid.txt"
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6.1.0
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.11.16"
+      - name: Install exact ProofGrid dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -r requirements-proofgrid.txt
+          python -m pip check
+      - name: Compile v3.5 admission tooling
+        run: |
+          python -m py_compile \
+            reference/external_material_spec_admission_v35.py \
+            reference/build_external_material_spec_source_v35.py \
+            tests/test_external_material_spec_admission_v35.py \
+            tests/test_build_external_material_spec_source_v35.py
+      - name: Run focused fail-closed v3.5 suite
+        run: |
+          python -m unittest -v \
+            tests.test_external_material_spec_admission_v35 \
+            tests.test_build_external_material_spec_source_v35
+      - name: Assert real-source acquisition remains external
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          schema=json.loads(Path('schemas/external-material-specification-source-v35.schema.json').read_text())
+          decisions=set(schema['properties']['decision']['enum'])
+          assert decisions == {
+            'AUTHORITATIVE_MATERIAL_SPEC_ACQUIRED_AND_CANDIDATE_BOUND',
+            'AUTHORITATIVE_MATERIAL_SPEC_ACQUIRED_BUT_NOT_CANDIDATE_BOUND',
+            'AUTHORITATIVE_SOURCE_CONFIRMS_STRENGTH_CLASS_NOT_SPECIFIED',
+          }
+          boundary=schema['properties']['authority_boundaries']['properties']
+          for key in (
+            'fuzzy_matching','strength_class_inferred','environmental_mapping_performed',
+            'impact_calculation_performed','scientific_suitability_confirmed',
+            'professional_review_performed','regulator_acceptance_implied','certified',
+          ):
+            assert boundary[key]['const'] is False
+          print('RESULT: V35_EXTERNAL_SOURCE_ADMISSION_ENGINE_PREFLIGHT_VERIFIABLE')
+          print('REAL_EXTERNAL_SOURCE_ACQUIRED=false')
+          print('MAPPING_AUTHORIZED=false')
+          print('IMPACT_CALCULATION_PERMITTED=false')
+          PY
