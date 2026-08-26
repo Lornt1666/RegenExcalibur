@@ -1,0 +1,131 @@
+name: ProofGrid v3.4 Historical IFC Material Semantics Discovery
+
+on:
+  pull_request:
+    paths:
+      - "reference/digitalhub_historical_ifc_material_semantics_v34.py"
+      - ".github/workflows/proofgrid-v34-historical-ifc-material-semantics.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  discover:
+    strategy:
+      fail-fast: false
+      matrix:
+        replica: [a, b]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6.1.0
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.11.16"
+      - name: Compile scanner
+        run: python -m py_compile reference/digitalhub_historical_ifc_material_semantics_v34.py
+      - name: Fetch exact historical DigitalHub IFC revisions
+        run: |
+          set -euo pipefail
+          ROOT="/tmp/v34-${{ matrix.replica }}"; mkdir -p "$ROOT"
+          curl --fail --location --retry 4 --retry-delay 2 \
+            "https://raw.githubusercontent.com/RWTH-E3D/DigitalHub/36565d529b4dadeca625de2b793d7e16700171e9/Version_1/FM_ARC_DigitalHub_v1.ifc" \
+            -o "$ROOT/arc.ifc"
+          curl --fail --location --retry 4 --retry-delay 2 \
+            "https://raw.githubusercontent.com/RWTH-E3D/DigitalHub/36565d529b4dadeca625de2b793d7e16700171e9/Version_1/FM_ARC_DigitalHub_with_SB_v1.ifc" \
+            -o "$ROOT/arc-with-sb.ifc"
+          test "$(stat -c%s "$ROOT/arc.ifc")" -eq 14322717
+          test "$(stat -c%s "$ROOT/arc-with-sb.ifc")" -eq 17621384
+      - name: Scan historical material semantics twice
+        run: |
+          set -euo pipefail
+          ROOT="/tmp/v34-${{ matrix.replica }}"
+          python -m reference.digitalhub_historical_ifc_material_semantics_v34 --arc "$ROOT/arc.ifc" --arc-with-sb "$ROOT/arc-with-sb.ifc" --output "$ROOT/scan-a.json"
+          python -m reference.digitalhub_historical_ifc_material_semantics_v34 --arc "$ROOT/arc.ifc" --arc-with-sb "$ROOT/arc-with-sb.ifc" --output "$ROOT/scan-b.json"
+          diff -u "$ROOT/scan-a.json" "$ROOT/scan-b.json"
+      - name: Require historical evidence-only boundary
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.loads(Path('/tmp/v34-${{ matrix.replica }}/scan-a.json').read_text())
+          assert r['verdict']=='DIGITALHUB_HISTORICAL_IFC_MATERIAL_SEMANTICS_DISCOVERY_VERIFIABLE'
+          assert r['upstream_commit']=='36565d529b4dadeca625de2b793d7e16700171e9'
+          b=r['historical_authority_boundary']
+          assert b['historical_source_may_override_accepted_v2_source'] is False
+          assert b['candidate_binding_requires_exact_v2_global_id_or_object_id_same_line'] is True
+          assert b['type_or_material_name_alone_is_binding_authority'] is False
+          assert b['fuzzy_matching'] is False
+          assert b['strength_class_inferred'] is False
+          assert b['ifc_environmental_mapping_performed'] is False
+          assert b['impact_calculation_performed'] is False
+          assert b['scientific_suitability_decided'] is False
+          assert b['certified'] is False
+          print('DISCOVERY_STATE='+r['discovery_state'])
+          print('STRENGTH_HITS='+str(r['combined']['strength_class_hit_count']))
+          print('CANDIDATE_BOUND_STRENGTH_HITS='+str(r['combined']['candidate_bound_strength_class_hit_count']))
+          print('CLASSES='+','.join(r['combined']['literal_strength_classes']))
+          for key,s in r['historical_sources'].items():
+              print(key.upper()+'_SHA256='+s['file_sha256'])
+              print(key.upper()+'_C25_30_HITS='+str(len(s['exact_token_hits']['literal_C25_30'])))
+              print(key.upper()+'_C30_37_HITS='+str(len(s['exact_token_hits']['literal_C30_37'])))
+              print(key.upper()+'_OBJECT_ID_HITS='+str(len(s['exact_token_hits']['candidate_revit_object_id'])))
+              print(key.upper()+'_GLOBAL_ID_HITS='+str(len(s['exact_token_hits']['candidate_global_id'])))
+          print('CONTENT_SHA='+r['integrity']['content_sha256'])
+          PY
+      - uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v34-historical-semantics-${{ matrix.replica }}
+          path: /tmp/v34-${{ matrix.replica }}/scan-a.json
+          if-no-files-found: error
+          retention-days: 30
+
+  compare:
+    needs: discover
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          name: proofgrid-v34-historical-semantics-a
+          path: /tmp/v34/a
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          name: proofgrid-v34-historical-semantics-b
+          path: /tmp/v34/b
+      - name: Require byte identity and emit final receipt
+        run: |
+          set -euo pipefail
+          diff -u /tmp/v34/a/scan-a.json /tmp/v34/b/scan-a.json
+          mkdir -p /tmp/v34/final
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          raw=Path('/tmp/v34/a/scan-a.json').read_bytes(); r=json.loads(raw)
+          out={
+            'verdict':'DIGITALHUB_HISTORICAL_IFC_MATERIAL_SEMANTICS_INDEPENDENTLY_REPRODUCED',
+            'accepted_v33_head':'549e162c93ea74900f3fc96a9bda9189816b3b7d',
+            'independent_runner_count':2,
+            'byte_identical':True,
+            'discovery_state':r['discovery_state'],
+            'record_content_sha256':r['integrity']['content_sha256'],
+            'record_file_sha256':hashlib.sha256(raw).hexdigest(),
+            'strength_class_hit_count':r['combined']['strength_class_hit_count'],
+            'candidate_bound_strength_class_hit_count':r['combined']['candidate_bound_strength_class_hit_count'],
+            'literal_strength_classes':r['combined']['literal_strength_classes'],
+            'historical_source_may_override_accepted_v2_source':False,
+            'mapping_performed':False,
+            'impact_calculation_performed':False,
+            'scientific_suitability_decided':False,
+            'certified':False,
+          }
+          out['comparison_receipt_sha256']=hashlib.sha256(json.dumps(out,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()
+          Path('/tmp/v34/final/digitalhub-historical-ifc-material-semantics.json').write_bytes(raw)
+          Path('/tmp/v34/final/v34-independent-comparison-receipt.json').write_text(json.dumps(out,indent=2,sort_keys=True)+'\n',encoding='utf-8',newline='\n')
+          print(json.dumps(out,indent=2,sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v34-historical-ifc-material-semantics
+          path: /tmp/v34/final/**
+          if-no-files-found: error
+          retention-days: 30
