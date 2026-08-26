@@ -1,0 +1,149 @@
+name: ProofGrid v3.3 DigitalHub Workbook Material Spec Discovery
+
+on:
+  pull_request:
+    paths:
+      - "reference/digitalhub_workbook_material_spec_v33.py"
+      - "tests/test_digitalhub_workbook_material_spec_v33.py"
+      - ".github/workflows/proofgrid-v33-digitalhub-workbook-material-spec.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  discover:
+    strategy:
+      fail-fast: false
+      matrix:
+        replica: [a, b]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6.1.0
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.11.16"
+
+      - name: Run focused fail-closed v3.3 tests
+        run: |
+          set -euo pipefail
+          python -m unittest -v tests.test_digitalhub_workbook_material_spec_v33
+          python -m py_compile reference/digitalhub_workbook_material_spec_v33.py
+
+      - name: Fetch exact upstream DigitalHub workbook
+        run: |
+          set -euo pipefail
+          ROOT="/tmp/v33-${{ matrix.replica }}"; mkdir -p "$ROOT"
+          curl --fail --location --retry 4 --retry-delay 2 \
+            "https://raw.githubusercontent.com/RWTH-E3D/DigitalHub/36565d529b4dadeca625de2b793d7e16700171e9/Resources/Excel/DigitalHub_v1.xlsx" \
+            -o "$ROOT/DigitalHub_v1.xlsx"
+          test "$(stat -c%s "$ROOT/DigitalHub_v1.xlsx")" -eq 27409
+          python - <<'PY'
+          import hashlib
+          from pathlib import Path
+          p=Path('/tmp/v33-${{ matrix.replica }}/DigitalHub_v1.xlsx')
+          b=p.read_bytes()
+          blob=hashlib.sha1(f'blob {len(b)}\0'.encode()+b).hexdigest()
+          assert blob=='119270f598aee1c427cc52107bfb60ffee6526d8'
+          print('WORKBOOK_SHA256='+hashlib.sha256(b).hexdigest())
+          print('WORKBOOK_GIT_BLOB_SHA1='+blob)
+          PY
+
+      - name: Extract workbook material-spec evidence twice
+        run: |
+          set -euo pipefail
+          ROOT="/tmp/v33-${{ matrix.replica }}"
+          python -m reference.digitalhub_workbook_material_spec_v33 \
+            --xlsx "$ROOT/DigitalHub_v1.xlsx" \
+            --output "$ROOT/discovery-a.json"
+          python -m reference.digitalhub_workbook_material_spec_v33 \
+            --xlsx "$ROOT/DigitalHub_v1.xlsx" \
+            --output "$ROOT/discovery-b.json"
+          diff -u "$ROOT/discovery-a.json" "$ROOT/discovery-b.json"
+
+      - name: Require discovery-only authority boundary
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.loads(Path('/tmp/v33-${{ matrix.replica }}/discovery-a.json').read_text())
+          assert r['verdict']=='DIGITALHUB_AUTHORITATIVE_WORKBOOK_MATERIAL_SPEC_DISCOVERY_VERIFIABLE'
+          assert r['source']['upstream_commit']=='36565d529b4dadeca625de2b793d7e16700171e9'
+          assert r['source']['git_blob_sha1']=='119270f598aee1c427cc52107bfb60ffee6526d8'
+          assert r['source']['size_bytes']==27409
+          assert r['candidate_binding_rule']['type_or_material_name_alone_is_binding_authority'] is False
+          assert r['authority_boundaries']['fuzzy_matching'] is False
+          assert r['authority_boundaries']['strength_class_inferred'] is False
+          assert r['authority_boundaries']['ifc_environmental_mapping_performed'] is False
+          assert r['authority_boundaries']['impact_calculation_performed'] is False
+          assert r['authority_boundaries']['scientific_suitability_decided'] is False
+          assert r['authority_boundaries']['certified'] is False
+          print('DISCOVERY_STATE='+r['discovery_state'])
+          print('WORKBOOK_SHA256='+r['source']['file_sha256'])
+          print('SHEET_COUNT='+str(r['workbook']['sheet_count']))
+          print('NONEMPTY_CELL_COUNT='+str(r['workbook']['nonempty_cell_count']))
+          print('STRENGTH_HITS='+str(len(r['strength_class_hits'])))
+          print('CANDIDATE_BOUND_STRENGTH_HITS='+str(len(r['candidate_bound_strength_class_hits'])))
+          for k,v in r['literal_hits'].items(): print(k.upper()+'_HITS='+str(len(v)))
+          print('DISCOVERY_CONTENT_SHA='+r['integrity']['content_sha256'])
+          PY
+
+      - uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v33-workbook-discovery-${{ matrix.replica }}
+          path: /tmp/v33-${{ matrix.replica }}/discovery-a.json
+          if-no-files-found: error
+          retention-days: 30
+
+  compare:
+    needs: discover
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          name: proofgrid-v33-workbook-discovery-a
+          path: /tmp/v33/a
+      - uses: actions/download-artifact@v4.3.0
+        with:
+          name: proofgrid-v33-workbook-discovery-b
+          path: /tmp/v33/b
+      - name: Require independent byte identity and emit final discovery receipt
+        run: |
+          set -euo pipefail
+          diff -u /tmp/v33/a/discovery-a.json /tmp/v33/b/discovery-a.json
+          mkdir -p /tmp/v33/final
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          raw=Path('/tmp/v33/a/discovery-a.json').read_bytes(); r=json.loads(raw)
+          out={
+            'verdict':'DIGITALHUB_AUTHORITATIVE_WORKBOOK_MATERIAL_SPEC_DISCOVERY_INDEPENDENTLY_REPRODUCED',
+            'accepted_v32_head':'fa6c53b28c64361457bcca6c8d486911ca444e9f',
+            'independent_runner_count':2,
+            'byte_identical':True,
+            'discovery_state':r['discovery_state'],
+            'workbook_sha256':r['source']['file_sha256'],
+            'workbook_git_blob_sha1':r['source']['git_blob_sha1'],
+            'workbook_size_bytes':r['source']['size_bytes'],
+            'record_content_sha256':r['integrity']['content_sha256'],
+            'record_file_sha256':hashlib.sha256(raw).hexdigest(),
+            'strength_class_hit_count':len(r['strength_class_hits']),
+            'candidate_bound_strength_class_hit_count':len(r['candidate_bound_strength_class_hits']),
+            'mapping_performed':False,
+            'impact_calculation_performed':False,
+            'scientific_suitability_decided':False,
+            'certified':False,
+          }
+          canon=json.dumps(out,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()
+          out['comparison_receipt_sha256']=hashlib.sha256(canon).hexdigest()
+          Path('/tmp/v33/final/v33-workbook-discovery-comparison-receipt.json').write_text(json.dumps(out,indent=2,sort_keys=True)+'\n',encoding='utf-8',newline='\n')
+          Path('/tmp/v33/final/digitalhub-workbook-material-spec-discovery.json').write_bytes(raw)
+          print(json.dumps(out,indent=2,sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@v4.6.2
+        with:
+          name: proofgrid-v33-digitalhub-workbook-material-spec-discovery
+          path: /tmp/v33/final/**
+          if-no-files-found: error
+          retention-days: 30
