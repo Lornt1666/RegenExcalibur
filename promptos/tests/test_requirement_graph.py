@@ -21,12 +21,12 @@ class TestRequirementGraph(unittest.TestCase):
         self.assertTrue(any("edge source 'ac-1' not a node" in e for e in r["errors"]))
 
     def test_missing_acceptance_invariant_fires(self):
-        # Clean removal: drop the AC node AND its satisfies edge so the
+        # Clean removal: drop the AC node AND every edge touching it so the
         # structural check passes and invariant 1 must fire.
         g = minimal_graph()
         g["nodes"] = [n for n in g["nodes"] if n["type"] != "AcceptanceCriterion"]
         g["edges"] = [e for e in g["edges"]
-                        if not (e["type"] == "satisfies" and e["source"] == "ac-1")]
+                        if e.get("source") != "ac-1" and e.get("target") != "ac-1"]
         r = validate_requirement_graph(g)
         self.assertEqual(r["status"], "FAIL")
         self.assertTrue(any("invariant 1" in e for e in r["errors"]))
@@ -61,5 +61,5 @@ class TestRequirementGraph(unittest.TestCase):
         self.assertNotEqual(hash_graph(g), hash_graph(g2))
 
 
-if __name__ == "__main__":
+if __name__ == "main":
     unittest.main()
