@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ExecutionDAG",
+  "type": "object",
+  "required": ["dag_nodes", "dag_edges"],
+  "properties": {
+    "dag_nodes": {"type": "array"},
+    "dag_edges": {"type": "array"},
+    "retry_policy": {"type": "string"},
+    "timeout_seconds": {"type": "integer"}
+  }
+}

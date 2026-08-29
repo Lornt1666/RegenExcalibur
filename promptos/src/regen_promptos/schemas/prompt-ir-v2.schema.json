@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://regenexcalibur.local/schemas/prompt-ir-v2.schema.json",
+  "title": "PromptIRv2",
+  "type": "object",
+  "required": ["ir_version", "planes"],
+  "properties": {
+    "ir_version": {"type": "string"},
+    "planes": {
+      "type": "object",
+      "required": ["semantic", "execution", "model", "verification", "commercial"],
+      "properties": {
+        "semantic": {"type": "object"},
+        "execution": {"type": "object"},
+        "model": {"type": "object"},
+        "verification": {"type": "object"},
+        "commercial": {
+          "type": "object",
+          "properties": {
+            "provider_key_included": {"type": "boolean", "const": false},
+            "promptos_token_included": {"type": "boolean", "const": false}
+          }
+        }
+      }
+    },
+    "hash": {"type": "string"}
+  }
+}

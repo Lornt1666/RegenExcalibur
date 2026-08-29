@@ -1,0 +1,16 @@
+{
+  "schema_version": "4.2.0",
+  "nodes": [
+    {"id": "obj-ad", "type": "Objective", "statement": "Design a billing system", "status": "ACCEPTED", "provenance_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "epistemic_class": "FACT", "priority": "critical"},
+    {"id": "req-ad-1", "type": "Requirement", "statement": "PCI compliance", "status": "ACCEPTED", "provenance_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "epistemic_class": "FACT", "priority": "critical"},
+    {"id": "ac-ad-1", "type": "AcceptanceCriterion", "statement": "No PAN in logs", "status": "ACCEPTED", "provenance_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "epistemic_class": "FACT", "priority": "critical"},
+    {"id": "risk-ad-1", "type": "Risk", "statement": "Tokenization failure", "status": "ACCEPTED", "provenance_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "epistemic_class": "INFERRED", "priority": "high"},
+    {"id": "dec-ad-1", "type": "Decision", "statement": "Use vault", "status": "ACCEPTED", "provenance_hash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "epistemic_class": "FACT", "priority": "high"}
+  ],
+  "edges": [
+    {"source": "req-ad-1", "target": "obj-ad", "type": "derives_from"},
+    {"source": "ac-ad-1", "target": "req-ad-1", "type": "satisfies"},
+    {"source": "risk-ad-1", "target": "req-ad-1", "type": "affects"},
+    {"source": "dec-ad-1", "target": "risk-ad-1", "type": "authorized_by"}
+  ]
+}
