@@ -1,0 +1,24 @@
+{
+  "source_material": "Repair this vague prompt: Build the best application and keep improving it forever.",
+  "operation": "AUTO",
+  "task_mode": "DO_NOT_EXECUTE",
+  "output_mode": "FULL_FOUNDRY",
+  "target_platform": "openai-reasoning",
+  "objective": "Produce a finite, testable, implementation-ready application-creation prompt.",
+  "hard_requirements": [
+    "Preserve the requested application objective.",
+    "Replace infinite evolution with bounded refinement.",
+    "Use measurable comparison criteria rather than universal superiority claims.",
+    "End at an exact evidence-supported completion state."
+  ],
+  "constraints": [
+    "Do not execute the underlying application project.",
+    "Do not claim novelty without a defined prior-art search."
+  ],
+  "non_goals": [
+    "Publishing, deployment, purchasing, or account creation"
+  ],
+  "invariant_content": ["RegenExcalibur"],
+  "completion_target": "PROMPT_PACKAGE_COMPLETE",
+  "max_refinement_passes": 3
+}
