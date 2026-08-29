@@ -27,6 +27,7 @@ class TestFailureLocalizedRecompilation(unittest.TestCase):
                 "provenance_hash": "f" * 64,
                 "epistemic_class": "ASSUMPTION",
                 "confidence": 0.5,
+                "priority": "low",
             }
         )
         self.graph["edges"].append(
