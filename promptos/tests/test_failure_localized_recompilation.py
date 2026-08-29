@@ -23,9 +23,10 @@ class TestFailureLocalizedRecompilation(unittest.TestCase):
                 "id": "req-risk",
                 "type": "Requirement",
                 "statement": "Handle provider timeout with bounded retry.",
-                "status": "DRAFT",
+                "status": "ACCEPTED",
+                "provenance_hash": "f" * 64,
+                "epistemic_class": "ASSUMPTION",
                 "confidence": 0.5,
-                "epistemic_class": "ASSUMED",
             }
         )
         self.graph["edges"].append(
@@ -33,7 +34,7 @@ class TestFailureLocalizedRecompilation(unittest.TestCase):
         )
         self.graph["graph_hash"] = hash_graph(self.graph)
         v = validate_requirement_graph(self.graph)
-        self.assertEqual(v["status"], "VALID", v)
+        self.assertEqual(v["status"], "PASS", v)
 
     def test_localize_failure_to_reported_node(self) -> None:
         report = FailureReport(
@@ -57,7 +58,7 @@ class TestFailureLocalizedRecompilation(unittest.TestCase):
         )
         with self.assertRaises(FailureLocalizationError):
             localize_failure(self.graph, report)
-    
+
     def test_recompile_preserves_untouched_nodes(self) -> None:
         report = FailureReport(
             source="eval-v1",
