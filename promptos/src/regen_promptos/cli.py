@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 from typing import Sequence
 
@@ -15,6 +16,7 @@ from .byok import (
     build_byok_plan,
     byok_config_template,
 )
+from .byok_runner import BYOKRunError, run_byok_plan
 from .core import (
     FoundryRequest,
     PromptOSError,
@@ -50,7 +52,7 @@ def _write_jsonl(path: Path, rows: Sequence[dict]) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="promptos",
-        description="Compile, validate, and preflight RegenExcalibur PromptOS jobs.",
+        description="Compile, validate, preflight, and run RegenExcalibur PromptOS jobs.",
     )
     subcommands = parser.add_subparsers(dest="command", required=True)
 
@@ -108,6 +110,31 @@ def build_parser() -> argparse.ArgumentParser:
     authorization_parser.add_argument("--config", type=Path, required=True)
     authorization_parser.add_argument("--idempotency-key", required=True)
     authorization_parser.add_argument("--output", type=Path, required=True)
+
+    run_parser = subcommands.add_parser(
+        "byok-run",
+        help=(
+            "Execute a PASS BYOK plan against the allowlisted provider. "
+            "Resolves the provider key from the local environment in memory; "
+            "refuses redirects; bounds response size; writes a redacted receipt. "
+            "No PromptOS credential is sent to the provider."
+        ),
+    )
+    run_parser.add_argument("--plan", type=Path, required=True)
+    run_parser.add_argument("--config", type=Path, required=True)
+    run_parser.add_argument("--prompt", type=Path, required=True,
+                            help="File containing the compiled runtime prompt text.")
+    run_parser.add_argument("--output", type=Path, required=True)
+    run_parser.add_argument("--output-dir", type=Path, default=None,
+                            help="Local directory to persist raw provider output.")
+    run_parser.add_argument("--timeout", type=float, default=30.0)
+    run_parser.add_argument("--authorization-id", default=None)
+    run_parser.add_argument("--settlement-id", default=None)
+    run_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Validate and build the request but do not perform the network call.",
+    )
 
     return parser
 
@@ -215,7 +242,47 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
             )
             return 0
-    except (OSError, ValueError, json.JSONDecodeError, PromptOSError, BYOKError) as exc:
+
+        if args.command == "byok-run":
+            plan = _read_json(args.plan)
+            config = BYOKConfig.from_dict(_read_json(args.config))
+            prompt_text = args.prompt.read_text(encoding="utf-8")
+            if args.dry_run:
+                from .byok_runner import _build_request, _resolve_provider_key
+                key = _resolve_provider_key(config.provider_key_env, os.environ)
+                req = _build_request(config, plan, prompt_text, key)
+                print(json.dumps({
+                    "status": "DRY_RUN",
+                    "method": req.get_method(),
+                    "url": req.full_url,
+                    "headers": {k: ("[REDACTED]" if "auth" in k.lower() or "key" in k.lower() else v)
+                                for k, v in req.headers.items()},
+                    "live_call_performed": False,
+                }, sort_keys=True))
+                return 0
+            result = run_byok_plan(
+                plan,
+                config,
+                prompt_text,
+                timeout_s=args.timeout,
+                persist_output=bool(args.output_dir),
+                output_dir=str(args.output_dir) if args.output_dir else None,
+                authorization_id=args.authorization_id,
+                settlement_id=args.settlement_id,
+            )
+            _write_json(args.output, result.to_dict())
+            print(json.dumps({
+                "status": result.status,
+                "outcome": result.outcome,
+                "http_status": result.http_status,
+                "output_sha256": result.output_sha256,
+                "receipt_sha256": result.receipt.get("receipt_sha256"),
+                "output": str(args.output),
+                "live_call_performed": True,
+            }, sort_keys=True))
+            return 0 if result.outcome == "SUCCEEDED" else 1
+
+    except (OSError, ValueError, json.JSONDecodeError, PromptOSError, BYOKError, BYOKRunError) as exc:
         parser.exit(2, f"promptos: error: {exc}\n")
 
     parser.error("unhandled command")
