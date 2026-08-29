@@ -18,6 +18,7 @@ import json
 import os
 import re
 import socket
+import ssl
 import time
 from dataclasses import dataclass, field
 from typing import Any, Mapping
@@ -232,6 +233,7 @@ def run_byok_plan(
     output_dir: str | None = None,
     authorization_id: str | None = None,
     settlement_id: str | None = None,
+    ssl_context: ssl.SSLContext | None = None,
 ) -> BYOKRunResult:
     """Execute a validated BYOK plan against the configured provider.
 
@@ -279,7 +281,7 @@ def run_byok_plan(
     raw_bytes = b""
     error: str | None = None
     try:
-        with opener.open(request, timeout=timeout_s) as response:
+        with opener.open(request, timeout=timeout_s, context=ssl_context) as response:
             http_status = getattr(response, "status", None) or response.getcode()
             chunks: list[bytes] = []
             total = 0
