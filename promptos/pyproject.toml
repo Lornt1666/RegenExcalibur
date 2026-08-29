@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "regenexcalibur-promptos"
-version = "4.4.0rc1"
-description = "Deterministic prompt compiler with secret-safe BYOK preflight, local provider runner, Requirement Graph + Prompt IR v2 semantic substrate, and in-memory control-plane contract stub."
+version = "4.5.0rc1"
+description = "Deterministic prompt compiler with secret-safe BYOK preflight, local provider runner, Requirement Graph + Prompt IR v2, in-memory control-plane contract, and failure-localized recompilation."
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{ name = "Justice Gray Maciocha / RegenExcalibur" }]
 license = { text = "All rights reserved; see LICENSE_STATUS.md" }
-keywords = ["prompt-engineering", "prompt-compiler", "byok", "evaluation", "ai-governance", "requirement-graph", "control-plane"]
+keywords = ["prompt-engineering", "prompt-compiler", "byok", "evaluation", "ai-governance", "requirement-graph", "control-plane", "failure-localization"]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Programming Language :: Python :: 3",
