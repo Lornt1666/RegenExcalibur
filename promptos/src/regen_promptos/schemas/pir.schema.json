@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://regenexcalibur.example/schemas/pir.schema.json",
+  "title": "PromptIntermediateRepresentation",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "pir_version",
+    "source_sha256",
+    "operation",
+    "objective",
+    "deliverable",
+    "hard_requirements",
+    "constraints",
+    "non_goals",
+    "invariants",
+    "permissions",
+    "selected_modules",
+    "adapter",
+    "risk",
+    "completion_target",
+    "foundry_completion_state",
+    "underlying_project_state",
+    "acceptance_criteria"
+  ],
+  "properties": {
+    "pir_version": {"const": "1.0"},
+    "source_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "operation": {"type": "string"},
+    "objective": {"type": "string", "minLength": 1},
+    "deliverable": {"type": "string", "minLength": 1},
+    "hard_requirements": {"type": "array", "items": {"type": "string"}},
+    "preferences": {"type": "array", "items": {"type": "string"}},
+    "constraints": {"type": "array", "items": {"type": "string"}},
+    "non_goals": {"type": "array", "items": {"type": "string"}},
+    "invariants": {"type": "array", "items": {"type": "string"}},
+    "confirmed_tools": {"type": "array", "items": {"type": "string"}},
+    "unconfirmed_tools": {"type": "array", "items": {"type": "string"}},
+    "prohibited_actions": {"type": "array", "items": {"type": "string"}},
+    "permissions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["read", "draft", "write_reversible", "authorized_consequential_actions"],
+      "properties": {
+        "read": {"type": "boolean"},
+        "draft": {"type": "boolean"},
+        "write_reversible": {"type": "boolean"},
+        "authorized_consequential_actions": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "assumptions": {"type": "array", "items": {"type": "string"}},
+    "blockers": {"type": "array", "items": {"type": "string"}},
+    "selected_modules": {"type": "array", "minItems": 5, "uniqueItems": true, "items": {"type": "string"}},
+    "adapter": {"type": "string"},
+    "risk": {"enum": ["LOW", "MODERATE", "HIGH", "SAFETY_CRITICAL"]},
+    "completion_target": {"type": "string"},
+    "foundry_completion_state": {"enum": ["PROMPT_PACKAGE_COMPLETE", "FOUNDRY_BLOCKED"]},
+    "underlying_project_state": {"type": "string"},
+    "max_refinement_passes": {"type": "integer", "minimum": 1, "maximum": 5},
+    "acceptance_criteria": {"type": "array", "minItems": 1, "items": {"type": "string"}}
+  }
+}
