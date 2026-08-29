@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://regenexcalibur.local/schemas/byok-control-plane.schema.json",
+  "title": "PromptOS BYOK Control-Plane Contract",
+  "description": "Schema for authorization, settlement, cancellation, and ledger records. Provider keys, raw prompts, and raw outputs are forbidden at the control-plane boundary.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "operation",
+    "reservation_id",
+    "account_id",
+    "service_units",
+    "status"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "operation": {
+      "type": "string",
+      "enum": ["authorize", "settle", "cancel", "ledger_entry"]
+    },
+    "reservation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "account_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "service_units": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "status": {
+      "type": "string",
+      "enum": ["RESERVED", "SETTLED", "CANCELLED", "EXPIRED"]
+    },
+    "idempotency_key": {
+      "type": "string"
+    },
+    "provider_key_included": {
+      "type": "boolean",
+      "const": false
+    },
+    "raw_prompt_included": {
+      "type": "boolean",
+      "const": false
+    },
+    "raw_output_included": {
+      "type": "boolean",
+      "const": false
+    },
+    "settlement": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "provider_outcome": {
+          "type": "string"
+        },
+        "provider_request_id": {
+          "type": ["string", "null"]
+        },
+        "output_sha256": {
+          "type": ["string", "null"],
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "settled_at": {
+          "type": "number"
+        }
+      }
+    },
+    "ledger": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "event",
+          "reservation_id",
+          "account_id",
+          "service_units",
+          "idempotency_key",
+          "timestamp",
+          "sequence",
+          "prev_hash",
+          "entry_hash"
+        ],
+        "properties": {
+          "event": {
+            "type": "string"
+          },
+          "reservation_id": {
+            "type": "string"
+          },
+          "account_id": {
+            "type": "string"
+          },
+          "service_units": {
+            "type": "integer"
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "number"
+          },
+          "sequence": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "prev_hash": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64
+          },
+          "entry_hash": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
