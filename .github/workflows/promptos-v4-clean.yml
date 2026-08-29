@@ -1,0 +1,90 @@
+name: PromptOS v4 RC1 Clean
+
+on:
+  pull_request:
+    paths:
+      - "promptos/**"
+      - ".github/workflows/promptos-v4-clean.yml"
+  push:
+    branches:
+      - "feat/promptos-v4-rc1-clean"
+    paths:
+      - "promptos/**"
+      - ".github/workflows/promptos-v4-clean.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: promptos-v4-clean-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    defaults:
+      run:
+        working-directory: promptos
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install package and schema validator
+        run: python -m pip install . "jsonschema>=4.23,<5"
+      - name: Unit tests
+        run: python -m unittest discover -s tests -v
+      - name: Deterministic conformance
+        run: promptos conformance --output conformance-report.json
+      - name: Generate corpus partitions
+        run: promptos corpus --output-dir generated-corpus
+      - name: Validate schemas and compiled package
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/promptos-request.json <<'JSON'
+          {
+            "source_material": "Repair this vague prompt: Build the best application and keep improving it forever.",
+            "operation": "AUTO",
+            "task_mode": "DO_NOT_EXECUTE",
+            "output_mode": "FULL_FOUNDRY",
+            "target_platform": "openai-reasoning",
+            "max_refinement_passes": 3
+          }
+          JSON
+          promptos compile --request /tmp/promptos-request.json --output /tmp/promptos-package.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from jsonschema import Draft202012Validator
+
+          schema_dir = Path("src/regen_promptos/schemas")
+          schemas = {
+              path.name: json.loads(path.read_text(encoding="utf-8"))
+              for path in schema_dir.glob("*.json")
+          }
+          for schema in schemas.values():
+              Draft202012Validator.check_schema(schema)
+
+          request = json.loads(Path("/tmp/promptos-request.json").read_text())
+          package = json.loads(Path("/tmp/promptos-package.json").read_text())
+          Draft202012Validator(schemas["foundry-request.schema.json"]).validate(request)
+          Draft202012Validator(schemas["pir.schema.json"]).validate(package["pir"])
+          Draft202012Validator(schemas["validation-report.schema.json"]).validate(package["validation"])
+          Draft202012Validator(schemas["prompt-package.schema.json"]).validate(package)
+          print("all schemas and compiled instances valid")
+          PY
+      - name: Build wheel
+        run: python -m pip wheel . --no-deps --wheel-dir dist
+      - name: Installed-wheel smoke test outside source tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m venv /tmp/promptos-wheel-smoke
+          /tmp/promptos-wheel-smoke/bin/python -m pip install dist/*.whl
+          cd /tmp
+          /tmp/promptos-wheel-smoke/bin/promptos conformance

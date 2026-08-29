@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "regenexcalibur-promptos"
+version = "4.0.0rc1"
+description = "Deterministic prompt compiler, router, validator, and evaluation starter for RegenExcalibur."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Justice Gray Maciocha / RegenExcalibur" }]
+license = { text = "All rights reserved; see LICENSE_STATUS.md" }
+keywords = ["prompt-engineering", "prompt-compiler", "evaluation", "ai-governance"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12"
+]
+
+[project.scripts]
+promptos = "regen_promptos.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+regen_promptos = ["resources/*.json", "schemas/*.json"]
