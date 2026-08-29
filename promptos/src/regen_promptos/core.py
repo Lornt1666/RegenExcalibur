@@ -1006,6 +1006,13 @@ def generate_corpus() -> list[dict[str, Any]]:
         ),
         (
             "compress",
+            "Compress this long prompt without losing hard requirements, variant {i}.",
+            FoundryOperation.COMPRESS,
+            (),
+            "LOW",
+        ),
+        (
+            "research",
             "Create a research prompt using primary sources, citations, and current verification, variant {i}.",
             FoundryOperation.CREATE,
             ("research",),
