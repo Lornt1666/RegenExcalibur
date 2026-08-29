@@ -1,0 +1,60 @@
+{
+  "name": "RegenExcalibur PromptOS",
+  "version": "4.0.0-rc1",
+  "status": "IMPLEMENTED_EVALUATION_PENDING",
+  "attribution": "RegenExcalibur — 1JGM / Justice Gray Maciocha",
+  "source_constitution": {
+    "version": "3.2-normalized",
+    "path": "constitution/RUPF_CONSTITUTION_v3.2.md",
+    "verbatim_transcript_claim": false,
+    "normalization_disclosed": true
+  },
+  "implementation": {
+    "language": "Python",
+    "minimum_python": "3.11",
+    "runtime_dependencies": [],
+    "operation_modes": 12,
+    "domain_modules": 11,
+    "model_adapters": 4,
+    "json_schemas": 4
+  },
+  "deterministic_evidence": {
+    "unit_tests_expected": 16,
+    "seeded_conformance_cases": 120,
+    "development_cases": 60,
+    "validation_cases": 30,
+    "static_holdout_cases": 30,
+    "partition_seed": 4001,
+    "ci_workflow": ".github/workflows/promptos-v4.yml"
+  },
+  "security_controls": [
+    "SHA-256 source provenance",
+    "escaped JSON-string source serialization",
+    "raw angle-bracket exclusion from encoded source",
+    "single closing-delimiter validation",
+    "explicit consequential-action allowlist",
+    "authorized/prohibited action conflict rejection",
+    "plan/execution/verification/acceptance state separation"
+  ],
+  "verified_claims": [
+    "deterministic compiler source is present",
+    "deterministic router source is present",
+    "schemas and tests are present",
+    "release state does not claim external model superiority"
+  ],
+  "pending_evidence": [
+    "GitHub Actions result on the feature branch",
+    "external model task-quality benchmark",
+    "blinded pairwise comparison against v3.2",
+    "independent human review",
+    "production integration evaluation"
+  ],
+  "prohibited_release_claims": [
+    "perfect",
+    "universally optimal",
+    "verified category leader",
+    "production ready",
+    "prompt injection solved"
+  ],
+  "terminal_state": "IMPLEMENTED — EVALUATION PENDING"
+}
