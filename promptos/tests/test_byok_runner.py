@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import ssl
 import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -57,6 +58,8 @@ class BYOKRunnerTests(unittest.TestCase):
         cls.port = cls.server.server_address[1]
         cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
         cls.thread.start()
+        # Self-signed cert for the loopback mock; tests disable verification.
+        cls._ctx = ssl._create_unverified_context()
 
     @classmethod
     def tearDownClass(cls):
@@ -67,7 +70,7 @@ class BYOKRunnerTests(unittest.TestCase):
         raw = {
             "provider": "openai",
             "model": "gpt-test",
-            "endpoint": f"http://127.0.0.1:{self.port}/v1/responses",
+            "endpoint": f"https://127.0.0.1:{self.port}/v1/responses",
             "provider_key_env": "OPENAI_API_KEY",
             "promptos_credential_env": "PROMPTOS_ACCESS_TOKEN",
             "control_plane_url_env": "PROMPTOS_CONTROL_PLANE_URL",
@@ -129,7 +132,8 @@ class BYOKRunnerTests(unittest.TestCase):
         _Handler.last_auth = None
         plan, config = self.plan()
         result = run_byok_plan(
-            plan, config, "Say hello.", environ=self.env(), persist_output=False
+            plan, config, "Say hello.", environ=self.env(), persist_output=False,
+            ssl_context=self._ctx,
         )
         self.assertEqual(result.status, "PASS")
         self.assertEqual(result.outcome, "SUCCEEDED")
@@ -143,10 +147,12 @@ class BYOKRunnerTests(unittest.TestCase):
 
     def test_failed_receipt_on_transport_error(self):
         _Handler.redirect_to = None
-        bad = self.config(endpoint="http://127.0.0.1:1/nope")
+        # Closed port on loopback: connection refused, no HTTPS handshake needed.
+        bad = self.config(endpoint=f"https://127.0.0.1:1/nope")
         plan = build_byok_plan(self.package(), bad, self.env())
         result = run_byok_plan(
-            plan, bad, "Say hello.", environ=self.env(), persist_output=False
+            plan, bad, "Say hello.", environ=self.env(), persist_output=False,
+            ssl_context=self._ctx,
         )
         self.assertEqual(result.outcome, "FAILED")
         self.assertIsNotNone(result.error)
@@ -170,7 +176,7 @@ class BYOKRunnerTests(unittest.TestCase):
         try:
             cfg = self.config(
                 provider="custom",
-                endpoint=f"http://127.0.0.1:{port}/",
+                endpoint=f"https://127.0.0.1:{port}/",
                 provider_key_env="OPENAI_API_KEY",
                 allow_custom_endpoint=True,
             )
@@ -179,6 +185,7 @@ class BYOKRunnerTests(unittest.TestCase):
                 run_byok_plan(
                     plan, cfg, "hi", environ=self.env(),
                     persist_output=False, max_response_bytes=1024,
+                    ssl_context=self._ctx,
                 )
         finally:
             srv.shutdown(); srv.server_close()
