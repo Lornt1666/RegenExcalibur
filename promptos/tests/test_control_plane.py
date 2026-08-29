@@ -5,7 +5,11 @@ from __future__ import annotations
 import time
 import unittest
 
-from regen_promptos.byok import build_authorization_request, byok_config_template
+from regen_promptos.byok import (
+    BYOKProvider,
+    build_authorization_request,
+    byok_config_template,
+)
 from regen_promptos.byok import BYOKConfig
 from regen_promptos.control_plane import (
     RESERVATION_TTL_S,
@@ -19,7 +23,7 @@ class ControlPlaneTests(unittest.TestCase):
         self.cp = InMemoryControlPlane()
         self.account = "acct_test"
         self.token = self.cp.register_account(self.account)
-        self.config = BYOKConfig.from_dict(byok_config_template_custom())
+        self.config = BYOKConfig.from_dict(byok_config_template(BYOKProvider.CUSTOM))
         self.package = {
             "source_sha256": "a" * 64,
             "runtime_prompt": "hello",
@@ -122,8 +126,5 @@ class ControlPlaneTests(unittest.TestCase):
             self.cp.cancel(self.token, res["reservation_id"], idempotency_key="job-7-cancel")
 
 
-def byok_config_template_custom():
-    raw = byok_config_template("custom")
-    raw["endpoint"] = "https://provider.example/v1/chat"
-    raw["allow_custom_endpoint"] = True
-    return raw
+if __name__ == "__main__":
+    unittest.main()
