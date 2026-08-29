@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://regenexcalibur.example/schemas/byok-control-plane.schema.json",
+  "title": "PromptOS BYOK Control Plane Contract",
+  "description": "Draft 2020-12 schema for the private PromptOS control-plane authorization, settlement, cancellation, and append-only ledger records. Provider keys, raw prompts, and raw outputs are forbidden at this boundary.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "operation"],
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "operation": {
+      "type": "string",
+      "enum": ["authorize", "settle", "cancel", "ledger_entry"]
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255
+    },
+    "account_id": { "type": "string", "minLength": 1 },
+    "reservation_id": { "type": "string", "minLength": 1 },
+    "service_units": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": ["RESERVED", "SETTLED", "CANCELLED", "EXPIRED"]
+    },
+    "provider_outcome": {
+      "type": "string",
+      "enum": ["SUCCEEDED", "FAILED", "CANCELLED"]
+    },
+    "provider_request_id": { "type": ["string", "null"] },
+    "output_sha256": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "provider_key_included": { "type": "boolean", "const": false },
+    "raw_prompt_included": { "type": "boolean", "const": false },
+    "raw_output_included": { "type": "boolean", "const": false },
+    "entry_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "prev_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "sequence": { "type": "integer", "minimum": 0 }
+  }
+}

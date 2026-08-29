@@ -1,7 +1,8 @@
 # RegenExcalibur PromptOS
 
-Deterministic prompt compiler with a secret-safe BYOK client preflight and a
-local provider runner. Version **4.3.0-rc1**.
+Deterministic prompt compiler with a secret-safe BYOK client preflight, a
+local provider runner, and a private control-plane contract stub. Version
+**4.4.0-rc1**.
 
 ## What it does
 
@@ -11,6 +12,8 @@ local provider runner. Version **4.3.0-rc1**.
   enters PromptOS; the PromptOS token never enters the provider.
 - Executes the plan locally against an allowlisted provider, refusing redirects,
   bounding response size, and emitting a redacted receipt.
+- Reserves, settles, and cancels PromptOS service units through an
+  **in-memory control plane** with an append-only, hash-chained ledger.
 
 ## CLI
 
@@ -33,11 +36,16 @@ promptos byok-run --plan plan.json --config byok.json --prompt prompt.txt \
 5. Raw prompts and outputs remain local by default.
 6. A failed provider request is never settled as successful.
 7. Redirects are refused; destination hosts are revalidated before credential use.
+8. The control plane rejects provider keys, raw prompts, and raw outputs.
+9. Every commercial transition is idempotent and append-only.
 
 ## Status
 
 - v4.2 semantic substrate: merged, CI green.
-- v4.3 local runner: this release candidate. Not yet merged.
-- Control plane, payments, evaluation engine: not implemented.
+- v4.3 local runner: merged into `feat/promptos-byok-runtime`, CI green.
+- v4.4 control-plane stub: this release candidate. In-memory only; no network
+  server, no payments, no hosted deployment.
+- Evaluation engine, failure-localized recompilation, Digital Project Twin:
+  not implemented.
 
 Attribution: RegenExcalibur — 1JGM / Justice Gray Maciocha
