@@ -4,7 +4,32 @@ PromptOS converts a prompt-creation or prompt-repair request into a structured P
 
 **Current state:** `IMPLEMENTED — EVALUATION PENDING`
 
-This release candidate establishes deterministic compiler behaviour. It does not claim universal prompt superiority, production fitness, solved prompt injection, or independent semantic verification.
+This release candidate establishes deterministic compiler behaviour. It does not claim universal prompt superiority, production fitness, solved prompt injection, licensed engineering authority, or independent semantic verification.
+
+## AutoDesign / AutoEngineer
+
+PromptOS is being extended as a multidisciplinary design-and-engineering coordination layer:
+
+- **AutoDesign** — rough objective → requirements → concept alternatives → selected system/product architecture → implementation blueprint → acceptance criteria.
+- **AutoEngineer** — design basis → technical constraints → discipline routing → interfaces → failure modes → verification plan → qualified-review handoff.
+- **AutoBuild Plan** — approved specification → phased work breakdown, dependencies, roles, tools, tests, evidence, rollback, and terminal conditions.
+- **AutoAudit** — audit prompts, projects, technical specifications, or AI-generated designs for contradictions, missing requirements, evidence gaps, authority problems, and false completion claims.
+
+See [AUTODESIGN_AUTOENGINEER.md](AUTODESIGN_AUTOENGINEER.md).
+
+AI-generated engineering material is not represented as sealed, stamped, permit-approved, professionally certified, or a replacement for legally required qualified review.
+
+## Commercial use and services
+
+PromptOS is structured to support paid prompt engineering, AutoDesign, AutoEngineer coordination, private PromptOS implementations, evaluation audits, enterprise integrations, specialized module packs, and future owner-approved commercial licensing.
+
+- [Commercialization architecture](COMMERCIALIZATION.md)
+- [Paid offer catalog](PAID_OFFER_CATALOG.md)
+- [Current licence status](LICENSE_STATUS.md)
+
+**Commercial inquiries:** `justlornt95+redditwork@gmail.com`
+
+Public repository visibility does not itself grant commercial exploitation rights. Any commercial embedding or redistribution must follow the effective licence terms or a separate owner-approved agreement.
 
 ## Architecture
 
@@ -54,7 +79,7 @@ promptos compile --request request.json --output package.json
 
 ## Deterministic evidence included
 
-- 16 unit tests.
+- Deterministic unit tests.
 - 120 generated conformance cases.
 - Deterministic 60/30/30 development, validation, and static-holdout split.
 - Python 3.11 and 3.12 CI.
