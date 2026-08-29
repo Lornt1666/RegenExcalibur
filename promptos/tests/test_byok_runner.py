@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import ssl
+import subprocess
+import tempfile
 import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-from regen_promptos.byok import BYOKConfig, BYOKProvider, build_byok_plan
+from regen_promptos.byok import BYOKConfig, build_byok_plan
 from regen_promptos.byok_runner import (
     BYOKRunError,
     NoRedirect,
@@ -20,6 +23,37 @@ def _source_hash(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()
 
 
+def _tls_wrap(server: HTTPServer) -> HTTPServer:
+    """Wrap a bound HTTPServer socket with a throwaway self-signed cert."""
+    work = tempfile.mkdtemp(prefix="byok-tls-")
+    cert = os.path.join(work, "cert.pem")
+    key = os.path.join(work, "key.pem")
+    subprocess.run(
+        [
+            "openssl",
+            "req",
+            "-x509",
+            "-newkey",
+            "rsa:2048",
+            "-keyout",
+            key,
+            "-out",
+            cert,
+            "-days",
+            "1",
+            "-nodes",
+            "-subj",
+            "/CN=127.0.0.1",
+        ],
+        check=True,
+        capture_output=True,
+    )
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ctx.load_cert_chain(cert, key)
+    server.socket = ctx.wrap_socket(server.socket, server_side=True)
+    return server
+
+
 class _Handler(BaseHTTPRequestHandler):
     last_auth = None
     redirect_to = None
@@ -29,7 +63,7 @@ class _Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         length = int(self.headers.get("Content-Length", 0))
-        body = self.rfile.read(length)
+        self.rfile.read(length)
         _Handler.last_auth = self.headers.get("Authorization")
         if _Handler.redirect_to:
             self.send_response(307)
@@ -54,11 +88,10 @@ class _Handler(BaseHTTPRequestHandler):
 class BYOKRunnerTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.server = HTTPServer(("127.0.0.1", 0), _Handler)
+        cls.server = _tls_wrap(HTTPServer(("127.0.0.1", 0), _Handler))
         cls.port = cls.server.server_address[1]
         cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
         cls.thread.start()
-        # Self-signed cert for the loopback mock; tests disable verification.
         cls._ctx = ssl._create_unverified_context()
 
     @classmethod
@@ -68,7 +101,7 @@ class BYOKRunnerTests(unittest.TestCase):
 
     def config(self, **overrides):
         raw = {
-            "provider": "openai",
+            "provider": "custom",
             "model": "gpt-test",
             "endpoint": f"https://127.0.0.1:{self.port}/v1/responses",
             "provider_key_env": "OPENAI_API_KEY",
@@ -76,6 +109,7 @@ class BYOKRunnerTests(unittest.TestCase):
             "control_plane_url_env": "PROMPTOS_CONTROL_PLANE_URL",
             "require_promptos_credential": False,
             "require_control_plane_authorization": False,
+            "allow_custom_endpoint": True,
             **overrides,
         }
         return BYOKConfig.from_dict(raw)
@@ -98,13 +132,6 @@ class BYOKRunnerTests(unittest.TestCase):
     def plan(self, config=None, environ=None):
         config = config or self.config()
         environ = environ or self.env()
-        if config.provider is BYOKProvider.OPENAI:
-            config = self.config(
-                provider="custom",
-                endpoint=config.endpoint,
-                provider_key_env="OPENAI_API_KEY",
-                allow_custom_endpoint=True,
-            )
         return build_byok_plan(self.package(), config, environ), config
 
     def test_validate_redirect_target_rejects_foreign_host(self):
@@ -121,6 +148,7 @@ class BYOKRunnerTests(unittest.TestCase):
 
     def test_no_redirect_handler_refuses(self):
         import urllib.request
+
         req = urllib.request.Request("http://example.com")
         with self.assertRaises(BYOKRunError):
             NoRedirect().redirect_request(
@@ -132,7 +160,11 @@ class BYOKRunnerTests(unittest.TestCase):
         _Handler.last_auth = None
         plan, config = self.plan()
         result = run_byok_plan(
-            plan, config, "Say hello.", environ=self.env(), persist_output=False,
+            plan,
+            config,
+            "Say hello.",
+            environ=self.env(),
+            persist_output=False,
             ssl_context=self._ctx,
         )
         self.assertEqual(result.status, "PASS")
@@ -147,11 +179,14 @@ class BYOKRunnerTests(unittest.TestCase):
 
     def test_failed_receipt_on_transport_error(self):
         _Handler.redirect_to = None
-        # Closed port on loopback: connection refused, no HTTPS handshake needed.
-        bad = self.config(endpoint=f"https://127.0.0.1:1/nope")
+        bad = self.config(endpoint="https://127.0.0.1:1/nope")
         plan = build_byok_plan(self.package(), bad, self.env())
         result = run_byok_plan(
-            plan, bad, "Say hello.", environ=self.env(), persist_output=False,
+            plan,
+            bad,
+            "Say hello.",
+            environ=self.env(),
+            persist_output=False,
             ssl_context=self._ctx,
         )
         self.assertEqual(result.outcome, "FAILED")
@@ -163,52 +198,64 @@ class BYOKRunnerTests(unittest.TestCase):
         class BigHandler(BaseHTTPRequestHandler):
             def log_message(self, *a):
                 return
+
             def do_POST(self):
+                length = int(self.headers.get("Content-Length", 0))
+                if length:
+                    self.rfile.read(length)
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 self.end_headers()
                 self.wfile.write(b"x" * 200_000)
 
-        srv = HTTPServer(("127.0.0.1", 0), BigHandler)
+        srv = _tls_wrap(HTTPServer(("127.0.0.1", 0), BigHandler))
         port = srv.server_address[1]
         t = threading.Thread(target=srv.serve_forever, daemon=True)
         t.start()
         try:
-            cfg = self.config(
-                provider="custom",
-                endpoint=f"https://127.0.0.1:{port}/",
-                provider_key_env="OPENAI_API_KEY",
-                allow_custom_endpoint=True,
-            )
+            cfg = self.config(endpoint=f"https://127.0.0.1:{port}/")
             plan = build_byok_plan(self.package(), cfg, self.env())
             with self.assertRaises(BYOKRunError):
                 run_byok_plan(
-                    plan, cfg, "hi", environ=self.env(),
-                    persist_output=False, max_response_bytes=1024,
+                    plan,
+                    cfg,
+                    "hi",
+                    environ=self.env(),
+                    persist_output=False,
+                    max_response_bytes=1024,
                     ssl_context=self._ctx,
                 )
         finally:
-            srv.shutdown(); srv.server_close()
+            srv.shutdown()
+            srv.server_close()
 
-    def test_opener_accepts_ssl_context_without_typeerror(self):
-        # Regression: OpenerDirector.open() must not receive context=.
-        # The context belongs on HTTPSHandler at construction time.
-        ctx = ssl._create_unverified_context()
-        opener = build_opener_from_module(NoRedirect, ProxyHandler({}), HTTPSHandler(context=ctx))
-        req = Request("https://127.0.0.1:1/nope", data=b"{}", method="POST")
-        with self.assertRaises(BYOKRunError):
-            run_byok_plan(
-                self.plan()[0],
-                self.config(endpoint="https://127.0.0.1:1/nope"),
-                "x",
-                environ=self.env(),
-                ssl_context=ctx,
-            )
-
-
-def build_opener_from_module(*handlers):
-    from urllib.request import build_opener
-    return build_opener(*handlers)
+    def test_redirect_is_refused(self):
+        _Handler.redirect_to = "https://8.8.8.8/x"
+        try:
+            plan, config = self.plan()
+            raised = None
+            result = None
+            try:
+                result = run_byok_plan(
+                    plan,
+                    config,
+                    "Say hello.",
+                    environ=self.env(),
+                    persist_output=False,
+                    ssl_context=self._ctx,
+                )
+            except BYOKRunError as exc:
+                raised = exc
+            if raised is not None:
+                self.assertIn("redirect refused", str(raised))
+            else:
+                self.assertIsNotNone(result)
+                self.assertEqual(result.outcome, "FAILED")
+                self.assertIsNotNone(result.error)
+                serialized = json.dumps(result.receipt)
+                self.assertNotIn("provider-secret-value", serialized)
+        finally:
+            _Handler.redirect_to = None
 
 
 if __name__ == "__main__":
