@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://regenexcalibur.example/schemas/prompt-package.schema.json",
+  "title": "PromptPackage",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "package_version",
+    "promptos_version",
+    "source_sha256",
+    "source_encoded",
+    "operation",
+    "selected_modules",
+    "adapter",
+    "risk",
+    "routing_reasons",
+    "pir",
+    "runtime_prompt",
+    "foundry_completion_state",
+    "underlying_project_state",
+    "request_warnings",
+    "validation"
+  ],
+  "properties": {
+    "package_version": {"const": "1.0"},
+    "promptos_version": {"type": "string"},
+    "source_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "source_encoded": {"type": "string", "minLength": 2},
+    "operation": {"type": "string"},
+    "selected_modules": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+    "adapter": {"type": "string"},
+    "risk": {"enum": ["LOW", "MODERATE", "HIGH", "SAFETY_CRITICAL"]},
+    "routing_reasons": {"type": "array", "items": {"type": "string"}},
+    "pir": {"type": "object"},
+    "runtime_prompt": {"type": "string", "minLength": 1},
+    "foundry_completion_state": {"enum": ["PROMPT_PACKAGE_COMPLETE", "FOUNDRY_BLOCKED"]},
+    "underlying_project_state": {"type": "string"},
+    "request_warnings": {"type": "array", "items": {"type": "string"}},
+    "validation": {"type": "object"}
+  }
+}

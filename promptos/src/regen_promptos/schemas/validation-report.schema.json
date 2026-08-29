@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://regenexcalibur.example/schemas/validation-report.schema.json",
+  "title": "ValidationReport",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "errors", "warnings", "checks"],
+  "properties": {
+    "status": {"enum": ["PASS", "PASS_WITH_WARNING", "REVISE", "BLOCKED"]},
+    "errors": {"type": "array", "items": {"type": "string"}},
+    "warnings": {"type": "array", "items": {"type": "string"}},
+    "checks": {
+      "type": "object",
+      "additionalProperties": {"type": "boolean"},
+      "required": [
+        "source_hash",
+        "source_boundary",
+        "module_uniqueness",
+        "kernel_present",
+        "completion_truthfulness",
+        "authority_ceiling"
+      ]
+    }
+  }
+}

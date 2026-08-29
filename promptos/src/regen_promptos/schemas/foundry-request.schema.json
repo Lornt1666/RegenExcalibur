@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://regenexcalibur.example/schemas/foundry-request.schema.json",
+  "title": "FoundryRequest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["source_material"],
+  "properties": {
+    "source_material": {"type": "string", "minLength": 1},
+    "operation": {
+      "type": "string",
+      "enum": ["AUTO", "CREATE", "REPAIR", "MERGE", "AUDIT", "OPTIMIZE", "ADAPT", "COMPRESS", "EXPAND", "TRANSLATE", "REVERSE_ENGINEER", "STANDARDIZE"],
+      "default": "AUTO"
+    },
+    "task_mode": {
+      "type": "string",
+      "enum": ["DO_NOT_EXECUTE", "DEMONSTRATE", "EXECUTE_READ_ONLY", "EXECUTE_REVERSIBLE", "EXECUTE_CONSEQUENTIAL"],
+      "default": "DO_NOT_EXECUTE"
+    },
+    "output_mode": {
+      "type": "string",
+      "enum": ["PROMPT_ONLY", "STANDARD", "FULL_FOUNDRY", "AUDIT_REPORT", "DIFF_PATCH", "TECHNICAL_SPECIFICATION"],
+      "default": "STANDARD"
+    },
+    "target_platform": {"type": "string", "default": "generic-reasoning"},
+    "objective": {"type": ["string", "null"]},
+    "deliverable": {"type": ["string", "null"]},
+    "hard_requirements": {"$ref": "#/$defs/stringArray"},
+    "preferences": {"$ref": "#/$defs/stringArray"},
+    "constraints": {"$ref": "#/$defs/stringArray"},
+    "non_goals": {"$ref": "#/$defs/stringArray"},
+    "invariant_content": {"$ref": "#/$defs/stringArray"},
+    "confirmed_tools": {"$ref": "#/$defs/stringArray"},
+    "unconfirmed_tools": {"$ref": "#/$defs/stringArray"},
+    "prohibited_actions": {"$ref": "#/$defs/stringArray"},
+    "authorized_actions": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": ["send", "publish", "submit", "purchase", "delete", "deploy", "modify_production", "share_personal_data", "accept_terms", "create_account", "enter_agreement"]
+      },
+      "default": []
+    },
+    "completion_target": {"type": "string", "default": "PROMPT_PACKAGE_COMPLETE"},
+    "max_refinement_passes": {"type": "integer", "minimum": 1, "maximum": 5, "default": 3},
+    "context_budget": {"type": ["integer", "null"], "minimum": 500},
+    "attribution": {"type": "string", "default": "RegenExcalibur — 1JGM / Justice Gray Maciocha"}
+  },
+  "$defs": {
+    "stringArray": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true,
+      "default": []
+    }
+  }
+}
