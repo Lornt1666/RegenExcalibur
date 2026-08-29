@@ -1,1 +1,6 @@
-files['promptos/examples/execution-dag.example.json']
+{
+  "dag_nodes": [{"id": "n1", "type": "Task"}],
+  "dag_edges": [],
+  "retry_policy": "fail_closed",
+  "timeout_seconds": 300
+}

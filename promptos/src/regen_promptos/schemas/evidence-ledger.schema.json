@@ -1,1 +1,21 @@
-files['promptos/src/regen_promptos/schemas/evidence-ledger.schema.json']
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EvidenceLedger",
+  "type": "object",
+  "required": ["entries"],
+  "properties": {
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "hash", "prev_hash", "payload"],
+        "properties": {
+          "id": {"type": "string"},
+          "hash": {"type": "string"},
+          "prev_hash": {"type": "string"},
+          "payload": {"type": "object"}
+        }
+      }
+    }
+  }
+}

@@ -1,1 +1,13 @@
-files['promptos/src/regen_promptos/schemas/project-twin.schema.json']
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ProjectTwin",
+  "type": "object",
+  "required": ["twin_id", "graph_hash", "ir_hash", "completion_state"],
+  "properties": {
+    "twin_id": {"type": "string"},
+    "graph_hash": {"type": "string"},
+    "ir_hash": {"type": "string"},
+    "completion_state": {"type": "string"},
+    "evidence_count": {"type": "integer"}
+  }
+}

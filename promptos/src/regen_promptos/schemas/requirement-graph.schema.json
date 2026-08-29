@@ -1,1 +1,36 @@
-files['promptos/src/regen_promptos/schemas/requirement-graph.schema.json']
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://regenexcalibur.local/schemas/requirement-graph.schema.json",
+  "title": "RequirementGraph",
+  "type": "object",
+  "required": ["schema_version", "nodes", "edges"],
+  "properties": {
+    "schema_version": {"type": "string", "const": "4.2.0"},
+    "nodes": {"type": "array", "items": {"$ref": "#/$defs/node"}},
+    "edges": {"type": "array", "items": {"$ref": "#/$defs/edge"}}
+  },
+  "$defs": {
+    "node": {
+      "type": "object",
+      "required": ["id", "type", "statement", "status", "provenance_hash", "epistemic_class"],
+      "properties": {
+        "id": {"type": "string"},
+        "type": {"type": "string"},
+        "statement": {"type": "string"},
+        "status": {"type": "string"},
+        "provenance_hash": {"type": "string"},
+        "epistemic_class": {"type": "string"},
+        "priority": {"type": "string"}
+      }
+    },
+    "edge": {
+      "type": "object",
+      "required": ["source", "target", "type"],
+      "properties": {
+        "source": {"type": "string"},
+        "target": {"type": "string"},
+        "type": {"type": "string"}
+      }
+    }
+  }
+}

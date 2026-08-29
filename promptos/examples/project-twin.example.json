@@ -1,1 +1,7 @@
-files['promptos/examples/project-twin.example.json']
+{
+  "twin_id": "twin-1",
+  "graph_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "ir_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "completion_state": "VERIFIED",
+  "evidence_count": 2
+}
