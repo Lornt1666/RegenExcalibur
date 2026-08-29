@@ -1,5 +1,18 @@
 """RegenExcalibur PromptOS public API."""
 
+from .byok import (
+    BYOKConfig,
+    BYOKError,
+    BYOKExecutionMode,
+    BYOKProvider,
+    build_authorization_request,
+    build_byok_plan,
+    byok_config_template,
+    create_byok_receipt,
+    inspect_byok_environment,
+    quote_promptos_service_units,
+    validate_byok_config,
+)
 from .core import (
     VERSION,
     FoundryOperation,
@@ -18,16 +31,27 @@ from .core import (
 
 __all__ = [
     "VERSION",
+    "BYOKConfig",
+    "BYOKError",
+    "BYOKExecutionMode",
+    "BYOKProvider",
     "FoundryOperation",
     "FoundryRequest",
     "OutputMode",
     "PromptOSError",
     "UnderlyingTaskMode",
+    "build_authorization_request",
+    "build_byok_plan",
+    "byok_config_template",
     "compile_request",
+    "create_byok_receipt",
     "generate_corpus",
+    "inspect_byok_environment",
+    "quote_promptos_service_units",
     "route_request",
     "run_conformance",
     "split_corpus",
+    "validate_byok_config",
     "validate_package",
     "validate_request",
 ]

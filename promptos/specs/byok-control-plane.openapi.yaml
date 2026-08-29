@@ -1,0 +1,186 @@
+openapi: 3.1.0
+info:
+  title: RegenExcalibur PromptOS BYOK Control Plane
+  version: 0.1.0
+  description: >-
+    Normative draft for secret-free PromptOS authorization, settlement, and
+    cancellation. This file does not represent a deployed service.
+servers:
+  - url: https://control-plane.example.invalid
+    description: Reserved placeholder; replace only with the owner-approved deployment.
+security:
+  - promptosBearer: []
+paths:
+  /v1/byok/authorize:
+    post:
+      operationId: authorizeByokJob
+      summary: Reserve PromptOS service units for one local-provider job.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthorizationRequest'
+      responses:
+        '200':
+          description: Existing idempotent authorization result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthorizationDecision'
+        '201':
+          description: New authorization created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthorizationDecision'
+        '401': { description: Invalid or expired PromptOS access token. }
+        '409': { description: Conflicting reuse of an idempotency key. }
+        '422': { description: Invalid quote, entitlement, or prohibited payload. }
+        '429': { description: Rate or service-unit limit exceeded. }
+  /v1/byok/settle:
+    post:
+      operationId: settleByokJob
+      summary: Capture an authorized PromptOS service-unit reservation.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SettlementRequest'
+      responses:
+        '200':
+          description: Reservation settled or prior settlement returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SettlementDecision'
+        '401': { description: Invalid or expired PromptOS access token. }
+        '409': { description: Conflicting settlement or idempotency reuse. }
+        '422': { description: Invalid receipt or settlement state. }
+  /v1/byok/cancel:
+    post:
+      operationId: cancelByokJob
+      summary: Release an authorized PromptOS reservation.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CancellationRequest'
+      responses:
+        '200':
+          description: Reservation cancelled or prior cancellation returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CancellationDecision'
+        '401': { description: Invalid or expired PromptOS access token. }
+        '409': { description: Reservation already settled or conflicting retry. }
+components:
+  securitySchemes:
+    promptosBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque PromptOS access token
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 255
+  schemas:
+    ServiceQuote:
+      type: object
+      additionalProperties: false
+      required: [unit_name, total_units, line_items, currency_value_assigned, provider_model_usage_included]
+      properties:
+        unit_name: { const: PROMPTOS_SERVICE_UNIT }
+        total_units: { type: integer, minimum: 1 }
+        line_items:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [reason, units]
+            properties:
+              reason: { type: string, minLength: 1 }
+              units: { type: integer, minimum: 1 }
+        currency_value_assigned: { const: false }
+        provider_model_usage_included: { const: false }
+    AuthorizationRequest:
+      type: object
+      additionalProperties: false
+      required: [schema_version, idempotency_key, provider, model, source_sha256, runtime_prompt_sha256, service_quote, requested_execution_mode, provider_key_included, runtime_prompt_included, source_material_included]
+      properties:
+        schema_version: { const: '1.0' }
+        idempotency_key: { type: string, minLength: 1, maxLength: 255 }
+        provider: { enum: [openai, anthropic, google, custom] }
+        model: { type: string, minLength: 1 }
+        source_sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+        runtime_prompt_sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+        service_quote: { $ref: '#/components/schemas/ServiceQuote' }
+        requested_execution_mode: { const: LOCAL_DIRECT }
+        provider_key_included: { const: false }
+        runtime_prompt_included: { const: false }
+        source_material_included: { const: false }
+    AuthorizationDecision:
+      type: object
+      additionalProperties: false
+      required: [authorization_id, state, reserved_units, expires_at]
+      properties:
+        authorization_id: { type: string, minLength: 1 }
+        state: { enum: [AUTHORIZED_RESERVED, BLOCKED] }
+        reserved_units: { type: integer, minimum: 0 }
+        expires_at: { type: string, format: date-time }
+        blockers:
+          type: array
+          items: { type: string }
+    SettlementRequest:
+      type: object
+      additionalProperties: false
+      required: [authorization_id, receipt_sha256, runtime_prompt_sha256, outcome, final_units]
+      properties:
+        authorization_id: { type: string, minLength: 1 }
+        receipt_sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+        runtime_prompt_sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+        outcome: { enum: [SUCCEEDED, FAILED, CANCELLED] }
+        final_units: { type: integer, minimum: 0 }
+        provider_request_id: { type: [string, 'null'] }
+        output_sha256:
+          oneOf:
+            - { type: string, pattern: '^[0-9a-f]{64}$' }
+            - { type: 'null' }
+    SettlementDecision:
+      type: object
+      additionalProperties: false
+      required: [settlement_id, authorization_id, state, captured_units]
+      properties:
+        settlement_id: { type: string, minLength: 1 }
+        authorization_id: { type: string, minLength: 1 }
+        state: { const: SETTLED_CAPTURED }
+        captured_units: { type: integer, minimum: 0 }
+    CancellationRequest:
+      type: object
+      additionalProperties: false
+      required: [authorization_id, reason]
+      properties:
+        authorization_id: { type: string, minLength: 1 }
+        reason: { type: string, minLength: 1 }
+    CancellationDecision:
+      type: object
+      additionalProperties: false
+      required: [authorization_id, state, released_units]
+      properties:
+        authorization_id: { type: string, minLength: 1 }
+        state: { const: CANCELLED_RELEASED }
+        released_units: { type: integer, minimum: 0 }

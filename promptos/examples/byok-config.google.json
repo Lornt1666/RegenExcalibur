@@ -1,0 +1,12 @@
+{
+  "allow_custom_endpoint": false,
+  "control_plane_url_env": "PROMPTOS_CONTROL_PLANE_URL",
+  "endpoint": "https://generativelanguage.googleapis.com/v1beta/models/SET_PROVIDER_MODEL_ID:generateContent",
+  "execution_mode": "LOCAL_DIRECT",
+  "model": "SET_PROVIDER_MODEL_ID",
+  "promptos_credential_env": "PROMPTOS_ACCESS_TOKEN",
+  "provider": "google",
+  "provider_key_env": "GEMINI_API_KEY",
+  "require_control_plane_authorization": true,
+  "require_promptos_credential": true
+}

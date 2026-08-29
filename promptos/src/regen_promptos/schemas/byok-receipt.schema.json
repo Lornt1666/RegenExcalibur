@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:regenexcalibur:promptos:schema:byok-receipt:1.0",
+  "title": "PromptOS BYOK Local Completion Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "architecture",
+    "provider",
+    "model",
+    "runtime_prompt_sha256",
+    "outcome",
+    "authorization_id",
+    "settlement_id",
+    "provider_request_id",
+    "output_sha256",
+    "provider_usage",
+    "metadata",
+    "assertions",
+    "receipt_sha256"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "architecture": { "const": "PROMPTOS_CONTROL_PLANE_LOCAL_PROVIDER_EXECUTION" },
+    "provider": { "enum": ["openai", "anthropic", "google", "custom"] },
+    "model": { "type": "string", "minLength": 1 },
+    "runtime_prompt_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "outcome": { "enum": ["SUCCEEDED", "FAILED", "CANCELLED"] },
+    "authorization_id": { "type": ["string", "null"] },
+    "settlement_id": { "type": ["string", "null"] },
+    "provider_request_id": { "type": ["string", "null"] },
+    "output_sha256": {
+      "oneOf": [
+        { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        { "type": "null" }
+      ]
+    },
+    "provider_usage": { "type": "object" },
+    "metadata": { "type": "object" },
+    "assertions": {
+      "type": "object",
+      "required": [
+        "provider_key_collected_by_promptos",
+        "provider_key_persisted_by_promptos",
+        "provider_cost_billed_to_promptos",
+        "provider_cost_billed_to_customer_provider_account",
+        "payment_or_entitlement_verified_by_this_local_receipt"
+      ]
+    },
+    "receipt_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}
