@@ -3,6 +3,10 @@
 This test exists because CI failed on PR #121 when byok-control-plane.schema.json
 was not a valid meta-schema: the 'Validate schemas and compiled package' step
 calls Draft202012Validator.check_schema on every *.json in schemas/.
+
+This regression test mirrors that exact check so a broken schema fails the unit
+test step (not only the later 'Validate schemas' step) and reports WHICH schema
+is broken.
 """
 
 from __future__ import annotations
@@ -33,9 +37,15 @@ class SchemaMetaValidityTests(unittest.TestCase):
                 schema = json.loads(path.read_text(encoding="utf-8"))
                 try:
                     Draft202012Validator.check_schema(schema)
-                except SchemaError as exc:  # pragma: no cover
-                    self.fail(f"{path.name} is not a valid Draft 2020-12 meta-schema: {exc}")
+                except SchemaError as exc:
+                    self.fail(
+                        f"{path.name} is not a valid Draft 2020-12 meta-schema: {exc}"
+                    )
+                except Exception as exc:  # pragma: no cover - defensive
+                    self.fail(
+                        f"{path.name} raised {type(exc).__name__} during meta-validation: {exc}"
+                    )
 
 
-if __name__ == "__main__":
+if __name__ == "main__":
     unittest.main()
