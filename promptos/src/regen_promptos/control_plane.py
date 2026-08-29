@@ -7,7 +7,7 @@ deployment. It exists so the authorization, settlement, cancellation, and
 ledger contracts can be tested and schematized before any real infrastructure
 is chosen.
 
-Hard invariants preserved from v4.1–v4.3:
+Hard invariants preserved from v4.1–4.3:
 
 * provider keys are never accepted, stored, logged, or returned;
 * raw prompts and raw provider outputs are never accepted;
@@ -271,7 +271,9 @@ class InMemoryControlPlane:
         entry["entry_hash"] = _sha(json.dumps(entry, sort_keys=True, default=str))
         self._ledger.append(entry)
 
-    def _reservation_view(self, reservation: _Reservation) -> dict[str, Any]:
+    def _reservation_view(self, reservation: _Reservation | str) -> dict[str, Any]:
+        if isinstance(reservation, str):
+            reservation = self._reservations[reservation]
         return {
             "reservation_id": reservation.reservation_id,
             "account_id": reservation.account_id,
