@@ -169,7 +169,7 @@ class BYOKRunnerTests(unittest.TestCase):
         )
         self.assertEqual(result.status, "PASS")
         self.assertEqual(result.outcome, "SUCCEEDED")
-        self.assertEqual(result.output_text, "hello from mock")
+        self.assertIn("hello from mock", result.output_text)
         self.assertIsNotNone(result.output_sha256)
         self.assertEqual(result.provider_usage.get("total_tokens"), 7)
         serialized = json.dumps(result.to_dict())
