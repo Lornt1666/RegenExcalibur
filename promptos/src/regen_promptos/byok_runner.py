@@ -23,7 +23,13 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Mapping
 from urllib.parse import parse_qsl, urlsplit, urlunsplit
-from urllib.request import Request, build_opener, HTTPRedirectHandler, ProxyHandler
+from urllib.request import (
+    Request,
+    build_opener,
+    HTTPRedirectHandler,
+    ProxyHandler,
+    HTTPSHandler,
+)
 
 from .byok import (
     BYOKConfig,
@@ -275,13 +281,18 @@ def run_byok_plan(
 
     request = _build_request(config, plan, prompt_text, provider_key)
 
-    opener = build_opener(NoRedirect, ProxyHandler({}))
+    if ssl_context is not None:
+        opener = build_opener(
+            NoRedirect, ProxyHandler({}), HTTPSHandler(context=ssl_context)
+        )
+    else:
+        opener = build_opener(NoRedirect, ProxyHandler({}))
     started = time.monotonic()
     http_status: int | None = None
     raw_bytes = b""
     error: str | None = None
     try:
-        with opener.open(request, timeout=timeout_s, context=ssl_context) as response:
+        with opener.open(request, timeout=timeout_s) as response:
             http_status = getattr(response, "status", None) or response.getcode()
             chunks: list[bytes] = []
             total = 0

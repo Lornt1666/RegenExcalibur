@@ -32,7 +32,7 @@ class _Handler(BaseHTTPRequestHandler):
         body = self.rfile.read(length)
         _Handler.last_auth = self.headers.get("Authorization")
         if _Handler.redirect_to:
-            self.send_response(302)
+            self.send_response(307)
             self.send_header("Location", _Handler.redirect_to)
             self.end_headers()
             return
@@ -189,6 +189,26 @@ class BYOKRunnerTests(unittest.TestCase):
                 )
         finally:
             srv.shutdown(); srv.server_close()
+
+    def test_opener_accepts_ssl_context_without_typeerror(self):
+        # Regression: OpenerDirector.open() must not receive context=.
+        # The context belongs on HTTPSHandler at construction time.
+        ctx = ssl._create_unverified_context()
+        opener = build_opener_from_module(NoRedirect, ProxyHandler({}), HTTPSHandler(context=ctx))
+        req = Request("https://127.0.0.1:1/nope", data=b"{}", method="POST")
+        with self.assertRaises(BYOKRunError):
+            run_byok_plan(
+                self.plan()[0],
+                self.config(endpoint="https://127.0.0.1:1/nope"),
+                "x",
+                environ=self.env(),
+                ssl_context=ctx,
+            )
+
+
+def build_opener_from_module(*handlers):
+    from urllib.request import build_opener
+    return build_opener(*handlers)
 
 
 if __name__ == "__main__":
