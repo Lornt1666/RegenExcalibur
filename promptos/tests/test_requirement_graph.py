@@ -14,13 +14,22 @@ class TestRequirementGraph(unittest.TestCase):
     def test_missing_acceptance_fails(self):
         g = minimal_graph()
         g["nodes"] = [n for n in g["nodes"] if n["type"] != "AcceptanceCriterion"]
-        g["edges"] = [e for e in g["edges"] if e["type"] != "satisfies"]
+        # Removing the AC node leaves its 'satisfies' edge with source 'ac-1',
+        # which no longer exists -> structural INVALID before invariant 1.
         r = validate_requirement_graph(g)
-        # Removing the AC node leaves a dangling 'satisfies' edge (source ac-1),
-        # which is a structural defect -> status 'INVALID'. Either way the
-        # acceptance-criterion invariant must fire.
-        self.assertIn(r["status"], ("FAIL", "INVALID"))
-        self.assertTrue(any("acceptance" in e for e in r["errors"]))
+        self.assertEqual(r["status"], "INVALID")
+        self.assertTrue(any("edge source 'ac-1' not a node" in e for e in r["errors"]))
+
+    def test_missing_acceptance_invariant_fires(self):
+        # Clean removal: drop the AC node AND its satisfies edge so the
+        # structural check passes and invariant 1 must fire.
+        g = minimal_graph()
+        g["nodes"] = [n for n in g["nodes"] if n["type"] != "AcceptanceCriterion"]
+        g["edges"] = [e for e in g["edges"]
+                        if not (e["type"] == "satisfies" and e["source"] == "ac-1")]
+        r = validate_requirement_graph(g)
+        self.assertEqual(r["status"], "FAIL")
+        self.assertTrue(any("invariant 1" in e for e in r["errors"]))
 
     def test_blocked_plus_verified_rejected(self):
         g = minimal_graph()
