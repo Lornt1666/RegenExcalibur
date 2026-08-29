@@ -1,4 +1,4 @@
-"""Deterministic core for RegenExcalibur PromptOS v4.0 RC1.
+"""Deterministic core for RegenExcalibur PromptOS v4.2 RC1.
 
 The provider-neutral core uses only the Python standard library. It provides:
 - typed request and mode models;
@@ -21,7 +21,7 @@ from enum import Enum
 from importlib.resources import files
 from typing import Any, Iterable, Mapping, Sequence
 
-VERSION = "4.0.0rc1"
+VERSION = "4.2.0rc1"
 
 
 class PromptOSError(ValueError):
@@ -613,6 +613,7 @@ def encode_untrusted_source(source: str) -> tuple[str, str]:
     encoded = json.dumps(source, ensure_ascii=False)
     encoded = (
         encoded.replace("&", "\\u0026")
+        .replace("&", "\\u0026")
         .replace("<", "\\u003c")
         .replace(">", "\\u003e")
         .replace("\u2028", "\\u2028")
@@ -747,9 +748,7 @@ def validate_request(request: FoundryRequest) -> tuple[list[str], list[str]]:
         request.task_mode is UnderlyingTaskMode.EXECUTE_CONSEQUENTIAL
         and not request.authorized_actions
     ):
-        errors.append(
-            "EXECUTE_CONSEQUENTIAL requires at least one explicit authorized_action"
-        )
+        errors.append("EXECUTE_CONSEQUENTIAL requires at least one explicit authorized_action")
     if (
         request.task_mode is not UnderlyingTaskMode.EXECUTE_CONSEQUENTIAL
         and request.authorized_actions
@@ -773,9 +772,7 @@ def validate_package(
 
     encoded = str(package.get("source_encoded", ""))
     if "<" in encoded or ">" in encoded:
-        errors.append(
-            "encoded source contains a raw angle bracket and may escape its delimiter"
-        )
+        errors.append("encoded source contains a raw angle bracket and may escape its delimiter")
     try:
         decoded = json.loads(encoded)
     except json.JSONDecodeError:
@@ -798,9 +795,7 @@ def validate_package(
     if expected_hash not in runtime_prompt:
         errors.append("runtime prompt omits source provenance hash")
     if runtime_prompt.count("</SOURCE_MATERIAL>") != 1:
-        errors.append(
-            "runtime prompt must contain exactly one source-material closing delimiter"
-        )
+        errors.append("runtime prompt must contain exactly one source-material closing delimiter")
     if (
         request.task_mode is UnderlyingTaskMode.DO_NOT_EXECUTE
         and "DO_NOT_EXECUTE" not in runtime_prompt
@@ -1011,13 +1006,6 @@ def generate_corpus() -> list[dict[str, Any]]:
         ),
         (
             "compress",
-            "Compress this long prompt without losing hard requirements, variant {i}.",
-            FoundryOperation.COMPRESS,
-            (),
-            "LOW",
-        ),
-        (
-            "research",
             "Create a research prompt using primary sources, citations, and current verification, variant {i}.",
             FoundryOperation.CREATE,
             ("research",),
