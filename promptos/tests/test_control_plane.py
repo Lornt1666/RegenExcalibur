@@ -54,6 +54,7 @@ class ControlPlaneTests(unittest.TestCase):
         a = self.cp.authorize(self.token, auth, idempotency_key="job-2")
         b = self.cp.authorize(self.token, auth, idempotency_key="job-2")
         self.assertEqual(a["reservation_id"], b["reservation_id"])
+        self.assertEqual(a["status"], b["status"])
         self.assertEqual(len(self.cp.ledger()), 1)
 
     def test_failed_provider_cancels_not_settles(self) -> None:
