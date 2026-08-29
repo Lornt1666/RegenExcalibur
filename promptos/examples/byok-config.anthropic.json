@@ -1,0 +1,12 @@
+{
+  "allow_custom_endpoint": false,
+  "control_plane_url_env": "PROMPTOS_CONTROL_PLANE_URL",
+  "endpoint": "https://api.anthropic.com/v1/messages",
+  "execution_mode": "LOCAL_DIRECT",
+  "model": "SET_PROVIDER_MODEL_ID",
+  "promptos_credential_env": "PROMPTOS_ACCESS_TOKEN",
+  "provider": "anthropic",
+  "provider_key_env": "ANTHROPIC_API_KEY",
+  "require_control_plane_authorization": true,
+  "require_promptos_credential": true
+}

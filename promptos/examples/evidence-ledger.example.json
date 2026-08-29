@@ -1,0 +1,6 @@
+{
+  "entries": [
+    {"id": "e1", "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000", "payload": {"event": "graph_validated"}},
+    {"id": "e2", "hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "prev_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "payload": {"event": "ir_compiled"}}
+  ]
+}

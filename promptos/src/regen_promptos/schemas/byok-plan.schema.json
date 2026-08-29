@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:regenexcalibur:promptos:schema:byok-plan:1.0",
+  "title": "PromptOS BYOK Preflight Plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "architecture",
+    "execution_mode",
+    "provider",
+    "credential_boundaries",
+    "control_plane",
+    "prompt_package",
+    "metering",
+    "environment",
+    "workflow",
+    "security_invariants",
+    "implementation_state",
+    "status"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "architecture": { "const": "PROMPTOS_CONTROL_PLANE_LOCAL_PROVIDER_EXECUTION" },
+    "execution_mode": { "const": "LOCAL_DIRECT" },
+    "provider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "model", "endpoint", "auth_header", "auth_value_template", "static_headers", "call_location"],
+      "properties": {
+        "name": { "enum": ["openai", "anthropic", "google", "custom"] },
+        "model": { "type": "string", "minLength": 1 },
+        "endpoint": { "type": "string", "pattern": "^https://" },
+        "auth_header": { "type": "string", "minLength": 1 },
+        "auth_value_template": { "type": "string", "minLength": 1 },
+        "static_headers": { "type": "object", "additionalProperties": { "type": "string" } },
+        "call_location": { "const": "customer_device" }
+      }
+    },
+    "credential_boundaries": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider_key", "promptos_credential", "control_plane_url"],
+      "properties": {
+        "provider_key": { "type": "object" },
+        "promptos_credential": { "type": "object" },
+        "control_plane_url": { "type": "object" }
+      }
+    },
+    "control_plane": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["authorization_required", "authorization_contract", "settlement_contract", "cancellation_contract", "provider_key_allowed", "runtime_prompt_allowed", "source_material_allowed"],
+      "properties": {
+        "authorization_required": { "type": "boolean" },
+        "authorization_contract": { "const": "/v1/byok/authorize" },
+        "settlement_contract": { "const": "/v1/byok/settle" },
+        "cancellation_contract": { "const": "/v1/byok/cancel" },
+        "provider_key_allowed": { "const": false },
+        "runtime_prompt_allowed": { "const": false },
+        "source_material_allowed": { "const": false }
+      }
+    },
+    "prompt_package": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_sha256", "runtime_prompt_sha256", "runtime_prompt_embedded_in_plan"],
+      "properties": {
+        "source_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "runtime_prompt_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "runtime_prompt_embedded_in_plan": { "const": false }
+      }
+    },
+    "metering": {
+      "type": "object",
+      "required": ["unit_name", "total_units", "line_items", "currency_value_assigned", "provider_model_usage_included"]
+    },
+    "environment": {
+      "type": "object",
+      "required": ["status", "ready", "provider_key", "promptos_credential", "control_plane_url", "blockers"]
+    },
+    "workflow": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+    "security_invariants": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+    "implementation_state": { "const": "CLIENT_PREFLIGHT_IMPLEMENTED_CONTROL_PLANE_PENDING" },
+    "status": { "enum": ["PASS", "BLOCKED"] }
+  }
+}

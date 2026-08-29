@@ -1,0 +1,16 @@
+{
+  "schema_version": "4.2.0",
+  "nodes": [
+    {"id": "obj-1", "type": "Objective", "statement": "Ship feature", "status": "ACCEPTED", "provenance_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "epistemic_class": "FACT", "priority": "critical"},
+    {"id": "req-1", "type": "Requirement", "statement": "Must work", "status": "ACCEPTED", "provenance_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "epistemic_class": "FACT", "priority": "priority"},
+    {"id": "ac-1", "type": "AcceptanceCriterion", "statement": "Tests pass", "status": "ACCEPTED", "provenance_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "epistemic_class": "FACT", "priority": "critical"},
+    {"id": "test-1", "type": "Test", "statement": "unit test", "status": "ACCEPTED", "provenance_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "epistemic_class": "FACT", "priority": "critical"},
+    {"id": "comp-1", "type": "CompletionState", "statement": "done", "status": "ACCEPTED", "provenance_hash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "epistemic_class": "FACT", "priority": "critical"}
+  ],
+  "edges": [
+    {"source": "req-1", "target": "obj-1", "type": "derives_from"},
+    {"source": "ac-1", "target": "req-1", "type": "satisfies"},
+    {"source": "test-1", "target": "ac-1", "type": "verified_by"},
+    {"source": "comp-1", "target": "test-1", "type": "evidenced_by"}
+  ]
+}

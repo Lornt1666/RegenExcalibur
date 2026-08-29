@@ -1,99 +1,51 @@
-# RegenExcalibur PromptOS v4.0 RC1
+# RegenExcalibur PromptOS
 
-PromptOS converts a prompt-creation or prompt-repair request into a structured Prompt Intermediate Representation (PIR), deterministically selects only the relevant operation and domain modules, applies a target-model adapter, safely embeds untrusted source material, compiles a compact runtime prompt, and validates the resulting package.
+Deterministic prompt compiler with a secret-safe BYOK client preflight, a
+local provider runner, and a private control-plane contract stub. Version
+**4.4.0-rc1**.
 
-**Current state:** `IMPLEMENTED — EVALUATION PENDING`
+## What it does
 
-This release candidate establishes deterministic compiler behaviour. It does not claim universal prompt superiority, production fitness, solved prompt injection, licensed engineering authority, or independent semantic verification.
+- Compiles human intent into a typed **Requirement Graph** and five-plane
+  **Prompt IR v2**.
+- Produces a secret-free BYOK execution plan: the customer's provider key never
+  enters PromptOS; the PromptOS token never enters the provider.
+- Executes the plan locally against an allowlisted provider, refusing redirects,
+  bounding response size, and emitting a redacted receipt.
+- Reserves, settles, and cancels PromptOS service units through an
+  **in-memory control plane** with an append-only, hash-chained ledger.
 
-## AutoDesign / AutoEngineer
+## CLI
 
-PromptOS is being extended as a multidisciplinary design-and-engineering coordination layer:
-
-- **AutoDesign** — rough objective → requirements → concept alternatives → selected system/product architecture → implementation blueprint → acceptance criteria.
-- **AutoEngineer** — design basis → technical constraints → discipline routing → interfaces → failure modes → verification plan → qualified-review handoff.
-- **AutoBuild Plan** — approved specification → phased work breakdown, dependencies, roles, tools, tests, evidence, rollback, and terminal conditions.
-- **AutoAudit** — audit prompts, projects, technical specifications, or AI-generated designs for contradictions, missing requirements, evidence gaps, authority problems, and false completion claims.
-
-See [AUTODESIGN_AUTOENGINEER.md](AUTODESIGN_AUTOENGINEER.md).
-
-AI-generated engineering material is not represented as sealed, stamped, permit-approved, professionally certified, or a replacement for legally required qualified review.
-
-## Commercial use and services
-
-PromptOS is structured to support paid prompt engineering, AutoDesign, AutoEngineer coordination, private PromptOS implementations, evaluation audits, enterprise integrations, specialized module packs, and future owner-approved commercial licensing.
-
-- [Commercialization architecture](COMMERCIALIZATION.md)
-- [Paid offer catalog](PAID_OFFER_CATALOG.md)
-- [Current licence status](LICENSE_STATUS.md)
-
-**Commercial inquiries:** `justlornt95+redditwork@gmail.com`
-
-Public repository visibility does not itself grant commercial exploitation rights. Any commercial embedding or redistribution must follow the effective licence terms or a separate owner-approved agreement.
-
-## Architecture
-
-```text
-v3.2 constitutional baseline
-        ↓
-FoundryRequest
-        ↓
-request validation + deterministic routing
-        ↓
-Prompt Intermediate Representation
-        ↓
-kernel + selected modules + model adapter
-        ↓
-compiled runtime prompt
-        ↓
-package validation + release evidence
+```
+promptos compile --request req.json --output pkg.json
+promptos byok-template --provider openai --output byok.json
+promptos byok-preflight --package pkg.json --config byok.json --output plan.json
+promptos byok-authorization-request --package pkg.json --config byok.json \
+    --idempotency-key job-1 --output auth.json
+promptos byok-run --plan plan.json --config byok.json --prompt prompt.txt \
+    --output result.json --output-dir ./out
 ```
 
-## Quick start
+## Security invariants
 
-```bash
-cd promptos
-python -m venv .venv
-. .venv/bin/activate
-python -m pip install .
-python -m unittest discover -s tests -v
-promptos conformance
-```
+1. Customer provider credentials remain under customer control.
+2. Provider credentials never enter the PromptOS control plane.
+3. PromptOS access credentials never enter a model-provider request.
+4. No secret appears in plans, logs, receipts, or telemetry.
+5. Raw prompts and outputs remain local by default.
+6. A failed provider request is never settled as successful.
+7. Redirects are refused; destination hosts are revalidated before credential use.
+8. The control plane rejects provider keys, raw prompts, and raw outputs.
+9. Every commercial transition is idempotent and append-only.
 
-Compile a request:
+## Status
 
-```bash
-cat > request.json <<'JSON'
-{
-  "source_material": "Repair this vague prompt: Build the best application and keep improving it forever.",
-  "operation": "AUTO",
-  "task_mode": "DO_NOT_EXECUTE",
-  "output_mode": "FULL_FOUNDRY",
-  "target_platform": "openai-reasoning",
-  "max_refinement_passes": 3
-}
-JSON
+- v4.2 semantic substrate: merged, CI green.
+- v4.3 local runner: merged into `feat/promptos-byok-runtime`, CI green.
+- v4.4 control-plane stub: this release candidate. In-memory only; no network
+  server, no payments, no hosted deployment.
+- Evaluation engine, failure-localized recompilation, Digital Project Twin:
+  not implemented.
 
-promptos compile --request request.json --output package.json
-```
-
-## Deterministic evidence included
-
-- Deterministic unit tests.
-- 120 generated conformance cases.
-- Deterministic 60/30/30 development, validation, and static-holdout split.
-- Python 3.11 and 3.12 CI.
-- Wheel build and installed-wheel smoke test outside the source tree.
-- SHA-256 source provenance and delimiter-safe source encoding.
-- Exact consequential-action allowlist rather than blanket authority.
-- Explicit separation of prompt completion, implementation, verification, and acceptance.
-
-The committed static holdout is a regression partition, not an independent scientific holdout. External model evaluation, blinded baseline comparison, critical human review, and owner release approval remain mandatory before promotion.
-
-## Scope
-
-All implementation files are isolated under `promptos/`; the GitHub workflow is path-scoped. Existing RegenExcalibur application code is not modified.
-
-## Attribution
-
-RegenExcalibur — 1JGM / Justice Gray Maciocha
+Attribution: RegenExcalibur — 1JGM / Justice Gray Maciocha

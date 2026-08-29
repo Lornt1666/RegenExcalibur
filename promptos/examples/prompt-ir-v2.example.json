@@ -1,0 +1,11 @@
+{
+  "ir_version": "4.2.0",
+  "planes": {
+    "semantic": {"objective": "example", "graph_hash": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", "graph_node_count": 5},
+    "execution": {"dag_nodes": [], "dag_edges": [], "retry_policy": "fail_closed", "timeout_seconds": 300},
+    "model": {"provider": "openai", "model": "gpt-4o", "adapter": "openai-reasoning"},
+    "verification": {"tests": [], "acceptance_criteria": [], "graders": [], "thresholds": {}},
+    "commercial": {"service_units": 1, "entitlement_state": "unentitled", "settlement_id": null, "provider_key_included": false, "promptos_token_included": false}
+  },
+  "hash": null
+}
