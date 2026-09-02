@@ -32,6 +32,7 @@ gcp, terraform, cloud-run, cloud-functions, pubsub, vertex-ai, cloud-build, auto
 - [RegenExcalibur_Project](RegenExcalibur_Project): expanded project source and deployment scaffold.
 - [RegenExcalibur_Project/01_Documentation_and_Readme/README.md](RegenExcalibur_Project/01_Documentation_and_Readme/README.md): detailed operational instructions.
 - [RegenExcalibur_Project/master_autonomous_execution_script.py](RegenExcalibur_Project/master_autonomous_execution_script.py): dry-run-first deployment entry point.
+- [RegenExcalibur_Project/05_Agent_Orchestration/nexus-prime](RegenExcalibur_Project/05_Agent_Orchestration/nexus-prime): hook to the [NEXUS-GENESIS-PRIME](https://github.com/Lornt1666/NEXUS-GENESIS-PRIME) prompt, skill, and agent doctrine pack.
 
 ## Safety Notice
 
