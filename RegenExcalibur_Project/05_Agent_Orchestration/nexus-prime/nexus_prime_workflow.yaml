@@ -1,0 +1,27 @@
+version: 1
+workflow_name: nexus_prime_compile
+description: Dry-run compile of the NEXUS-PRIME kernel. Does not join the MRV cycle.
+
+agents:
+  - name: NexusPrimeAgent
+    objective: Load the doctrine kernel and emit an operator compile card.
+    inputs:
+      - kernel_path
+      - job
+    outputs:
+      - compile_card
+    controls:
+      - dry_run_default
+      - no_credentials
+      - no_external_mutate
+
+workflow:
+  steps:
+    - agent: NexusPrimeAgent
+      action: compile_kernel
+
+guardrails:
+  destructive_actions: disabled_by_default
+  credential_storage: secret_manager_only
+  audit_logging: required
+  human_review: required_for_high_impact
