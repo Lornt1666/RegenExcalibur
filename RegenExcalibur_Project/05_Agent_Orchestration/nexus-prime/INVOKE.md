@@ -1,8 +1,10 @@
 # Invoke
 
-Copy kernels from https://github.com/Lornt1666/NEXUS-GENESIS-PRIME
+```bash
+python3 RegenExcalibur_Project/05_Agent_Orchestration/nexus-prime/run_nexus_prime.py --kernel master
+```
 
-| Runtime | File |
+| Runtime | File in https://github.com/Lornt1666/NEXUS-GENESIS-PRIME |
 |---|---|
 | System prompt | prompts/NEXUS-PRIME_MASTER_PROMPT.md |
 | Gemini Gem | prompts/NEXUS-PRIME_GEM_INSTRUCTIONS.md |
